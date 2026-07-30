@@ -115,7 +115,9 @@ function runOnce(seed) {
     let s = E.newRun(seed, LOADOUT, STYLE, ARCH, MUTS)
     s = { ...s, mutators: MUTS, topRope: TOPROPE,
       skin: TOPROPE ? s.skin : Math.max(2, s.skin - E.TOPROPE_SKIN) }
-    if (JOURNAL_PAGES) s = { ...s, journal: [1, 2, 3, 4, 5, 6].slice(0, JOURNAL_PAGES) }
+    // NARR-11: was hardcoded [1..6], so it could never grant a page above 6
+    if (JOURNAL_PAGES) s = { ...s, journal: E.JOURNAL.filter(j => j.id !== 7)
+      .map(j => j.id).slice(0, JOURNAL_PAGES) }
     let turns = 0, climbs = 0, events = 0, talks = 0, projects = 0, shops = 0, fas = 0, rests = 0, guard = 0, skinAtBoss = -1, reachedBoss = false
     const ACTS_LAST = E.ACTS.length - 1   // "reached the boss" must mean the LAST one
     while (s.phase !== 'runEnd' && guard++ < 400) {
@@ -130,7 +132,7 @@ function runOnce(seed) {
         // rest first when hurt — a project is an alternative to a climb, not to a camp
         if (camp && s.skin <= E.RUN_SKIN - E.CAMP_SKIN) n = camp
         // only worth a node if there is enough cash to actually stock up
-        else if (shop && s.cash >= E.PRICE.common * 3) n = shop
+        else if (shop && E.postOpen(s) && s.cash >= E.PRICE.common) n = shop   // free, so go in
         else if (proj && PROJECTS && s.skin > E.PROJECT_SKIN + 2) n = proj
         else if (evt && EVENT_BIAS) n = evt
         else if (FORECAST) {
@@ -196,13 +198,28 @@ function runOnce(seed) {
           continue
         }
         if (n.type === 'shop') {
+          // NARR-4: somebody is behind the counter
+          const pt = E.postTalk(s)
+          if (pt) {
+            const r = pt.replies[0]
+            if (r?.outcome) s = E.applyOutcome(s, r.outcome, rng)
+            s = { ...s, seen: [...new Set([...s.seen, pt.id])], packCards: [] }
+            talks++
+          }
           s = E.stockShop(s, rng)
           // buy the best card the deck actually wants, then gear, then tape
+          /* BAL-5: it bought up to six cards a visit, and every card past the
+             ones you need dilutes the draw. Now it buys only what beats what it
+             already has, which is what a player weighing a purchase does. */
           let guard2 = 0
-          while (guard2++ < 6) {
+          while (guard2++ < 2) {
             const affordable = s.shopCards.filter(c => E.priceOf(c) <= s.cash)
             const pick = E.bestOffer(s, affordable, s.runDeck)
             if (!pick) break
+            // is it actually better than the deck's median card?
+            const vals = s.runDeck.map(c => E.cardValue(s, c, s.runDeck)).sort((a, b) => a - b)
+            const median = vals[Math.floor(vals.length / 2)] ?? 0
+            if (E.cardValue(s, pick, s.runDeck) <= median) break
             s = { ...s, cash: s.cash - E.priceOf(pick), runDeck: [...s.runDeck, pick],
               shopCards: s.shopCards.filter(c => c.uid !== pick.uid) }
           }
@@ -217,7 +234,7 @@ function runOnce(seed) {
           if (s.cash >= E.PRICE.skin && s.skin <= E.RUN_SKIN - 2)
             s = { ...s, cash: s.cash - E.PRICE.skin, skin: s.skin + 2 }
           shops++
-          s = { ...s, shopCards: [], shopGear: [], tier: s.tier + 1, phase: 'map' }
+          s = E.leaveShopStep(s)   // BAL-5: a post does not cost you the stage
           continue
         }
         if (n.type === 'project') {
@@ -229,10 +246,13 @@ function runOnce(seed) {
           continue
         }
         if (n.type === 'event') {
-          const ev = E.rollEvent(rng, s.act, s.eventsSeen)
+          const ev = E.rollEvent(rng, s.act, s.eventsSeen, s.eventChose)
           // policy: take the choice that is not a pure skin sink
           const pick = ev.choices.reduce((a, b) => ((b.outcome.skin ?? 0) > (a.outcome.skin ?? 0) ? b : a))
+          // EVT-4: record which branch, or a callback can never fire for the sim
+          const ci = ev.choices.indexOf(pick)
           s = E.applyOutcome(s, pick.outcome, rng)
+          s = { ...s, eventChose: [...new Set([...s.eventChose, ev.id + ':' + ci])] }
           s = E.leaveEventStep({ ...s, eventId: ev.id, packCards: [] })
           events++
           continue
@@ -307,7 +327,7 @@ function runOnce(seed) {
     }
     return { won: s.phase === 'runEnd' && s.result === 'send', tier: s.tier, act: s.act, turns, climbs,
       deck: s.runDeck.length, skin: s.skin, skinAtBoss, reachedBoss, events, gear: s.gear.length,
-      journal: s.journal.length, talks, projects, shops, fas, rests, faSent: s.faSent ?? 0,
+      trail: s.trail.length, journal: s.journal.length, talks, projects, shops, fas, rests, faSent: s.faSent ?? 0,
       cash: s.cash, psyche: s.psyche,
       held: s.gear.length + s.boons.length,
       killedBy: s.result === 'send' ? 'won' : (s.psyche <= 0 ? 'psyche' : s.skin <= 0 ? 'skin' : 'route'),
@@ -445,7 +465,7 @@ if (mode === 'campaign') {
   const label = process.argv[4] ?? 'built'
   if (label === 'default') LOADOUT = undefined
   console.log(`Full campaign — ${label} loadout, Working It\n`)
-  for (const pages of [0, 3, 6]) {
+  for (const pages of [0, 7, 14]) {
     JOURNAL_PAGES = pages
     let won = 0, turns = 0, talksT = 0, pagesT = 0, restsT = 0
     const diedAct = [0, 0, 0]
@@ -456,7 +476,7 @@ if (mode === 'campaign') {
       turns += r.turns; talksT += r.talks; pagesT += r.journal
  restsT += r.rests ?? 0
     }
-    console.log(`  journal ${pages}/6 → completion ${(100 * won / N).toFixed(1).padStart(5)}%` +
+    console.log(`  journal ${pages}/14 → completion ${(100 * won / N).toFixed(1).padStart(5)}%` +
       `   turns ${(turns / N).toFixed(0).padStart(3)} (~${(turns / N * 12 / 60).toFixed(0)} min)` +
       `   died: act1 ${(100 * diedAct[0] / N).toFixed(0)}% act2 ${(100 * diedAct[1] / N).toFixed(0)}% act3 ${(100 * diedAct[2] / N).toFixed(0)}%` +
       `   talks ${(talksT / N).toFixed(1)} rests ${(restsT / N).toFixed(1)} pages ${(pagesT / N).toFixed(1)}`)

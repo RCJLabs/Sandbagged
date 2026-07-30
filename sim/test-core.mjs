@@ -74,10 +74,383 @@ test('no condition touches Power', () => {
   for (const w of E.WEATHER) {
     ok(!('dPower' in w), `${w.name} touches Power`)
     ok(Math.abs(w.dBite ?? 0) <= 2, `${w.name} bites ${w.dBite}`)
-    ok(Math.abs(w.dContact ?? 0) <= 2, `${w.name} shifts Contact by ${w.dContact}`)
+    /* ENG-20 raised this from 2 to 3, with the measurement: freezing at -3
+       Contact reads -9 points for a sturdy deck and +3 for a fragile one, which
+       is a trade rather than a runaway. At -4 it was -84, which is why there is
+       still a ceiling. */
+    ok(Math.abs(w.dContact ?? 0) <= 3, `${w.name} shifts Contact by ${w.dContact}`)
+    ok(Math.abs(w.dSupport ?? 0) <= 1, `${w.name} shifts Support by ${w.dSupport}`)
+    ok(Math.abs(w.sloperGrip ?? 0) <= 3, `${w.name} moves sloper Grip by ${w.sloperGrip}`)
   }
   for (const r of E.ROCK) ok(!('dPower' in r), `${r.name} touches Power`)
 })
+test('the conditions are on the paper, and still readable', () => {
+  /* VIS-3. ENG-20 measured weather at 46 points of send rate — the largest
+     lever in the game — and it read as the word "hot sun". Mocked at 390px and
+     measured before shipping: every overlay costs at most one point of the gap
+     between ink and paper, against a plain page's 69. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  // every weather in the table needs a class, and the class name has to survive
+  // the space in "hot sun" — that is what the replace is for
+  for (const w of E.WEATHER) {
+    const cls = `wx-${w.name.replace(/ /g, '')}`
+    ok(app.includes(`.${cls}::before`) || w.name === 'still',
+      `${w.name} has no mark on the paper (looked for .${cls})`)
+  }
+  ok(/wx-\$\{|wx-\$\{WEATHER/.test(app) || app.includes("`wx-${WEATHER[st.weather].name.replace(/ /g, '')}`"),
+    'the wrap never gets a weather class')
+  // it must only happen while you are out on something — a menu has no weather
+  ok(/const onRock = st\.phase === 'climb'/.test(app),
+    'the paper shows weather on screens that have none')
+  // under the text, never over it, or it fights the thing it is decorating
+  ok(/\.wrap\[class\*="wx-"\]::before\{[^}]*z-index:0/.test(app),
+    'the weather sits over the text rather than under it')
+  ok(/\.wrap\[class\*="wx-"\]>\*\{[^}]*z-index:1/.test(app),
+    'the content is not lifted above the weather layer')
+  // and colour-blind mode must keep the cue while dropping the hue
+  ok(/\.cb\[class\*="wx-"\]::before\{filter:saturate/.test(app),
+    'colour-blind mode gets the same hues as everybody else')
+})
+
+test('every condition does what it says it does', () => {
+  /* ENG-20. The item claimed conditions barely mattered; the measurement said
+     46 points of send rate across the six. What was true is that two of them
+     lied. Freezing promised no feeling and measured +2 and +9 — a straight
+     benefit, because -1 Bite on every hold beats -2 Contact on every card.
+     Drizzle said slopers were off and measured +1 and -4, because only 6 of
+     231 cards care about slopers. */
+  const named = w => E.WEATHER.find(x => x.name === w)
+  // a condition whose text promises a cost must carry one
+  const freezing = named('freezing')
+  ok(freezing.dContact < -2, `freezing costs only ${freezing.dContact} Contact`)
+  ok(freezing.dBite < 0, 'freezing does not give the friction it promises')
+  // and one that says your feet are going nowhere must reach the feet, because
+  // every deck has feet and almost none has slopers
+  const drizzle = named('drizzle')
+  ok((drizzle.dSupport ?? 0) < 0, 'drizzle does not touch your feet')
+  ok((drizzle.sloperGrip ?? 0) > 0, 'drizzle does not touch slopers either')
+  // every condition must do something, or it is a line of flavour text
+  for (const w of E.WEATHER) {
+    if (w.name === 'still') continue          // the zero point, by design
+    const does = (w.dBite ?? 0) || (w.dContact ?? 0) || (w.sloperGrip ?? 0) || (w.dSupport ?? 0)
+    ok(does, `${w.name} changes nothing at all`)
+    ok(w.text.length > 15, `${w.name} does not explain itself`)
+  }
+  // and a rock type must actually favour something
+  for (const r of E.ROCK) {
+    const does = Object.keys(r.boost).length || Object.keys(r.grip).length || Object.keys(r.bite).length
+    ok(does, `${r.name} is the same as every other rock`)
+  }
+})
+
+test('a run remembers where it has been', () => {
+  /* UX-16. A run is nine stages and the map showed one, so after twenty
+     minutes there was no way to see the shape of the trip you had had. */
+  const at = over => E.trailNote({ ...E.freshRun(6, 0, 1), inRun: true, skirmish: null, ...over })
+  const spec = E.ROUTES[6]
+  eq(at({ result: 'send', burn: 1 }), `flashed ${spec.name}`, 'a flash is not remembered as one')
+  eq(at({ result: 'send', burn: 3 }), `sent ${spec.name}`, 'a send on the third burn reads wrong')
+  eq(at({ result: 'fall', burn: 2 }), `off ${spec.name}`, 'coming off reads wrong')
+  eq(at({ phase: 'camp' }), 'camped', 'a camp is not remembered')
+  eq(at({ phase: 'shop' }), 'the post', 'a post is not remembered')
+  // an event is remembered by name, not as "an event"
+  const ev = E.EVENTS[0]
+  eq(at({ eventId: ev.id }), ev.title.toLowerCase(), 'an event is not remembered by name')
+  // every note must be short enough for a phone and worth reading
+  for (const note of [at({ result: 'send', burn: 1 }), at({ phase: 'camp' }), at({ eventId: ev.id })]) {
+    ok(note.length > 4, 'a stage left an empty note')
+    ok(note.length < 42, `"${note}" is too long for the list`)
+  }
+  // and a note is appended, never replaced
+  const one = E.noteTrail({ ...E.freshRun(0, 0, 1), trail: ['camped'] }, 'the post')
+  eq(one.trail.join('|'), 'camped|the post', 'the trail lost a step')
+  const two = E.noteTrail(one, 'flashed something')
+  eq(two.trail.length, 3, 'the trail stopped growing')
+  eq(two.trail[0], 'camped', 'the trail forgot where it started')
+})
+test('a stage cannot advance without leaving a mark', () => {
+  // four places move the run on a stage, and every one of them must record it
+  const src = readFileSync('src/engine.ts', 'utf8')
+  const advances = [...src.matchAll(/tier: s\.tier \+ 1/g)]
+  ok(advances.length >= 4, `only ${advances.length} places advance a stage`)
+  for (const m of advances) {
+    const around = src.slice(Math.max(0, m.index - 260), m.index + 260)
+    ok(/noteTrail/.test(around),
+      `a stage advance at line ${src.slice(0, m.index).split('\n').length} records nothing`)
+  }
+})
+
+group('the screens where a run ends')
+test('every screen appears in the suites', () => {
+  /* The check that found TEST-4 in the first place, kept so the next screen
+     added cannot arrive uncovered. Naming a phase is a low bar — but the four
+     that were missing were missing entirely, and three of them wrote to the
+     save. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const mine = readFileSync('sim/test-core.mjs', 'utf8') + readFileSync('sim/test.mjs', 'utf8')
+  const screens = [...new Set([...app.matchAll(/phase === '(\w+)'/g)].map(m => m[1]))]
+  ok(screens.length > 20, `only found ${screens.length} screens`)
+  const missing = screens.filter(p => !mine.includes(p))
+  eq(missing.length, 0, `no test mentions: ${missing.join(', ')}`)
+})
+test('an injury is a consequence and never a strategy', () => {
+  /* INJ-1. The design values are explicit: skin, injury and psyche model care,
+     risk and consequence — "not grind-through-pain optimization", and "nothing
+     valorizes training through injury". So the things this test checks are the
+     values, not the mechanics. A tweak must pay nothing, must not be removable
+     by anything you can buy or do, and must never be worth having. */
+  const t = { kind: 'pulley', hold: 'crimp', runs: 2, text: 'x' }
+  const src = readFileSync('src/engine.ts', 'utf8')
+  // it costs, on one hold, and nowhere else
+  eq(E.tweakGrip({ tweak: t }, 'crimp'), E.TWEAK_GRIP, 'a tweak costs nothing on its own hold')
+  eq(E.tweakGrip({ tweak: t }, 'jug'), 0, 'a tweak costs you on a hold it has nothing to do with')
+  eq(E.tweakGrip({ tweak: null }, 'crimp'), 0, 'you are paying for a tweak you do not have')
+  // it pays NOTHING. No xp, no cash, no card, no draw — that is the whole design
+  // comments stripped first: the block SAYS "no cash, no gear", and a test that
+  // reads prose instead of code will fail on its own documentation
+  const tweakBlock = src.slice(src.indexOf('export type Tweak'), src.indexOf('export type CurseCause'))
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+  for (const pay of ['xp', 'cash', 'dDraw', 'powerAll', 'dPower', 'reward'])
+    ok(!new RegExp(`\\b${pay}\\b`).test(tweakBlock),
+      `the tweak system mentions ${pay} — an injury must never pay you anything`)
+  // only a trip passing moves it, and nothing else in the game touches it
+  const after1 = E.tweakAfterRun({ tweak: t })
+  eq(after1.tweak.runs, 1, 'a trip did not bring it closer to gone')
+  eq(E.tweakAfterRun(after1).tweak, null, 'it never goes away')
+  eq(E.tweakAfterRun({ tweak: null }).tweak, null, 'not having one broke something')
+  const app = readFileSync('src/App.tsx', 'utf8')
+  ok(!/tweak: null/.test(app.replace(/tweak: s\.tweak/g, '')),
+    'the screen can clear a tweak, which makes it a thing to manage')
+  // you only get one for climbing a trip down to nothing — never for sending
+  const rng = new E.RNG(4)
+  eq(E.tweakEarned({ ...E.freshRun(0, 0, 1), skin: 3 }, rng), null,
+    'walking off with skin left earned you an injury')
+  ok(E.tweakEarned({ ...E.freshRun(0, 0, 1), skin: 0 }, rng),
+    'climbing a whole trip down to nothing left no mark')
+  // and they never stack, so there is no spiral to fall into
+  eq(E.tweakEarned({ ...E.freshRun(0, 0, 1), skin: 0, tweak: t }, rng), null,
+    'injuries stack, which is a spiral rather than a consequence')
+  // every one must name a real hold type and say what it is in plain words
+  for (const w of E.TWEAKS) {
+    ok(E.HOLD_STATS[w.hold], `${w.kind} is about ${w.hold}, which is not a hold`)
+    ok(w.text.length > 30, `${w.kind} does not explain itself`)
+    ok(!/\btrain|\bpush through|\btough it out/i.test(w.text),
+      `${w.kind} reads like advice to climb through it`)
+  }
+  ok(E.TWEAK_RUNS >= 2 && E.TWEAK_RUNS <= 4, `a tweak lasting ${E.TWEAK_RUNS} trips`)
+})
+
+test('a curse is the price of something you did', () => {
+  /* CARD-6. Ten curses and only two ever arrived — Cold Shut and Sandbagged
+     Beta, from three events of which two give the same one, plus the Sandbagged
+     mutator and TAKE TWO. Eight were unreachable. These come from decisions the
+     game already watches you make.
+
+     And the line that matters: this is NOT a reward for climbing hurt. Per the
+     design values, climbing on wrecked skin is a bad decision the game permits
+     and never rewards — a curse is the consequence arriving. */
+  const base = { ...E.freshRun(6, 0, 1), inRun: true, skirmish: null,
+    runDeck: E.DEFAULT_LOADOUT.map(E.spawn) }
+  const clear = E.specOf(base).clear
+  // topping out never costs you anything, however wrecked you are
+  eq(E.curseEarned({ ...base, result: 'send', skin: 1 }), null,
+    'topping out on raw skin earned you a curse')
+  // coming off on nothing, and coming off with the top in reach, both do
+  eq(E.curseEarned({ ...base, result: 'fall', skin: 1 }), 'rawskin',
+    'going again on gone tips costs nothing')
+  eq(E.curseEarned({ ...base, result: 'fall', skin: 7, cleared: clear }), 'exposed',
+    'coming off with the top in reach costs nothing')
+  eq(E.curseEarned({ ...base, result: 'fall', skin: 7, cleared: 1 }), null,
+    'coming off the second hold left a mark')
+  // one of each a run — the same mistake twice is the same lesson
+  const once = E.addCurse(base, 'rawskin')
+  eq(once.runDeck.filter(c => c.name === 'Flapper').length, 1, 'the curse did not land')
+  eq(E.addCurse(once, 'rawskin').runDeck.filter(c => c.name === 'Flapper').length, 1,
+    'the same curse landed twice in one run')
+  // spraying your own grades catches up at the claim; grading fairly does not
+  ok(E.claimCurse({ ...base, established: [{ claimed: 9, real: 6 }, { claimed: 8, real: 5 }] })
+    .runDeck.some(c => c.name === 'Ego'), 'spraying your grades costs nothing')
+  ok(!E.claimCurse({ ...base, established: [{ claimed: 5, real: 5 }] })
+    .runDeck.some(c => c.name === 'Ego'), 'grading honestly earned you Ego')
+  // every curse it can hand out has to exist and be a curse
+  for (const [cause, c] of Object.entries(E.EARNED_CURSES)) {
+    ok(E.CARDS[c.card], `${cause} hands out ${c.card}, which is not a card`)
+    eq(E.CARDS[c.card].rarity, 'curse', `${cause} hands out ${c.card}, which is not a curse`)
+    ok(c.why.length > 20, `${cause} does not say why`)
+  }
+})
+
+test('walking away from the circuit banks what you did', () => {
+  /* TEST-4. Four screens appeared in neither suite — circuitNext, prepare,
+     sessionEnd, stats — and three of them are where a run ENDS, which is where
+     state is written to the save. The circuit's exit was doing its own
+     Math.max on your best score inline in the screen, which is the same shape
+     as the bug in NARR-4 that was silently emptying saves. */
+  const mid = { ...E.freshRun(0, 0, 1), circuit: true, circuitScore: 7, bestCircuit: 4,
+    skirmish: E.circuitRoute(3, new E.RNG(1)), runDeck: E.DEFAULT_LOADOUT.map(E.spawn),
+    level: 9, owned: ['Gaston'], seen: ['marge1'], ticked: ['act0'], hints: false }
+  const out = E.walkAwayStep(mid)
+  eq(out.bestCircuit, 7, 'walking away did not bank a new best')
+  eq(out.circuit, false, 'you are still on the circuit after walking away')
+  eq(out.skirmish, null, 'the route came with you')
+  eq(out.runDeck.length, 0, 'the deck came with you')
+  eq(out.phase, 'menu', 'walking away does not take you to the menu')
+  // a worse run must not overwrite a better best
+  eq(E.walkAwayStep({ ...mid, circuitScore: 2, bestCircuit: 9 }).bestCircuit, 9,
+    'a worse circuit overwrote your best')
+  // and nothing of yours may be lost on the way out
+  for (const k of ['level', 'owned', 'seen', 'ticked', 'hints'])
+    eq(JSON.stringify(out[k]), JSON.stringify(mid[k]), `walking away lost ${k}`)
+})
+test('the end of a session writes what it should and nothing else', () => {
+  const rng = new E.RNG(11)
+  const lived = { ...E.freshRun(6, 0, 5), inRun: false, skirmish: E.dailyRoute(),
+    daily: true, result: 'send', cleared: 9, turn: 18, peakPump: 6,
+    worked: ['crimp', 'jug'], beta: ['sloper'], burn: 1,
+    runDeck: E.DEFAULT_LOADOUT.map(E.spawn), skin: 6,
+    level: 9, owned: ['Gaston'], seen: ['marge1'], book: {}, ticked: [],
+    established: [], history: [], dailyDay: '', dailyBest: 0, dailyStreak: 0 }
+  const out = E.endSession(lived, rng)
+  // what it must write
+  ok(out.beta.includes('crimp'), 'the holds you worked were not banked as beta')
+  eq(out.dailyDay, E.dayKey(), "today's attempt was not filed")
+  ok(out.dailyScore > 0, "today's attempt scored nothing")
+  eq(out.daily, false, 'the attempt is still open after the session ended')
+  // what it must not touch
+  for (const k of ['level', 'owned', 'seen', 'ticked', 'established'])
+    eq(JSON.stringify(out[k]), JSON.stringify(lived[k]), `ending a session lost ${k}`)
+  // and a session that is not a daily must not write a daily score
+  const plain = E.endSession({ ...lived, daily: false }, rng)
+  eq(plain.dailyDay, '', 'a plain session filed itself as today\'s problem')
+})
+test('the numbers screen survives a save with nothing in it', () => {
+  // a stats page on a fresh file is the classic divide-by-zero, and it reads
+  // straight out of book/owned/history, all of which start empty
+  const fresh = E.freshRun(0, 0, 1)
+  const inAct = E.ROUTES.filter((_, i) => E.ACT_OF_ROUTE[i] !== undefined)
+  const ticked = inAct.filter(r => fresh.book[r.name])
+  eq(ticked.length, 0, 'a fresh save already has ticks in the book')
+  // the reduce that finds your hardest send starts at -1 and must survive empty
+  const hardest = ticked.reduce((a, r) => Math.max(a, r.grade), -1)
+  eq(hardest, -1, 'the hardest send on an empty book is not -1')
+  ok(Number.isFinite(hardest), 'the hardest send is not a number')
+  for (const r of ['starter', 'common', 'uncommon', 'rare']) {
+    const pool = E.BY_RARITY(r)
+    ok(pool.length > 0, `${r} has no cards, so the collection line divides by zero`)
+    eq(pool.filter(n => fresh.owned.includes(n)).length, 0, `a fresh save owns ${r} cards`)
+  }
+  eq(fresh.history.length, 0, 'a fresh save has run history')
+  eq(fresh.runs, 0, 'a fresh save has runs on it')
+})
+test('what you choose before a run is inside the bounds', () => {
+  // prepare walks arch, style and mutators. Every one is an index into a table.
+  for (const step of [-1, 0, 1]) {
+    const arch = Math.max(0, Math.min(E.ARCHETYPES.length - 1, 0 + step))
+    ok(E.ARCHETYPES[arch], `arch ${arch} is not a climber`)
+    const style = Math.max(0, Math.min(E.ASCENT.length - 1, 0 + step))
+    ok(E.ASCENT[style], `style ${style} is not an ascent style`)
+  }
+  // an unlocked style must never exceed what exists, or prepare offers nothing
+  ok(E.ASCENT.length > 1, 'there is only one ascent style')
+  // and every mutator id in a chosen set must be real, since xpMult reads them
+  for (const m of E.MUTATORS) ok(E.mutById(m.id), `${m.id} is not a mutator`)
+  eq(E.xpMult([]), 1, 'no mutators does not mean no multiplier')
+  ok(E.xpMult(E.MUTATORS.map(m => m.id)) > 1, 'every mutator at once pays nothing')
+  // a set containing something that does not exist must not blow up
+  ok(Number.isFinite(E.xpMult(['not-a-mutator'])), 'an unknown mutator breaks the multiplier')
+})
+
+test('a trading post is worth the stop', () => {
+  /* BAL-5. A post was offered in 4 of 25 stages, so picking at random you saw
+     1.00 posts against 2.67 camps — and the harness skipped even those, which
+     turned out to be CORRECT: forcing the visits cost eight points of
+     completion, because a post used to cost you the stage and a stage of
+     climbing is worth more than anything on the shelf. A post is in town, on
+     the drive. It does not cost you a day on the rock. */
+  const odds = type => E.ACTS.reduce((a, tiers) =>
+    a + tiers.reduce((b, t) => b + (t.some(n => n.type === type) ? 1 / t.length : 0), 0), 0)
+  const posts = odds('shop'), camps = odds('camp')
+  ok(posts > camps * 0.7,
+    `a post is ${posts.toFixed(2)} a campaign against ${camps.toFixed(2)} camps — still nearly unreachable`)
+  // leaving must not advance the stage
+  const at = { ...E.freshRun(0, 0, 1), inRun: true, act: 1, tier: 3, shoppedAt: [],
+    shopCards: [], shopGear: [] }
+  const out = E.leaveShopStep(at)
+  eq(out.tier, at.tier, 'a post still costs you the stage')
+  eq(out.phase, 'map', 'leaving a post does not put you back on the map')
+  // but you cannot go round twice at the same stage
+  ok(E.postOpen(at), 'the post starts shut')
+  ok(!E.postOpen(out), 'the post is still open after you have been round it')
+  // and it opens again at the next stage, and in the next act
+  ok(E.postOpen({ ...out, tier: at.tier + 1 }), 'the post never opens again this act')
+  ok(E.postOpen({ ...out, act: 2 }), 'the post never opens again in the next range')
+  // the key must not collide across acts — act 1 stage 3 is not act 2 stage 3
+  const a1 = E.leaveShopStep({ ...at, act: 0, tier: 3 })
+  ok(E.postOpen({ ...a1, act: 1, tier: 3 }), 'shopping in act 1 shut the post in act 2')
+})
+
+test('the act map fits on the page', () => {
+  /* RUN-8. The campaign map was a vertical list of buttons. It is a drawn page
+     now, which means geometry — and geometry goes quietly out of bounds. */
+  for (const act of [0, 1, 2]) {
+    const total = E.ACTS[act].length
+    for (const seed of [1, 999, 2 ** 30]) {
+      const pts = E.mapPoints(total, seed)
+      eq(pts.length, total, `act ${act + 1} drew ${pts.length} of ${total} stages`)
+      for (const [x, y] of pts) {
+        ok(x >= E.MAP_PAD && x <= E.MAP_W - E.MAP_PAD, `a stage sits at x=${x.toFixed(0)}, off the page`)
+        ok(y >= 0 && y <= E.MAP_H, `a stage sits at y=${y.toFixed(0)}, off the page`)
+        ok(Number.isFinite(x) && Number.isFinite(y), 'a stage has no position at all')
+      }
+      // the stages must climb: later ones sit higher up the page
+      for (let i = 1; i < pts.length; i++)
+        ok(pts[i][1] < pts[i - 1][1], `stage ${i + 1} is not above stage ${i}`)
+      // and two stages must never land on top of each other
+      for (let i = 1; i < pts.length; i++)
+        ok(Math.abs(pts[i][1] - pts[i - 1][1]) > 6,
+          `stages ${i} and ${i + 1} are ${Math.abs(pts[i][1] - pts[i - 1][1]).toFixed(1)}px apart`)
+    }
+  }
+  /* VIS-4: the path must MEANDER, not oscillate. The first version swung it by
+     0.28 of the width on a sine of the stage index — at nine stages that is a
+     ±99px zigzag, which reads as a scribble rather than a line up a hill. */
+  for (const act of [0, 1, 2]) {
+    const pts = E.mapPoints(E.ACTS[act].length, 7)
+    const xs = pts.map(p => p[0])
+    const swing = Math.max(...xs) - Math.min(...xs)
+    ok(swing < E.MAP_W * 0.45, `the path swings ${swing.toFixed(0)}px of ${E.MAP_W} — a scribble`)
+    // it may not switch direction on every single stage
+    let turns = 0
+    for (let i = 2; i < xs.length; i++)
+      if (Math.sign(xs[i] - xs[i - 1]) !== Math.sign(xs[i - 1] - xs[i - 2])) turns++
+    ok(turns <= Math.ceil(xs.length / 3), `the path changes direction ${turns} times in ${xs.length} stages`)
+  }
+  // the ground and the wall must be drawable and stay on the page
+  for (const act of [0, 1, 2]) {
+    const cs = E.mapContours(act, 5)
+    ok(cs.length >= 4, `act ${act + 1} has ${cs.length} contours`)
+    for (const c of cs) {
+      ok(c.d.startsWith('M') && c.d.length > 40, 'a contour is not a path')
+      ok(!/NaN/.test(c.d), 'a contour has a NaN in it')
+    }
+    const cliff = E.mapCliff(5)
+    ok(cliff.d.startsWith('M') && !/NaN/.test(cliff.d), 'the wall is not a path')
+    ok(cliff.ticks.length >= 8, `the wall has ${cliff.ticks.length} hachures`)
+    for (const [x, y] of cliff.ticks) {
+      ok(x >= 0 && x <= E.MAP_W, `a hachure at x=${x.toFixed(0)} is off the page`)
+      ok(y - 7 >= 0, 'a hachure points off the top of the page')
+    }
+  }
+  eq(E.ACT_TERRAIN.length, 3, 'the acts are not all named on the map')
+
+  // and it must not fall over on the degenerate cases
+  eq(E.mapPoints(1, 5).length, 1, 'a one-stage act draws nothing')
+  eq(E.mapPoints(0, 5).length, 1, 'a zero-stage act crashes rather than drawing one point')
+  // the same seed must draw the same map, or it redraws itself every render
+  eq(JSON.stringify(E.mapPoints(9, 42)), JSON.stringify(E.mapPoints(9, 42)),
+    'the map moves between renders')
+})
+
 test('the map can always tell you what is coming', () => {
   // RUN-7. The map showed one tier at a time, so every choice was made blind
   // to what it was choosing between.
@@ -113,6 +486,66 @@ test('the boss warnings are true', () => {
       }
     }
   }
+})
+
+test('every climber has a signature that pays over a burn', () => {
+  /* BAL-12. Three of the four compounded — beta coming back cheaper, Contact
+     on every move, settling further. The Comp Kid's fired once on turn one,
+     worth about half a hold on a twelve-hold route, and it measured bottom of
+     the four at 8.2% against 12.4%. A signature that fires once is a footnote. */
+  for (const a of E.ARCHETYPES) {
+    const compounds = (a.betaGrip ?? 0) !== 0 || (a.dPower ?? 0) !== 0
+      || (a.dContact ?? 0) !== 0 || a.settleMax !== undefined
+    ok(compounds, `${a.name}'s signature does not do anything over a burn`)
+    ok(a.sigText.length > 25, `${a.name}'s signature does not explain itself`)
+    // the starting climber is the baseline the others are measured against, so
+    // it is the one that does not trade anything away
+    const costs = (a.dContact ?? 0) < 0 || (a.dAttempts ?? 0) < 0
+      || (a.dSkin ?? 0) < 0 || a.settleMax === 0 || a.noBeta === true
+      || (a.dHand ?? 0) < 0
+    if (a.unlock > 1) ok(costs, `${a.name} pays nothing for its signature`)
+  }
+  // and each starting deck must be one you can actually climb with — the Comp
+  // Kid was shipping with ONE rest card and 70-turn runs
+  for (const a of E.ARCHETYPES) {
+    const sp = a.loadout.map(E.spawn)
+    eq(sp.length, E.DECK_SIZE, `${a.name} starts with ${sp.length} cards`)
+    ok(sp.filter(c => c.shed > 0).length >= E.WANT_RESTS,
+      `${a.name} cannot shed pump: ${sp.filter(c => c.shed > 0).length} rest cards`)
+    ok(sp.filter(c => c.lane === 'feet').length >= 2, `${a.name} has nothing for the feet lane`)
+    ok(sp.filter(c => c.lane === 'hand' || c.lane === 'any').length >= 6,
+      `${a.name} has too little for two hand lanes`)
+  }
+})
+
+test('no act is the thin one', () => {
+  /* NARR-10. Act 2 had 8 climbs against 11 and 12, and act 3 had 4
+     conversations against 7 and 6 — the middle of the story with the least in
+     it, and the end of it with the fewest people. Counted off the act maps
+     rather than the table, because the three desert lines are appended at the
+     END of ROUTES: inserting them into the act 2 block would have shifted every
+     index in acts 2 and 3. */
+  const climbs = a => {
+    const idx = new Set()
+    for (const t of E.ACTS[a]) for (const n of t)
+      if ((n.type === 'climb' || n.type === 'boss' || n.type === 'project') && n.routeIdx >= 0)
+        idx.add(n.routeIdx)
+    return idx.size
+  }
+  const counts = E.ACTS.map((_, a) => climbs(a))
+  const talks = E.ACTS.map((_, a) => E.TALKS.filter(t => t.act === a).length)
+  const lo = Math.min(...counts), hi = Math.max(...counts)
+  ok(hi - lo <= 2, `climbs per act: ${counts.join(' / ')} — one act is much thinner`)
+  const tlo = Math.min(...talks), thi = Math.max(...talks)
+  ok(thi - tlo <= 2, `conversations per act: ${talks.join(' / ')} — one act is much quieter`)
+  for (const n of counts) ok(n >= 8, `an act with only ${n} climbs in it`)
+  for (const n of talks) ok(n >= 5, `an act with only ${n} conversations in it`)
+  /* And the thing the v3.2 warning is actually about: appending is safe only
+     because nothing finds the tutorial or the finale by position. */
+  const app = readFileSync('src/App.tsx', 'utf8') + readFileSync('src/engine.ts', 'utf8')
+  ok(!/ROUTES\[30\]|ROUTES\[29\]/.test(app), 'something addresses a route by a hardcoded index')
+  ok(E.ROUTES.findIndex(r => r.tutorial) >= 0, 'the tutorial cannot be found by its flag')
+  ok(E.ROUTES.findIndex(r => r.finale) >= 0, 'the finale cannot be found by its flag')
 })
 
 test('every act is named and mapped', () => {
@@ -173,6 +606,196 @@ test('every tag has a display name', () => {
   for (const t of used) ok(E.TAG_NAMES[t], `tag "${t}" has no name`)
   ok(E.SYNERGY_PER >= 2, 'a synergy threshold of 1 is not a theme')
 })
+test('the journal is big enough for the decision it makes', () => {
+  /* NARR-11. Seven pages, and NARR-8 made them pick which of three endings you
+     get — so never knowing and knowing were four pieces of paper apart. */
+  ok(E.JOURNAL.length >= 14, `${E.JOURNAL.length} pages for a three-way ending`)
+  eq(E.FINDABLE, E.JOURNAL.length - 1, 'the page you find at the top is findable on the way up')
+  // every findable page must be a beta card, and every beta card must exist
+  for (const j of E.JOURNAL) {
+    if (j.id === 7) { ok(!E.BETA_CARDS[j.id], 'the page from the top is a beta card'); continue }
+    const name = E.BETA_CARDS[j.id]
+    ok(name, `page ${j.id} (${j.title}) gives you nothing on the wall`)
+    ok(E.CARDS[name], `${name} is named as beta and is not a card`)
+    eq(E.CARDS[name].rarity, 'beta', `${name} is not a beta card`)
+  }
+  // every page has to be in his voice and worth reading
+  for (const j of E.JOURNAL) {
+    ok(j.text.length > 120, `page ${j.id} (${j.title}) is too short to be an entry`)
+    ok(j.title.length > 3, `page ${j.id} has no title`)
+  }
+  const ids = E.JOURNAL.map(j => j.id)
+  eq(new Set(ids).size, ids.length, 'two pages share an id')
+  // the pool hands out the next one he wrote and never repeats
+  const seen = []
+  let st = { ...E.freshRun(0, 0, 1), journal: [] }
+  for (let i = 0; i < E.FINDABLE; i++) {
+    const next = E.nextPage(st)
+    ok(next !== null, `ran out of pages after ${i}`)
+    ok(!seen.includes(next), `page ${next} handed out twice`)
+    seen.push(next); st = { ...st, journal: [...st.journal, next] }
+  }
+  eq(E.nextPage(st), null, 'the pool still had a page after every one was found')
+  ok(!seen.includes(7), 'the page from the top was handed out on the way up')
+})
+test('you cannot carry the whole journal up the wall', () => {
+  /* Measured: seven pages was worth twelve points of completion and fourteen
+     was worth the same, because every beta card past the ones you need is a
+     card you draw instead of a move. Capped, and the curve is monotonic again
+     at 29.2 / 40.4 / 42.8%. */
+  const all = E.JOURNAL.filter(j => j.id !== 7).map(j => j.id)
+  eq(E.betaDeck(all).length, E.BETA_TAKE, `carrying every page gives ${E.betaDeck(all).length} cards`)
+  ok(E.BETA_TAKE < E.FINDABLE, 'the cap is not a cap')
+  ok(E.BETA_TAKE >= 6, 'the cap is below what the original six pages gave')
+  // fewer pages than the cap gives you exactly what you have
+  eq(E.betaDeck(all.slice(0, 3)).length, 3, 'three pages did not give three cards')
+  eq(E.betaDeck([]).length, 0, 'no pages gave you cards')
+  // and an unknown page id must not produce a card
+  eq(E.betaDeck([999]).length, 0, 'a page that does not exist gave you beta')
+})
+
+test('the top of the wall depends on what you know when you get there', () => {
+  /* NARR-8. There was one epilogue and it told you he had done it and told
+     nobody — whether you had read seven of his pages or none. That is the one
+     thing NARR-7 built the pages for. */
+  const at = n => ({ ...E.freshRun(0, 0, 1), journal: Array.from({ length: n }, (_, i) => i), established: [] })
+  eq(E.endingFor(at(0)), 'stranger', 'arriving with nothing still explains everything')
+  eq(E.endingFor(at(E.JOURNAL.length)), 'known', 'arriving with every page explains nothing')
+  // and it must only ever get better as you read more
+  const rank = { stranger: 0, partial: 1, known: 2 }
+  let last = -1
+  for (let n = 0; n <= E.JOURNAL.length; n++) {
+    const r = rank[E.endingFor(at(n))]
+    ok(r >= last, `reading page ${n} made you understand less`)
+    last = r
+  }
+  ok(E.KNOWN_AT <= E.JOURNAL.length, 'the best ending needs more pages than the game contains')
+  // the ending id has to carry both halves, because the run-end screen reads both
+  for (const kind of ['told', 'kept']) {
+    const out = E.endingStep({ ...at(E.JOURNAL.length), history: [], runs: 1 }, kind)
+    ok(out.ending.startsWith('known'), `the ending forgot what you knew: ${out.ending}`)
+    ok(out.ending.endsWith(kind), `the ending forgot what you did: ${out.ending}`)
+  }
+})
+test('the game has been counting how you grade your own lines', () => {
+  const own = list => ({ ...E.freshRun(0, 0, 1), established: list })
+  eq(E.honestyOf(own([])), 'none', 'somebody with no lines of their own has a reputation')
+  eq(E.honestyOf(own([{ claimed: 5, real: 5 }, { claimed: 7, real: 7 }])), 'fair', 'honest grading read as something else')
+  eq(E.honestyOf(own([{ claimed: 4, real: 6 }, { claimed: 5, real: 7 }])), 'sandbagged', 'grading low did not read as sandbagging')
+  eq(E.honestyOf(own([{ claimed: 8, real: 6 }, { claimed: 9, real: 7 }])), 'sprayed', 'grading high did not read as spraying')
+  // one point either way is within the noise of an honest opinion
+  eq(E.honestyOf(own([{ claimed: 6, real: 5 }])), 'fair', 'being one grade out makes you a liar')
+})
+
+test("today's problem is the same problem for everybody", () => {
+  /* SKIRM-2. Every design note since v0 justified the seeded RNG as "what
+     makes daily-seeded skirmish possible later". This is the collection, and
+     the only thing that actually matters is that two people on the same date
+     are on the same rock. */
+  for (const day of ['2026-07-29', '2026-12-25', '2027-01-01']) {
+    eq(JSON.stringify(E.dailyRoute(day)), JSON.stringify(E.dailyRoute(day)),
+      `${day} gave two different problems`)
+    eq(E.dailySeed(day), E.dailySeed(day), 'the same date gave two different seeds')
+  }
+  // and different days must differ
+  const seen = new Set()
+  for (let i = 0; i < 60; i++) {
+    const d = new Date(Date.UTC(2026, 0, 1 + i))
+    seen.add(E.dailySeed(E.dayKey(d)))
+  }
+  eq(seen.size, 60, 'two days in a row shared a seed')
+  // the rock itself, not just the spec
+  const rock = () => {
+    const rng = new E.RNG(E.dailySeed('2026-07-29'))
+    const s = E.startBurn({ ...E.freshRun(0, 0, 1), skirmish: E.dailyRoute('2026-07-29'),
+      inRun: false, runDeck: E.DEFAULT_LOADOUT.map(E.spawn), skin: 9,
+      weather: rng.int(4), rock: rng.int(4) }, rng)
+    return s.holdDeck.map(h => [h.name, h.grip, h.wobble ?? 0])
+  }
+  eq(JSON.stringify(rock()), JSON.stringify(rock()), 'the same day built two different routes')
+  // a problem must be a real one
+  for (let i = 0; i < 40; i++) {
+    const r = E.dailyRoute(E.dayKey(new Date(Date.UTC(2026, 5, 1 + i))))
+    ok(r.clear >= 8 && r.clear < E.TURN_CAP - 6, `a daily with ${r.clear} holds`)
+    ok(r.grade >= 3 && r.grade <= 8, `a daily graded V${r.grade}`)
+    ok(r.name.length > 3 && r.note.length > 10, 'a daily with no name or no note')
+  }
+})
+test('a daily attempt is banked once and only once', () => {
+  const base = { ...E.freshRun(0, 0, 1), daily: true, result: 'send', cleared: 10,
+    turn: 20, peakPump: 5, skirmish: E.dailyRoute(), dailyDay: '', dailyBest: 0, dailyStreak: 0 }
+  const first = E.bankDaily(base)
+  ok(first.dailyScore > 0, 'topping out today scored nothing')
+  eq(first.dailyDay, E.dayKey(), 'the attempt was not filed under today')
+  eq(first.daily, false, 'the attempt is still open after being banked')
+  eq(first.dailyStreak, 1, 'a first day is not a streak of one')
+  // banking again must change nothing — you had your go
+  eq(JSON.stringify(E.bankDaily(first)), JSON.stringify(first), 'a second bank moved the score')
+  // yesterday's attempt continues a streak; an older one does not
+  const y = new Date(); y.setUTCDate(y.getUTCDate() - 1)
+  eq(E.bankDaily({ ...base, dailyDay: E.dayKey(y), dailyStreak: 4 }).dailyStreak, 5,
+    'playing two days running did not continue the streak')
+  eq(E.bankDaily({ ...base, dailyDay: '2020-01-01', dailyStreak: 9 }).dailyStreak, 1,
+    'a streak survived a gap of years')
+  // and falling still scores what you climbed
+  ok(E.bankDaily({ ...base, result: 'fall', cleared: 6 }).dailyScore > 0,
+    'coming off scored nothing at all')
+  ok(E.bankDaily({ ...base, result: 'fall', cleared: 6 }).dailyScore < first.dailyScore,
+    'coming off scored the same as topping out')
+})
+
+test('grades read correctly in both scales', () => {
+  // DES-4. Everything read in V-scale. Font is the other scale people use,
+  // and the conversion has to be the real one — climbers will check.
+  const pairs = [[0,'4'],[1,'5'],[2,'5+'],[3,'6A'],[4,'6B'],[5,'6C'],[6,'7A'],
+    [7,'7A+'],[8,'7B'],[9,'7C'],[10,'7C+'],[11,'8A'],[12,'8A+']]
+  for (const [v, f] of pairs) {
+    eq(E.gradeText(v, 'v'), 'V' + v, `V${v} does not read as V${v}`)
+    eq(E.gradeText(v, 'font'), f, `V${v} should be Font ${f}`)
+  }
+  // the scale must never change how hard anything is
+  for (const r of E.ROUTES) {
+    const v = E.gradeLabel(r, 'v'), f = E.gradeLabel(r, 'font')
+    if (r.finale || r.fa) { eq(v, '?', 'an unclimbed line shows a grade'); eq(f, '?', 'an unclimbed line shows a grade') }
+    else ok(v !== f || r.grade === undefined, `${r.name} reads the same in both scales`)
+  }
+  // and it must run off the end of the table without breaking
+  ok(E.fontOf(99).length > 0, 'a grade above the table returns nothing')
+  ok(E.fontOf(-5).length > 0, 'a grade below the table returns nothing')
+  eq(E.FONT.length, 18, 'the Font table changed length')
+})
+
+test('the tutorial teaches the game that exists', () => {
+  /* TUT-2. It taught eight things — tapping, Power vs Grip, feet, Greasy,
+     pump, Settle, Sharp, crux — while the game grew opposition, dynos, the
+     route acting, exposure, greedy, sequences, boons and hold uncertainty,
+     and mentioned none of them. */
+  const blob = E.TUTORIAL_STEPS.join(' ').toLowerCase()
+  for (const [thing, word] of [
+    ['what a hold reads', 'range'], ['opposition', 'sideways'],
+    ['the route acting', 'few turns'], ['exposure', 'exposed'],
+    ['resolve order', 'order you placed'],
+  ]) ok(blob.includes(word), `the tutorial never mentions ${thing}`)
+  // a lesson you cannot follow is worse than no lesson
+  const deck = E.TUTORIAL_DECK.map(E.spawn)
+  ok(deck.filter(c => c.opposes).length >= 2,
+    'the tutorial teaches opposition with no opposing cards in the deck')
+  ok(deck.filter(c => c.lane === 'feet').length >= 2, 'nothing to put in the feet lane')
+  ok(deck.filter(c => c.shed > 0).length >= 1, 'nothing to rest with')
+})
+test('the glossary keeps up with the rules', () => {
+  const named = E.KEYWORDS.map(k => k.name.toLowerCase()).join(' | ')
+  for (const k of ['opposition', 'exposed', 'sequence', 'boon', 'clipping',
+    'resolve order', 'the route acts', 'what a hold reads'])
+    ok(named.includes(k), `the glossary has no entry for ${k}`)
+  // and no entry may describe a rule that has since changed
+  const commit = E.KEYWORDS.find(k => k.name === 'Commit')
+  ok(commit && /stick/i.test(commit.text), 'Commit still describes the old guaranteed dyno')
+  const greedy = E.KEYWORDS.find(k => k.name === 'Greedy')
+  ok(greedy && /every 2 pump/i.test(greedy.text), 'Greedy still describes the old binary bonus')
+  for (const k of E.KEYWORDS) ok(k.text.length > 25, `${k.name} explains nothing`)
+})
+
 test('the tutorial is a fixed, teachable thing', () => {
   eq(E.TUTORIAL_DECK.length >= 10, true, 'the tutorial deck is too small to draw from')
   const tut = E.ROUTES.find(r => r.tutorial)
@@ -283,6 +906,83 @@ test('a card can show its own name', () => {
   const ink = num(/<Ink w=\{(\d+)\} h=\{124\} seed=\{c\.uid\}/)
   eq(ink, width, 'the border is drawn at a different width from the card')
 })
+test('the end of a run gives you an account of it', () => {
+  /* UX-11. `UX-10` rebuilt the post-CLIMB screen and the post-RUN screen still
+     said you won or died, while the trail, the logbook, the lines you named,
+     the pages you found and what you were carrying were all being tracked. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const at = app.indexOf("if (st.phase === 'runEnd')")
+  ok(at > 0, 'there is no run-end screen')
+  const screen = app.slice(at, at + 3200)
+  for (const [what, needle] of [
+    ['the hardest thing you have sent', 'hardest thing you have sent'],
+    ['what you sent this trip', 'sent this trip'],
+    ['how much of his journal you have', 'his journal'],
+    ['the last line you put up', 'the last line you put up'],
+    ['what you are carrying', 'carrying'],
+    ['the shape of the trip', 'HOW IT WENT'],
+  ]) ok(screen.includes(needle), `the end of a run does not tell you ${what}`)
+  /* And the bug this turned up: the subtitle was the literal string "Act 1"
+     whatever act you actually died in. */
+  ok(!/className="sub">Act 1 /.test(screen),
+    'the run-end screen still claims every run ended in act 1')
+  ok(screen.includes('ACT_NAMES[st.act]'), 'the run-end screen does not name the act you died in')
+})
+
+test('a two-digit grip span still fits its pip', () => {
+  /* The pip was a fixed 20px circle, which was fine for one digit and clipped
+     "12-13" onto two lines the moment ENG-10 started showing an unworked grip
+     as a span. Reported from a phone. The widest case is a two-digit span at the
+     largest text size: about 47px, against a 93px content strip shared with the
+     20px power diamond. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const pip = app.slice(app.indexOf('.pip{'), app.indexOf('.cb{'))
+  ok(!/\.pip\{width:20px/.test(pip), 'the pip is still a fixed width and will clip a span')
+  ok(/\.pip\{min-width:20px/.test(pip), 'the pip has no minimum, so a single digit will collapse')
+  ok(/white-space:nowrap/.test(pip), 'the pip can still wrap a span onto two lines')
+  ok(/\.pip\.d\{[^}]*padding/.test(pip), 'the grip pip has no room to grow into')
+  ok(/\.pip\.o\{width:20px/.test(pip), 'the power diamond lost its fixed size')
+  /* And the arithmetic, so this cannot creep back: the widest pips row must fit
+     the strip UX-9 pinned. 10.5px base, the span drawn at 0.82em, 1.3 scale. */
+  const CHAR = 10.5 * 1.3 * 0.82 * 0.62      // bold digit width, measured
+  const widest = 20 + (5 * CHAR + 8) + 6     // diamond + pill + gap
+  ok(widest < 93, `the widest pips row is ${widest.toFixed(0)}px of a 93px strip`)
+  // the grip a route can actually produce, so the span is never three digits
+  let max = 0
+  for (const h of Object.values(E.HOLD_STATS)) max = Math.max(max, h.grip)
+  ok(max + 12 < 100, `a hold could reach ${max + 12} Grip, which needs three digits`)
+})
+
+test('the meter shows where the turn takes you', () => {
+  /* VIS-1. `previewPump` has been computing where COMMIT puts you since UX-4
+     and the meter never drew it — the whole push-your-luck decision, one
+     function call away from being visible. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  ok(/AFTER THIS/.test(app), 'the meter does not say where the turn takes you')
+  ok(/THAT IS A FALL/.test(app), 'the meter does not warn you when the turn ends the burn')
+  for (const cls of ['seg.will', 'seg.willfall', 'seg.shedding'])
+    ok(app.includes(`.${cls}{`), `no style for ${cls}`)
+  ok(/\.nomo \.bar\.tremble\{animation:none\}/.test(app),
+    'the trembling meter ignores the motion setting')
+  ok(/after this turn/.test(app), 'the projection is invisible to a screen reader')
+  /* And the number it draws must be one the meter can hold — drawing past its
+     own end is what made peakPump read 13 of 11 in UX-10. */
+  const rng = new E.RNG(88)
+  for (let t = 0; t < 150; t++) {
+    let s = E.startBurn({ ...E.freshRun(4 + rng.int(4), 0, Math.floor(rng.next() * 2 ** 31)),
+      inRun: true, skirmish: null, weather: 1, rock: 0,
+      runDeck: E.DEFAULT_LOADOUT.map(E.spawn) }, rng)
+    for (let k = 0; k < 6 && s.phase === 'climb'; k++) {
+      s = E.autoPlay(s, rng)
+      const lanes = [0, 1, 2].map(i => E.previewLane(s, i))
+      const after = E.previewPump(s, lanes)
+      ok(after >= 0, `the meter would draw a negative pump: ${after}`)
+      ok(Math.min(E.PUMP_MAX, after) <= E.PUMP_MAX, 'the meter would draw past its own end')
+      s = E.resolve(s, rng)
+    }
+  }
+})
+
 test('the resolve preview sits inside the slot', () => {
   const src = readFileSync('src/App.tsx', 'utf8')
   const m = /\.pv\{[^}]*bottom:(-?\d+)px/.exec(src)
@@ -440,6 +1140,41 @@ test('the forecast is deterministic, varied and bounded', () => {
   const scores = E.WEATHER.map((_, i) => E.forecastScore({ weather: i, rock: 0 }))
   ok(Math.max(...scores) > Math.min(...scores), 'every forecast scores the same')
 })
+test('an event can remember what you did', () => {
+  /* EVT-4. Thirty-two events, all self-contained: you caused an access closure,
+     you trundled a block, you believed a man about a grade, and nothing ever
+     referred back. `eventsSeen` recorded WHICH event fired and never which
+     branch you took, so nothing could look back even if it wanted to. */
+  const backs = E.EVENTS.filter(e => e.after)
+  ok(backs.length >= 3, `only ${backs.length} events look back at anything`)
+  const rng = new E.RNG(3)
+  // every callback must point at a branch that actually exists
+  for (const b of backs) {
+    const [id, ci] = b.after.split(':')
+    const cause = E.EVENTS.find(e => e.id === id)
+    ok(cause, `${b.id} calls back to ${id}, which is not an event`)
+    ok(cause.choices[Number(ci)], `${b.id} calls back to a choice ${id} does not offer`)
+    ok(b.title.length > 5 && b.text.length > 60, `${b.id} is too thin to be worth remembering`)
+  }
+  // unreachable until its cause has happened
+  let early = 0
+  for (let i = 0; i < 2000; i++) if (E.rollEvent(rng, 0, [], []).after) early++
+  eq(early, 0, `a callback fired ${early} times before its cause`)
+  // reachable once it has
+  let got = 0
+  for (let i = 0; i < 2000; i++) if (E.rollEvent(rng, 0, [], ['access:1']).id === 'access2') got++
+  ok(got > 20, `the callback only appeared ${got} times in 2000 rolls after earning it`)
+  /* and NEVER once the range is exhausted, because meeting the same consequence
+     twice reads as a bug rather than as a consequence — the old roll allowed
+     repeats in that case, which is what this had to work around */
+  const all = E.EVENTS.map(e => e.id)
+  let again = 0
+  for (let i = 0; i < 1000; i++) if (E.rollEvent(rng, 0, all, ['access:1', 'hold:0']).after) again++
+  eq(again, 0, `a callback repeated ${again} times once everything had been seen`)
+  // an exhausted range must still return an event rather than undefined
+  for (let i = 0; i < 50; i++) ok(E.rollEvent(rng, 0, all, []).id, 'the roll came back empty')
+})
+
 test('every event is a decision, and one you can win', () => {
   // EVT-2. Priced in one currency: three events had every branch negative — a
   // tax with a menu — and `flood` had a spread of 0.4 between its two options,
@@ -492,13 +1227,34 @@ test('the climb keeps enough to tell you what happened', () => {
   for (let t = 0; t < 25 && s.phase === 'climb'; t++) {
     s = E.autoPlay(s, rng); s = E.resolve(s, rng)
     highest = Math.max(highest, s.pump)
-    ok(s.peakPump >= s.pump, 'the peak is below the current pump')
-    ok(s.peakPump >= highest, `the peak dropped: ${s.peakPump} after reaching ${highest}`)
+    // pump can spike past the top of the meter on the turn you come off; the
+    // peak is a reading of the meter, so it is capped at the meter
+    ok(s.peakPump >= Math.min(E.PUMP_MAX, s.pump), 'the peak is below the current pump')
+    ok(s.peakPump >= Math.min(E.PUMP_MAX, highest), `the peak dropped: ${s.peakPump} after reaching ${highest}`)
   }
   ok(s.peakPump <= E.PUMP_MAX, 'the peak went past the top of the meter')
   // and a new burn starts it again
   const next = E.startBurn({ ...s, phase: 'climb', burn: 2, peakPump: 99 }, rng)
   eq(next.peakPump, 0, 'the peak carried over from the last burn')
+})
+
+test('a piece placed is worth placing', () => {
+  // ROPE-4. Protection only reduced what a fall cost, which at an average
+  // runout of 1.2 holds was worth about one skin — never a card slot. A rack
+  // measured 5%→2%, 2%→2%, 0%→0% across the three roped lines: engaging with
+  // the subsystem made you worse at it.
+  const hold = { uid: 1, name: 'crimp', bite: 3, grip: 9, crux: false, clean: false }
+  const ropedIdx = E.ROUTES.findIndex(r => r.roped)
+  const boulderIdx = E.ROUTES.findIndex(r => !r.roped && !r.tutorial)
+  const at = (idx, clipped) => E.powerAgainst({ ...E.freshRun(idx, 0, 1), inRun: true,
+    skirmish: null, gear: [], boons: [], mutators: [], boardP: [null, null, null], clipped },
+    E.spawn('Crimp Grip'), hold, 0)
+  ok(at(ropedIdx, true) > at(ropedIdx, false), 'clipping buys you nothing on a rope')
+  eq(at(boulderIdx, true), at(boulderIdx, false), 'clipping helped on a boulder, where there is no rope')
+  ok(E.CLIPPED_POWER > 0, 'a placed piece is worth nothing')
+  // and every piece must still say what it does
+  for (const n of Object.keys(E.CARDS).filter(n => E.CARDS[n].clip))
+    ok((E.CARDS[n].text ?? '').length > 25, `${n} does not explain itself`)
 })
 
 test('being high on a route costs more when it goes wrong', () => {
@@ -753,6 +1509,109 @@ test('every signature is real, named and used at most once', () => {
     ok(changes, `${sig.id} is just its base hold with a name on it`)
   }
 })
+test('nothing builds a state from scratch without carrying you over', () => {
+  /* SAVE-2. `startLostLine` built a fresh state and hand-copied five fields,
+     dropping twenty. The round-trip test never caught it because it only
+     tested save-then-load, never the transitions between modes. This checks
+     the shape rather than the symptom: anywhere a state is built from
+     `freshRun` or `newRun` rather than from the state you are already in,
+     `carryOver` or `loadGame` must be right beside it. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const bad = []
+  for (const m of app.matchAll(/(freshRun|newRun)\(/g)) {
+    const near = app.slice(m.index, m.index + 420)
+    if (!/carryOver|loadGame/.test(near)) {
+      const line = app.slice(0, m.index).split('\n').length
+      bad.push(`${m[1]} at line ${line}`)
+    }
+  }
+  eq(bad.length, 0, `builds a state from nothing and keeps none of you: ${bad.join(', ')}`)
+})
+test('every mode you can start keeps what is yours', () => {
+  // the five transitions that touch persistent state, none of which were
+  // covered when startLostLine was silently emptying the save
+  const lived = {
+    ...E.freshRun(0, 0, 1), level: 9, xp: 40, owned: ['Gaston'], sends: 12, wins: 2,
+    runs: 7, falls: 30, seen: ['marge1'], ticked: ['act0'], bestCircuit: 9,
+    book: { 'The Priest': { sends: 1, bestBurn: 1, bestStyle: 0, flashed: true, weather: 0, rock: 0 } },
+    established: [{ name: 'Quiet Arete', claimed: 5, real: 8, act: 0, burns: 2 }],
+    hints: false, textScale: 2, cbSafe: true, styleMax: 3, tutorialDone: true,
+  }
+  const mine = s => JSON.stringify([s.level, s.owned, s.seen, s.book, s.ticked,
+    s.established, s.bestCircuit, s.hints, s.textScale, s.cbSafe, s.styleMax, s.tutorialDone])
+  const rng = new E.RNG(5)
+  // a new expedition
+  eq(mine({ ...E.newRun(2, E.DEFAULT_LOADOUT, 0, 0, []), ...E.carryOver(lived) }), mine(lived),
+    'starting an expedition loses something of yours')
+  // the circuit and skirmish both spread the state they came from
+  const circuit = { ...lived, circuit: true, runDeck: [], skirmish: E.circuitRoute(0, rng) }
+  eq(mine(circuit), mine(lived), 'the circuit loses something of yours')
+  const skirm = { ...lived, skirmish: E.skirmishRoute(4, rng), inRun: false }
+  eq(mine(skirm), mine(lived), 'a one-off route loses something of yours')
+  // and a full save round trip
+  const saved = E.saveGame({ ...lived, slot: 0 })
+  const back = E.loadGame(0)
+  if (back) for (const k of ['level', 'owned', 'seen', 'ticked', 'bestCircuit', 'hints', 'textScale'])
+    eq(JSON.stringify(back[k]), JSON.stringify(lived[k]), `the save file loses ${k}`)
+})
+
+test('a new expedition keeps everything that is yours', () => {
+  /* NARR-4 turned this up. Starting a run replaced the whole state and
+     hand-copied five fields across — level, xp, owned, sends, wins — and
+     silently dropped the rest: the story you had heard, your logbook, the
+     lines you had put up, your settings. The next save then wrote the emptied
+     values back over the file. */
+  const lived = {
+    ...E.freshRun(0, 0, 1),
+    level: 9, xp: 40, owned: ['Gaston'], sends: 12, wins: 2, runs: 7, falls: 30,
+    seen: ['marge1', 'marge2', 'dale1'],
+    book: { 'The Priest': { sends: 2, bestBurn: 1, bestStyle: 0, flashed: true, weather: 0, rock: 0 } },
+    ticked: ['act0'],
+    established: [{ name: 'Quiet Arete', claimed: 5, real: 8, act: 0, burns: 2 }],
+    history: [{ seed: 1, arch: 0, style: 0, rope: false, circuit: false, act: 1, tier: 2, won: false, cause: 'x', sends: 3, deck: 15 }],
+    bestCircuit: 9, styleMax: 3, tutorialDone: true, slot: 2, ending: 'told',
+    sound: false, motion: false, cbSafe: true, textScale: 2, coaching: false,
+    hints: false, topRope: false, loadouts: [['Crimp Grip']],
+  }
+  const carried = { ...E.newRun(99, E.DEFAULT_LOADOUT, 0, 0, []), ...E.carryOver(lived) }
+  // everything the save file keeps must survive starting a new expedition
+  for (const k of ['level', 'xp', 'sends', 'wins', 'runs', 'falls', 'bestCircuit',
+    'styleMax', 'tutorialDone', 'slot', 'ending', 'sound', 'motion', 'cbSafe',
+    'textScale', 'coaching', 'hints', 'topRope'])
+    eq(JSON.stringify(carried[k]), JSON.stringify(lived[k]), `a new run lost ${k}`)
+  for (const k of ['owned', 'seen', 'book', 'ticked', 'established', 'history', 'loadouts'])
+    eq(JSON.stringify(carried[k]), JSON.stringify(lived[k]), `a new run lost ${k}`)
+  // and it must not carry anything that belongs to the run just ended
+  const c = E.carryOver(lived)
+  for (const k of ['skin', 'psyche', 'cash', 'gear', 'boons', 'tier', 'act', 'runDeck', 'beta'])
+    ok(!(k in c), `carryOver drags ${k} out of the last run`)
+})
+
+test('there is one way to play a card', () => {
+  /* SIM-5. The screen and the harness each had their own implementation, and
+     a rule added to one failed to reach the other three times: sequences
+     (SIM-3), Free Rein (BAL-9), clipping (ROPE-4). Every time the mechanic
+     measured as worthless and the fix was to teach the harness a rule the
+     game already had. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const engine = readFileSync('src/engine.ts', 'utf8')
+  ok(/playBonusStep\(s, c, lane, rng\)/.test(app),
+    'the screen does not go through the shared function')
+  ok(engine.split('export function playBonusStep').length === 2,
+    'playBonusStep is declared more than once')
+  // the screen must not re-implement any of the rules
+  const screen = app.slice(app.indexOf('function playBonus('), app.indexOf('function playBonus(') + 900)
+  for (const rule of ['c.shed', 'c.draw', 'c.gripCut', 'c.powerAll', 'c.clip', 'c.seq'])
+    ok(!screen.includes(rule), `the screen still handles ${rule} itself`)
+  // and the harness must call it rather than its own
+  const auto = engine.slice(engine.indexOf('export function autoPlay'))
+  ok(/st = playBonusStep\(st, c, lane, rng\)/.test(auto),
+    'the harness does not go through the shared function')
+  for (const rule of ['c.restore &&', 'c.gripCut &&'])
+    ok(!auto.slice(0, auto.indexOf('return st')).includes(rule + ' st.piles'),
+      `the harness still applies ${rule} itself`)
+})
+
 test('the preview and resolve read a hold the same way', () => {
   // ROUTE-5 gave named holds their own abilities and taught `abilityOf` about
   // them. The preview was still reading HOLD_STATS directly, so it was blind

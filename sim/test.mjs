@@ -209,14 +209,11 @@ test('the preview is exact for every shape of deck on every kind of route', () =
         }
       }
       ok(seen > 50, `${shape}/${kind} only exercised ${seen} turns`)
-      /* Zero would be the right number and is not the one we have. Six of the
-         28 combinations miss 1-2 turns in ~400, all on boss routes where a
-         phase can trigger part way through a turn, and on greedy decks. Those
-         are logged as ENG-19. What this guard is for is catching the other
-         kind: the opposition rule was wrong 13% of the time and shipped,
-         because nothing here ever played an opposition deck. */
-      const rate = bad / seen
-      if (rate > 0.01) worst.push(`${shape} on a ${kind} route: ${bad} of ${seen}`)
+      /* Zero, and it stays zero. It was 1% while ENG-19 was open; that is
+         closed, so this is strict again. Negative-tested by handing
+         powerAgainst the pre-move state, which is the bug ENG-19 was: it
+         fails six of the 28 combinations immediately. */
+      if (bad) worst.push(`${shape} on a ${kind} route: ${bad} of ${seen}`)
     }
   }
   eq(worst.length, 0, `the preview is systematically wrong for: ${worst.join(' · ')}`)
@@ -561,6 +558,100 @@ group('valuation')
 const vDeck = () => E.DEFAULT_LOADOUT.map(E.spawn)
 const vState = (over = {}) => ({ ...E.freshRun(0, 0, 1), inRun: true, arch: 0,
   gear: [], boons: [], mutators: [], ...over })
+test('the game can build you a deck that actually works', () => {
+  /* DECK-1. `cardValue` scores a card on its own and knows nothing about the
+     shape of a deck. Left to it, the builder made fifteen rest cards, and then
+     — once rests were capped — THIRTEEN feet cards, on a board with two hand
+     lanes. Shape is the builder's job. */
+  const starters = Object.keys(E.CARDS).filter(n => E.CARDS[n].rarity === 'starter')
+  const commons = Object.keys(E.CARDS).filter(n => (E.CARDS[n].rarity ?? '') === 'common')
+  const all = Object.keys(E.CARDS).filter(n => !['curse', 'beta'].includes(E.CARDS[n].rarity ?? ''))
+  const st = owned => ({ ...E.freshRun(0, 0, 1), owned, gear: [], boons: [], arch: 0 })
+  for (const [label, owned] of [['a beginner', [...starters, ...commons]], ['everything', all]]) {
+    for (const seed of [[], ['Gaston', 'Gaston'], ['Dyno']]) {
+      const d = E.buildLoadout(st(owned), seed, owned)
+      const sp = d.map(E.spawn)
+      eq(d.length, E.DECK_SIZE, `${label}: built ${d.length} cards`)
+      for (const n of seed) ok(d.filter(x => x === n).length >= seed.filter(x => x === n).length,
+        `${label}: it threw out the ${n} you asked for`)
+      const hands = sp.filter(c => c.lane === 'hand' || c.lane === 'any').length
+      const feet = sp.filter(c => c.lane === 'feet').length
+      const rests = sp.filter(c => c.shed > 0).length
+      const tech = sp.filter(c => c.kind === 'bonus').length
+      ok(hands >= E.MIN_HANDS, `${label}: only ${hands} hand cards on a two-hand board`)
+      ok(feet >= 1 && feet <= E.MAX_FEET, `${label}: ${feet} feet cards`)
+      ok(rests <= E.MAX_RESTS, `${label}: ${rests} rest cards, which cannot work a hold`)
+      ok(tech <= E.MAX_TECH, `${label}: ${tech} technique cards`)
+      for (const n of new Set(d)) ok(d.filter(x => x === n).length <= E.copyLimit(E.CARDS[n].rarity ?? 'common'),
+        `${label}: too many copies of ${n}`)
+      ok(!d.some(n => (E.CARDS[n].rarity ?? '') === 'curse'), `${label}: it put a curse in your deck`)
+    }
+  }
+  const fifteen = E.DEFAULT_LOADOUT.slice(0, E.DECK_SIZE)
+  eq(E.buildLoadout(st(all), fifteen, all).join('|'), fifteen.join('|'),
+    'it rebuilt a deck that was already full')
+})
+test('a built deck climbs at least as well as the one it replaces', () => {
+  // the only measurement that matters: does the thing it hands a new player
+  // actually send? The first two versions built decks that sent 0%.
+  const starters = Object.keys(E.CARDS).filter(n => E.CARDS[n].rarity === 'starter')
+  const commons = Object.keys(E.CARDS).filter(n => (E.CARDS[n].rarity ?? '') === 'common')
+  const owned = [...starters, ...commons]
+  const built = E.buildLoadout({ ...E.freshRun(0, 0, 1), owned, gear: [], boons: [], arch: 0 }, [], owned)
+  const send = (names, idx) => {
+    const rng = new E.RNG(55); let sent = 0
+    for (let i = 0; i < 150; i++) {
+      let s = startClimb(idx, rng, { runDeck: names.map(E.spawn), skin: 9,
+        seed: Math.floor(rng.next() * 2 ** 31) })
+      for (let t = 0; t < 50 && s.phase === 'climb'; t++) { s = E.autoPlay(s, rng); s = E.resolve(s, rng) }
+      if (s.result === 'send') sent++
+    }
+    return 100 * sent / 150
+  }
+  const idx = E.ROUTES.findIndex(r => r.name === 'The Fridge')
+  const auto = send(built, idx), hand = send(E.DEFAULT_LOADOUT, idx)
+  ok(auto >= hand, `the built deck sends ${auto.toFixed(0)}% against the default's ${hand.toFixed(0)}%`)
+  ok(auto > 20, `the built deck only sends ${auto.toFixed(0)}% of an early boulder`)
+})
+
+test('you can find a card in a pool this size', () => {
+  /* UX-14. Fifteen slots out of everything you own, and BAL-2 made 203 cards
+     reachable inside 33 runs. The filter logic is in the screen, so this
+     checks the predicate the screen uses — by name, by what a card says, and
+     by the four ways of narrowing it. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  ok(/placeholder="find a card, or what it does"/.test(app), 'there is no search box')
+  ok(/aria-label="Search your cards"/.test(app), 'the search box is not announced')
+  for (const k of ['hands', 'feet', 'technique', 'mine'])
+    ok(app.includes(`deckOnly === '${k}'`), `no way to narrow to ${k}`)
+  // the predicate itself, run against the real pool
+  const all = Object.keys(E.CARDS).filter(n => (E.CARDS[n].rarity ?? 'common') !== 'curse')
+  const match = (n, q, only, inDeck) => {
+    const c = E.CARDS[n]
+    if (only === 'feet' && c.lane !== 'feet') return false
+    if (only === 'hands' && (c.lane === 'feet' || c.kind === 'bonus')) return false
+    if (only === 'technique' && c.kind !== 'bonus') return false
+    if (only === 'mine' && !inDeck) return false
+    if (!q) return true
+    return n.toLowerCase().includes(q) || (c.text ?? '').toLowerCase().includes(q)
+  }
+  // searching for a card you know exists must find it and not everything else
+  const one = all.find(n => n === 'Shake Out') ?? all[0]
+  const hits = all.filter(n => match(n, one.toLowerCase(), 'all', false))
+  ok(hits.includes(one), `searching for "${one}" does not find it`)
+  ok(hits.length < all.length, 'a search for one card returned the whole pool')
+  // each filter must return something, and less than everything
+  for (const only of ['hands', 'feet', 'technique']) {
+    const got = all.filter(n => match(n, '', only, false))
+    ok(got.length > 3, `filtering to ${only} leaves almost nothing`)
+    ok(got.length < all.length, `filtering to ${only} changes nothing`)
+  }
+  // searching what a card DOES, not just its name
+  const byText = all.filter(n => match(n, 'pump', 'all', false))
+  ok(byText.length > 5, 'searching what a card does finds almost nothing')
+  ok(!byText.every(n => n.toLowerCase().includes('pump')), 'the search only reads names')
+})
+
 test('the shelf explains itself without lying', () => {
   const deck = E.DEFAULT_LOADOUT.map(E.spawn)
   const st = (over = {}) => ({ ...E.freshRun(4, 0, 1), inRun: true, skirmish: null,
@@ -1021,10 +1112,19 @@ if (SLOW) {
   test('no climber is twice as good as another', () => {
     // the spread reached 9x (Comp Kid 3.3% against Alpinist 29.8%) before
     // anyone noticed, because nothing was watching it
-    const out = execSync('PROJECTS=0 SHARP_AT=3 node sim/run.mjs arch 300', { encoding: 'utf8' })
+    // n=600: at 300 a 5% event has a standard error of 1.3 points, so this
+    // guard was failing on variance — the same fix the ladder guard needed
+    const out = execSync('PROJECTS=0 node sim/run.mjs arch 600', { encoding: 'utf8' })
     const pcts = [...out.matchAll(/\s([\d.]+)%\s+\d+/g)].map(m => Number(m[1]))
     ok(pcts.length === 4, `read ${pcts.length} climbers, expected 4`)
     const lo = Math.min(...pcts), hi = Math.max(...pcts)
+    /* Floor back to 5 at v9.35. It was lowered to 4 at v9.32 to accommodate a
+       drift rather than to fix it, which is the thing BAL-9 exists to prevent.
+       BAL-14 investigated it properly: six separate hypotheses tested, none
+       worth more than two points, so there was no single cause — it was six
+       changes each worth a point or two, compounding, which is precisely the
+       failure mode BAL-9 documented. Corrected with one dial (RUN_SKIN 8 to 9)
+       rather than by moving the goalposts again. */
     ok(lo > 5, `a climber completes only ${lo}% of runs`)
     ok(hi / lo < 2.2, `spread is ${(hi / lo).toFixed(1)}x — ${pcts.join(' / ')}`)
   })
@@ -1048,7 +1148,15 @@ if (SLOW) {
     // BAL-9: the whole ladder drifted up ~30 points over several versions
     // without anything watching it. The band alone did not catch that,
     // because every rung moved together.
-    const out = execSync('SHARP_AT=3 node sim/run.mjs ladder-style 150 built', { encoding: 'utf8' })
+    /* Also dropped `SHARP_AT=3`. That override forces the camp policy to
+       sharpen and never rest, which was the real policy when this guard was
+       written and has not been since BAL-11 and SIM-5 rewrote it — so the
+       guard was measuring a deliberately worse player than the game has.
+       At 150 runs the hardest rung is an 8% event, so its standard error is
+       about 2.2 points and this guard failed on variance rather than on the
+       game — reported 2.7% where 200 runs read 8.0%. The bottom rung needs the
+       sample, not a looser floor. */
+    const out = execSync('node sim/run.mjs ladder-style 400 built', { encoding: 'utf8' })
     const pcts = [...out.matchAll(/\s([\d.]+)%\s+\d+%/g)].map(m => Number(m[1]))
     ok(pcts.length >= 5, `read ${pcts.length} rungs`)
     const top = pcts[0], bottom = pcts[pcts.length - 1]
@@ -1056,9 +1164,65 @@ if (SLOW) {
     ok(bottom < top / 2.5, `the ladder spans ${top}% to ${bottom}% — the rungs do not mean much`)
     ok(bottom > 3, `the hardest rung completes ${bottom}% — that is not a difficulty, it is a wall`)
   })
+  test('the journal can actually be read', () => {
+    /* NARR-11. Fifteen pages is only an improvement if you can find them. Six
+       of them used to have their own event branch and the other eight had none,
+       so a run found 0.4 pages and the full journal was 35 expeditions away. */
+    const out = execSync('node sim/run.mjs campaign 250', { encoding: 'utf8' })
+    const found = [...out.matchAll(/pages ([\d.]+)/g)].map(m => Number(m[1]))
+    ok(found.length >= 1, 'the harness stopped reporting pages found')
+    const natural = Math.min(...found)
+    ok(natural >= 1.2, `a run finds ${natural} pages — the journal is ${(14 / natural).toFixed(0)} runs away`)
+    // and the journal must still be worth carrying
+    const pcts = [...out.matchAll(/completion\s+([\d.]+)%/g)].map(m => Number(m[1]))
+    ok(pcts.length >= 3, `read ${pcts.length} journal bands`)
+    ok(pcts[pcts.length - 1] > pcts[0] + 5,
+      `reading his journal is worth ${(pcts[pcts.length - 1] - pcts[0]).toFixed(1)} points`)
+    // more pages must never be worse than fewer — the cap exists for this
+    for (let i = 1; i < pcts.length; i++)
+      ok(pcts[i] >= pcts[i - 1] - 2, `${pcts[i]}% with more pages than ${pcts[i - 1]}% with fewer`)
+  })
+  test('the campaign has not drifted since it was last set', () => {
+    /* BAL-14. Between v9.24 and v9.34 the campaign fell from 53% to 43.5% at a
+       full journal, and the archetype floor was lowered to accommodate it
+       instead of fixed. Six hypotheses were tested — shopping, conditions,
+       curses, an extra stage, the talk outcomes, the journal — and NONE was
+       worth more than two points. There was no single cause: six changes each
+       worth a point or two, compounding. That is the BAL-9 failure mode, and
+       the only thing that catches it is a band nailed down here with a date on
+       it, so the next drift is measured against a number somebody chose. */
+    const out = execSync('SHARP_AT=99 node sim/run.mjs campaign 300', { encoding: 'utf8' })
+    const pcts = [...out.matchAll(/completion\s+([\d.]+)%/g)].map(m => Number(m[1]))
+    ok(pcts.length >= 3, `read ${pcts.length} bands`)
+    const full = pcts[pcts.length - 1]
+    /* Set at 47.3% in v9.35 (RUN_SKIN 8→9), then 43.8% in v9.36 once BAL-13
+       gave the back half of act 1 teeth — that cost is deliberate and dated
+       rather than drift. The band is what gets defended; the number in the
+       comment is what somebody last chose. */
+    ok(full > 40 && full < 58,
+      `the campaign completes ${full}% with a full journal — last set at 47 in v9.35`)
+    ok(pcts[0] < full - 5, `reading his journal is worth ${(full - pcts[0]).toFixed(1)} points`)
+  })
+  test('the acts get deadlier in order', () => {
+    /* BAL-13 attempted and reverted here. Act 1 kills about 6% of runs across
+       nine stages against act 3's 32%, which is a real problem — but the fix
+       tried (one extra hold on its hardest routes) took the CLIMBER spread from
+       1.4x to 2.9x, because the Alpinist pays -2 Contact and the Comp Kid pays
+       a burn, so longer routes charge them twice. Act 1's length is load-bearing
+       for exactly the climbers that already give something up. So this guard
+       holds the ORDER, which is the part that must never invert, and leaves the
+       flatness to a fix that does not use route length. */
+    const out = execSync('SHARP_AT=99 node sim/run.mjs campaign 300', { encoding: 'utf8' })
+    const rows = [...out.matchAll(/act1 (\d+)% act2 (\d+)% act3 (\d+)%/g)]
+    ok(rows.length >= 1, 'the harness stopped reporting where runs end')
+    const [, a1, a2, a3] = rows[rows.length - 1].map(Number)
+    ok(a2 >= a1, `act 2 kills ${a2}% against act 1's ${a1}% — the curve is inverted`)
+    ok(a3 >= a2, `act 3 kills ${a3}% against act 2's ${a2}% — the last act is not the hardest`)
+    ok(a3 > 15, `act 3 kills only ${a3}% — nothing is at stake at the end`)
+  })
   test('campaign completion stays in a sane band', () => {
 
-    const out = execSync('SHARP_AT=3 node sim/run.mjs campaign 150', { encoding: 'utf8' })
+    const out = execSync('node sim/run.mjs campaign 150', { encoding: 'utf8' })
     const pcts = [...out.matchAll(/completion\s+([\d.]+)%/g)].map(m => Number(m[1]))
     ok(pcts.length >= 3, 'could not read completion from the harness')
     for (const p of pcts) ok(p > 15 && p < 85, `completion ${p}% is outside 15–85%`)

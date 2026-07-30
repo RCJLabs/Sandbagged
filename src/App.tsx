@@ -2,32 +2,35 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.10 — ENG-19: one formula, one place
+// SANDBAGGED v9.41 — EVT-4: events that remember
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
 import {
-  ACTS, ACT_NAMES, ACT_OF_ROUTE, ACT_XP, ARCHETYPES, ASCENT, BOOK_BETA_MAX, BY_RARITY,
-  CAMPUS_BITE, CARDS, CROP_COST, CampAction, Card, DECKS, DECK_SIZE, DEFAULT_LOADOUT,
-  DOUBT_AT, EVENTS, EXPOSED_FALL_PSYCHE, EXPOSED_PSYCHE, Established, FA_NAMES_A,
-  FA_NAMES_B, FEET_STATS, FLOW_AT, GameState, HISTORY_MAX, HOLD_STATS, JOURNAL,
-  KEYWORDS, LANE_NAMES, LINES, MUTATORS, MapNode, OPPOSE_ALONE, OPPOSE_PAIR,
-  PRICE, PROJECT_SKIN, PSYCHE_BAIL, PSYCHE_MAX, PUMP_MAX, Phase, RARE_SLOTS,
-  RNG, ROCK, ROUTES, RUN_SKIN, Rarity, SKIN_MAX, SLOTS, SYNERGY_PER, TAG_NAMES,
-  TALKS, TOPROPE_SKIN, TUTORIAL_DECK, UNCOMMON_SLOTS, WEATHER, abilityOf, activeSlot,
-  aheadSummary, applyOutcome, archUnlocked, attemptsFor, availableTalk, biteAgainst,
-  boonById, boonMods, bossAhead, bossNext, buildable, campBeforeBoss, campSkinFor,
-  campStep, cardHints, cashForSend, circuitRoute, claimVerdict, clearDirt, coach,
-  codeSeed, copyLimit, cropStep, desperationOf, endSession, endingStep, establishedIn,
-  exportSave, exposed, exposureOf, faRoute, familyOf, forecastFor, forecastScore,
-  freshRun, gainXp, gearById, gearMods, gradeLabel, gripShown, holdLabel, importSave,
-  jit, leaveEventStep, lineCanVary, loadGame, loadoutDeck, mutMods, newRun, nextPhase,
-  phaseOf, phaseSummary, pickGearStep, pileDraw, pileFromHand, powerAgainst,
+  ACTS, ACT_NAMES, ACT_OF_ROUTE, ACT_TERRAIN, ACT_XP, ARCHETYPES, ASCENT, BOOK_BETA_MAX,
+  BY_RARITY, CAMPUS_BITE, CARDS, CROP_COST, CampAction, Card, DECKS, DECK_SIZE,
+  DEFAULT_LOADOUT, DOUBT_AT, EVENTS, EXPOSED_FALL_PSYCHE, EXPOSED_PSYCHE, Established,
+  FA_NAMES_A, FA_NAMES_B, FEET_STATS, FLOW_AT, GameState, HISTORY_MAX, HOLD_STATS,
+  JOURNAL, KEYWORDS, LANE_NAMES, LINES, MAP_BOT, MAP_H, MAP_TOP, MAP_W, MUTATORS,
+  MapNode, OPPOSE_ALONE, OPPOSE_PAIR, PRICE, PROJECT_SKIN, PSYCHE_BAIL, PSYCHE_MAX,
+  PUMP_MAX, Phase, RARE_SLOTS, RNG, ROCK, ROUTES, RUN_SKIN, Rarity, SKIN_MAX,
+  SLOTS, SYNERGY_PER, TAG_NAMES, TALKS, TOPROPE_SKIN, TUTORIAL_DECK, TWEAK_GRIP,
+  UNCOMMON_SLOTS, WEATHER, abilityOf, activeSlot, aheadSummary, applyOutcome,
+  archUnlocked, attemptsFor, availableTalk, biteAgainst, boonById, boonMods,
+  bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
+  campStep, cardHints, carryOver, cashForSend, circuitRoute, claimCurse, claimVerdict,
+  coach, codeSeed, copyLimit, cropStep, dailyRoute, dailySeed, dayKey, desperationOf,
+  endSession, endingFor, endingStep, establishedIn, exportSave, exposed, exposureOf,
+  faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
+  gearMods, gradeLabel, gradeText, gripShown, holdLabel, honestyOf, importSave,
+  jit, leaveEventStep, leaveShopStep, lineCanVary, loadGame, loadoutDeck, mapCliff,
+  mapContours, mapPoints, mutMods, newRun, nextPhase, phaseOf, phaseSummary,
+  pickGearStep, pileFromHand, playBonusStep, postOpen, postTalk, powerAgainst,
   previewLane, previewPump, priceOf, recordRun, rerollCost, rerollStep, resolve,
   rollEvent, roughPath, saveGame, seedCode, seqById, seqNeedText, sigById, skirmishRoute,
   slotSummary, slotsUsed, spawn, specFromEstablished, specOf, startBurn, stockShop,
-  styleMods, tagCounts, tagOf, takeOfferStep, takeTwoStep, vanOpen, wipeSlot,
-  xpForSend, xpMult, xpToNext,
+  styleMods, tagCounts, tagOf, takeOfferStep, takeTwoStep, vanOpen, walkAwayStep,
+  wipeSlot, xpForSend, xpMult, xpToNext,
 } from './engine'
 
 /* ============================== UI ================================= */
@@ -129,7 +132,11 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
 .lbl{font-size:calc(9px * var(--fs));letter-spacing:1.1px;color:var(--fade);font-weight:700}
 .lett span{transform-origin:50% 70%}
 .inkrule{display:block;width:100%;height:8px;margin:2px 0 5px}
-.gl{position:absolute;top:5px;right:5px}
+/* VIS-2: the silhouette was 22px in a corner, so nobody read it. It is the
+   card's anchor now — big, centred, and behind the text rather than beside it,
+   so the shape registers before the words do and the board can be read at a
+   glance instead of parsed. */
+.gl{position:absolute;top:4px;right:4px;pointer-events:none;opacity:.95}
 .glossrow{display:flex;align-items:center;gap:8px}
 .cond{font-size:calc(10px * var(--fs));border:1px solid var(--fade);border-radius:2px;padding:3px 6px;
  display:inline-block;margin-right:5px;letter-spacing:.4px}
@@ -150,15 +157,47 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
 .ab{font-size:calc(8.5px * var(--fs));font-weight:700;color:var(--red);letter-spacing:.3px;margin-top:2px}
 .tx{font-size:calc(8px * var(--fs));color:var(--fade);line-height:1.15;overflow-wrap:anywhere}
 .pips{display:flex;justify-content:space-between;align-items:center}
-.pip{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;
+/* A fixed 20px circle, which was fine for a single digit and clipped "12-13"
+   onto two lines the moment ENG-10 started showing an unworked grip as a span.
+   The grip pip grows into a pill; at one digit the radius still reads round. */
+.pip{min-width:20px;height:20px;box-sizing:border-box;border-radius:50%;
+ display:grid;place-items:center;white-space:nowrap;
  font-size:calc(10.5px * var(--fs));font-weight:700;border:1.5px solid;background:var(--paper)}
-.pip.o{color:var(--red);border-color:var(--red);border-radius:3px;transform:rotate(45deg)}
+.pip.o{width:20px;color:var(--red);border-color:var(--red);border-radius:3px;transform:rotate(45deg)}
 .pip.o span{display:block;transform:rotate(-45deg)}
-.pip.d{color:var(--green);border-color:var(--green)}
+.pip.d{color:var(--green);border-color:var(--green);border-radius:10px;padding:0 4px}
 .cb{--red:#a8442c;--green:#26557a;--tan:#7a6a4a}
 .lanes{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:4px 0 3px;text-align:center}
 .bar{height:18px;border:1.5px solid var(--ink);border-radius:2px;display:flex;overflow:hidden}
-.seg{flex:1;border-right:1px solid rgba(38,34,30,.35)}.seg:last-child{border-right:0}
+/* VIS-3: what the conditions do to the page. Deliberately under the text
+   rather than over it — ENG-20 made these worth 46 points of send rate and they
+   still have to be readable at the largest text size on a phone in the sun. */
+.wrap[class*="wx-"]::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0}
+.wrap[class*="wx-"]>*{position:relative;z-index:1}
+.wx-crisp::before{background:radial-gradient(ellipse at 50% 0%,rgba(190,205,215,.16) 0%,transparent 62%)}
+.wx-hotsun::before{background:
+  radial-gradient(ellipse at 50% 6%,rgba(196,120,40,.17) 0%,transparent 58%),
+  linear-gradient(to bottom,rgba(184,135,63,.09) 0%,transparent 42%)}
+.wx-humid::before{background:
+  radial-gradient(circle at 22% 28%,rgba(96,84,60,.10) 0 9%,transparent 12%),
+  radial-gradient(circle at 74% 54%,rgba(96,84,60,.09) 0 11%,transparent 14%),
+  radial-gradient(circle at 44% 79%,rgba(96,84,60,.08) 0 8%,transparent 11%)}
+.wx-freezing::before{background:
+  radial-gradient(circle at 0% 0%,rgba(196,214,226,.30) 0 14%,transparent 22%),
+  radial-gradient(circle at 100% 0%,rgba(196,214,226,.28) 0 13%,transparent 21%),
+  radial-gradient(circle at 0% 100%,rgba(196,214,226,.24) 0 12%,transparent 19%),
+  radial-gradient(circle at 100% 100%,rgba(196,214,226,.26) 0 13%,transparent 20%)}
+.wx-drizzle::before{background:
+  repeating-linear-gradient(74deg,transparent 0 13px,rgba(110,120,130,.13) 13px 15px)}
+/* colour-blind mode drops the hues and keeps the texture, so the cue survives */
+.cb[class*="wx-"]::before{filter:saturate(.25)}
+.seg{flex:1;border-right:1px solid rgba(38,34,30,.35);transition:background .18s}
+/* VIS-1: where this turn takes you, drawn ahead of where you are */
+.seg.will{background:repeating-linear-gradient(45deg,var(--tan) 0 2px,transparent 2px 4px)}
+.seg.willfall{background:repeating-linear-gradient(45deg,var(--red) 0 2px,transparent 2px 4px)}
+.seg.shedding{background:repeating-linear-gradient(45deg,var(--green) 0 2px,transparent 2px 4px)}
+.bar.tremble{animation:shake .9s ease-in-out infinite}
+.nomo .bar.tremble{animation:none}.seg:last-child{border-right:0}
 .seg.on{background:var(--tan)}.seg.danger{background:var(--red)}
 /* full-bleed horizontal scroller. padding-top leaves room for the selected
    card's lift so overflow-y:hidden does not clip it. */
@@ -354,6 +393,73 @@ function Topo({ cleared, total, seed }: { cleared: number; total: number; seed: 
 /* A11Y-1: offence is a DIAMOND, defence is a CIRCLE. Shape carries the
    meaning, so the readout survives red-green colour vision deficiency —
    roughly 8% of men — with colour as a secondary cue only. */
+/* RUN-8. The map was a vertical list of buttons, which is the one thing the v0
+   art direction said it would never be: "hand-drawn topo lines", "every screen
+   torn from the journal". This is the act as a page of the guidebook — contours
+   in ink, the drainage running out to the road at the bottom, the wall at the
+   top, and the nine stages climbing up the page rather than sitting at index 8
+   of an array. The line behind you is drawn in solid, using the trail UX-16
+   started keeping; the stage ahead is dashed. The list underneath is still how
+   you choose, because tapping a 9px ink mark on a phone is not a control. */
+function ActMap({ act, tier, total, trail, seed, label }: {
+  act: number; tier: number; total: number; trail: string[]; seed: number; label: string
+}) {
+  const pts = mapPoints(total, seed)
+  const contours = mapContours(act, seed)
+  const cliff = mapCliff(seed)
+  const line = (from: number, to: number) => pts.slice(from, to + 1)
+    .map(([x, y], k) => `${k ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
+  const mark = (note: string) =>
+    /camp/.test(note) ? '\u25b2' : /post/.test(note) ? '\u25aa'
+    : /flashed|sent|topped|put up/.test(note) ? '\u2605'
+    : /off |failed/.test(note) ? '\u00d7' : '\u00b7'
+  return (
+    <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} width="100%" role="img"
+      aria-label={`${label}. Stage ${tier + 1} of ${total}. ${trail.length} stages behind you.`}
+      style={{ display: 'block', marginTop: 4 }}>
+      {/* the ground: arcs that bulge uphill and narrow toward the wall */}
+      {contours.map((c, k) => (
+        <path key={k} d={c.d} fill="none" stroke="var(--fade)" strokeWidth={0.8} opacity={0.45} />
+      ))}
+      {/* the wall, drawn the way a guidebook draws one */}
+      <path d={cliff.d} fill="none" stroke="var(--ink)" strokeWidth={1.4} />
+      {cliff.ticks.map(([x, y], k) => (
+        <line key={k} x1={x} y1={y} x2={x} y2={y - 7} stroke="var(--ink)" strokeWidth={0.9} />
+      ))}
+      <text x={MAP_W / 2} y={MAP_TOP - 20} textAnchor="middle" fontSize={7.5}
+        fill="var(--ink)" style={{ letterSpacing: 1.4 }}>{ACT_TERRAIN[Math.min(act, 2)]}</text>
+      <text x={MAP_W / 2} y={MAP_BOT + 20} textAnchor="middle" fontSize={7.5}
+        fill="var(--fade)" style={{ letterSpacing: 1.4 }}>THE ROAD</text>
+      {/* behind you in ink, the next stage dashed, the rest of the act faint */}
+      {tier > 0 ? <path d={line(0, tier)} fill="none" stroke="var(--ink)" strokeWidth={1.7} /> : null}
+      {tier + 1 < total ? (
+        <path d={line(tier, tier + 1)} fill="none" stroke="var(--tan)"
+          strokeWidth={1.5} strokeDasharray="5 4" />) : null}
+      {tier + 2 < total ? (
+        <path d={line(tier + 1, total - 1)} fill="none" stroke="var(--fade)"
+          strokeWidth={1} opacity={0.5} strokeDasharray="2 5" />) : null}
+      {pts.map(([x, y], i) => {
+        const done = i < tier, here = i === tier
+        const note = trail[i] ?? ''
+        return (
+          <g key={i}>
+            <circle cx={x} cy={y} r={here ? 6 : 3.4}
+              fill={here ? 'var(--red)' : done ? 'var(--ink)' : 'var(--paper)'}
+              stroke={done || here ? 'none' : 'var(--fade)'} strokeWidth={1.2} />
+            {here ? (
+              <text x={x + 11} y={y + 3} fontSize={8.5} fill="var(--red)"
+                style={{ fontWeight: 700, letterSpacing: 0.5 }}>YOU</text>
+            ) : done ? (
+              <text x={x + 6} y={y - 1} fontSize={8.5} fill="var(--fade)">{mark(note)}</text>
+            ) : (
+              <text x={x + 6} y={y + 3} fontSize={7} fill="var(--fade)">{i + 1}</text>
+            )}
+          </g>)
+      })}
+    </svg>
+  )
+}
+
 function Pips({ o, d, hi }: { o: number; d: number; hi?: number }) {
   return (
     <div className="pips">
@@ -387,9 +493,17 @@ export default function App() {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn() }
     },
   })
+  /* VIS-3: the conditions are on the paper, not just in a word. Only while you
+     are actually out on something — a menu has no weather. */
+  const onRock = st.phase === 'climb' || st.phase === 'burnEnd'
+    || st.phase === 'line' || st.phase === 'sessionEnd'
   const skin = `wrap${st.cbSafe ? ' cb' : ''}${st.motion ? '' : ' nomo'}` +
-    `${st.textScale ? ` fs${st.textScale}` : ''}`
+    `${st.textScale ? ` fs${st.textScale}` : ''}` +
+    `${onRock ? ` wx-${WEATHER[st.weather].name.replace(/ /g, '')}` : ''}`
   const [seedIn, setSeedIn] = useState('')
+  // UX-14: fifteen slots out of up to 219 owned cards, and no way to find one
+  const [deckFind, setDeckFind] = useState('')
+  const [deckOnly, setDeckOnly] = useState<'all' | 'hands' | 'feet' | 'technique' | 'mine'>('all')
   /* UX-7. Placements are pure — they move a card between hand and board and
      consume no randomness — so taking one back is just restoring the previous
      object. Anything that reveals hidden information (a card that draws)
@@ -425,48 +539,13 @@ export default function App() {
     setSt(s => ({ ...s, selected: s.selected === c.uid ? null : c.uid }))
   }
   function playBonus(c: Card, lane: number) {
+    // SIM-5: the rules live in the engine. This keeps only what a screen owns —
+    // the undo stack, and the seed advancing.
     const rng = new RNG(st.seed)
-    let piles = pileFromHand(st.piles, c.uid)
-    if (boonMods(st.boons).freeBonus && boonMods(st.boons).freeDraws && !st.bonusUsed)
-      piles = pileDraw(piles, 1, rng)
-    // Free Rein pays for the first technique card of the turn
-    const free = boonMods(st.boons).freeBonus && !st.bonusUsed
-    let pump = st.pump + (free ? 0 : c.cost)
-    const boardP = st.boardP.slice(), boardH = st.boardH.slice(), log: string[] = []
-    // a bonus card can draw, and you cannot un-see a card
-    setUndo([])
-    let seq = st.seq
-    if (c.seq) {
-      const q = seqById(c.seq)
-      if (q) { seq = { id: q.id, left: q.turns }; log.push(`${q.name}. ${q.turns} turns — ${seqNeedText(q)}.`) }
-    }
-    let runout = st.runout, lastPiece = st.lastPiece
-    if (c.clip && specOf(st).roped) {
-      runout = 0; lastPiece = st.cleared
-      log.push(`${c.name} in. That is the rope clipped.`)
-    }
-    if (c.skinCost) { log.push(`${c.name}. That is skin you do not get back.`) }
-    if (c.shed) { pump = Math.max(0, pump - c.shed); log.push(`${c.name}. −${c.shed} pump.`) }
-    if (c.draw) { piles = pileDraw(piles, c.draw, rng); log.push(`${c.name}. Draw ${c.draw}.`) }
-    if (c.powerAll) {
-      for (let i = 0; i < 3; i++) if (boardP[i]) boardP[i] = { ...boardP[i]!, power: boardP[i]!.power + c.powerAll }
-      log.push(`${c.name}. +${c.powerAll} Power everywhere.`)
-    }
-    if (c.power && lane >= 0 && boardP[lane]) {
-      boardP[lane] = { ...boardP[lane]!, power: boardP[lane]!.power + c.power }
-      log.push(`${c.name}. +${c.power} Power.`)
-    }
-    if (c.gripCut && lane >= 0 && boardH[lane]) {
-      boardH[lane] = { ...boardH[lane]!, grip: Math.max(1, boardH[lane]!.grip - c.gripCut),
-        clean: c.cleans ? true : boardH[lane]!.clean }
-      if (c.cleans) boardH[lane] = clearDirt(boardH[lane]!)
-      log.push(`${c.name}. −${c.gripCut} Grip${c.cleans ? ', ability stripped' : ''}.`)
-    }
-    piles = { ...piles, discard: [...piles.discard, c] }
-    const skin = Math.max(0, st.skin - c.skinCost)
-    setSt(s => ({ ...s, piles, pump, skin, boardP, boardH, runout, lastPiece, seq,
-      bonusUsed: true, selected: null, seed: rng.s, log: [...s.log, ...log] }))
+    setUndo([])   // a technique card can draw, and you cannot un-see a card
+    setSt(s => ({ ...playBonusStep(s, c, lane, rng), seed: rng.s }))
   }
+
   function tapLane(i: number) {
     if (st.phase !== 'climb') return
     if (!sel) {
@@ -557,10 +636,9 @@ export default function App() {
     if (st.inRun && st.runDeck.length) { setSt(s => ({ ...s, phase: 'map' })); return }
     if (!archUnlocked(ARCHETYPES[st.arch], st.level)) return
     const r = newRun(pickSeed(), st.loadouts[st.arch], st.style, st.arch, st.mutators)
-    r.runs = st.runs + 1
-    setSt({ ...r, level: st.level, xp: st.xp, owned: st.owned, sends: st.sends, wins: st.wins })
+    setSt({ ...r, ...carryOver(st), runs: st.runs + 1 })
   }
-  function startTutorial() {
+function startTutorial() {
     const idx = ROUTES.findIndex(r => r.tutorial)
     const rng = new RNG(st.seed)
     const next = startBurn({ ...st, routeIdx: idx, skirmish: null, inRun: false, onProject: false,
@@ -588,6 +666,20 @@ export default function App() {
     const rng = new RNG(st.seed)
     const route = skirmishRoute(st.level, rng)
     const next = startBurn({ ...st, skirmish: route, inRun: false, tier: 0,
+      runDeck: loadoutDeck(st.loadouts[st.arch]), skin: SKIN_MAX, burn: 1, beta: [], worked: [],
+      weather: rng.int(WEATHER.length), rock: rng.int(ROCK.length) }, rng)
+    setSt({ ...next, seed: rng.s })
+  }
+  /* SKIRM-2: the same problem for everybody, seeded off the date. The whole
+     run is deterministic from that one number — conditions, holds, the wobble
+     on each of them, the draw — so two people on the same day are on the same
+     rock. One go. */
+  function startDaily() {
+    const key = dayKey()
+    if (st.dailyDay === key) return          // you have had your go
+    const rng = new RNG(dailySeed(key))
+    const route = dailyRoute(key)
+    const next = startBurn({ ...st, skirmish: route, inRun: false, tier: 0, daily: true,
       runDeck: loadoutDeck(st.loadouts[st.arch]), skin: SKIN_MAX, burn: 1, beta: [], worked: [],
       weather: rng.int(WEATHER.length), rock: rng.int(ROCK.length) }, rng)
     setSt({ ...next, seed: rng.s })
@@ -678,13 +770,14 @@ export default function App() {
       return
     }
     if (n.type === 'shop') {
+      if (!postOpen(st)) return          // you have already been through it
       const rng = new RNG(st.seed)
       setSt({ ...stockShop(st, rng), seed: rng.s })
       return
     }
     if (n.type === 'event') {
       const rng = new RNG(st.seed)
-      const ev = rollEvent(rng, st.act, st.eventsSeen)
+      const ev = rollEvent(rng, st.act, st.eventsSeen, st.eventChose)
       setSt(s => ({ ...s, eventId: ev.id, eventResult: null, phase: 'event', seed: rng.s }))
       return
     }
@@ -695,7 +788,9 @@ export default function App() {
     if (!ev) return
     const rng = new RNG(st.seed)
     const next = applyOutcome(st, ev.choices[ci].outcome, rng)
-    setSt({ ...next, seed: rng.s })
+    // EVT-4: record WHICH branch, not just that the event happened
+    setSt({ ...next, seed: rng.s,
+      eventChose: [...new Set([...next.eventChose, `${ev.id}:${ci}`])] })
   }
   function leaveEvent() { setSt(s => leaveEventStep(s)) }
   function takeOffer(c: Card | null) { setSt(s => takeOfferStep(s, c)) }
@@ -738,6 +833,33 @@ export default function App() {
             ? `${ACT_NAMES[st.act]} · stage ${st.tier + 1}/${ACTS[st.act].length} · skin ${st.skin} · psyche ${st.psyche}`
             : 'The full expedition. Three acts, about half an hour.'}</div>
 
+        {/* SKIRM-2: the same problem for everyone, once a day */}
+        {/* INJ-1: carried between trips, and there is nothing to be done about it */}
+        {st.tweak ? (
+          <div className="spot" style={{ borderLeftColor: 'var(--red)' }}>
+            <b style={{ color: 'var(--red)' }}>CARRYING SOMETHING</b>
+            {st.tweak.text} {st.tweak.hold} holds are +{TWEAK_GRIP} Grip
+            for {st.tweak.runs} more {st.tweak.runs === 1 ? 'trip' : 'trips'}.
+            Nothing to be done about it — no camp, no shop, no gear. It goes when it goes.
+          </div>) : null}
+        {(() => {
+          const done = st.dailyDay === dayKey()
+          const r = dailyRoute()
+          return (
+            <>
+              <button className={`btn${done ? '' : ' go'}`} style={{ width: '100%', padding: 13 }}
+                disabled={done} onClick={startDaily}>
+                {done ? `TODAY'S PROBLEM — DONE · ${st.dailyScore}` : "TODAY'S PROBLEM ▸"}</button>
+              <div className="sub" style={{ marginTop: 2, marginBottom: 9 }}>
+                {r.name} · {gradeText(r.grade, st.grades)} · {r.clear} holds.
+                {done
+                  ? ` You scored ${st.dailyScore}. Back tomorrow.`
+                  : ' One go. Everybody in the world is on this one today.'}
+                {st.dailyStreak > 1 ? ` ${st.dailyStreak} days running.` : ''}
+                {st.dailyBest > 0 ? ` Best ${st.dailyBest}.` : ''}</div>
+            </>)
+        })()}
+
         <div style={{ display: 'flex', gap: 6 }}>
           <button className="btn" style={{ flex: 1, padding: 13 }} onClick={startSkirmish}>THE FA</button>
           <button className="btn" style={{ flex: 1, padding: 13 }} onClick={startCircuit}>THE CIRCUIT</button>
@@ -757,7 +879,7 @@ export default function App() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.10 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.41 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -905,6 +1027,13 @@ export default function App() {
           <button className={`btn${st.hints ? ' go' : ''}`} style={{ width: '100%', padding: 11, marginTop: 6 }}
             onClick={() => setSt(x => ({ ...x, hints: !x.hints }))}>
             DRAFT HINTS {st.hints ? 'ON' : 'OFF'}</button>
+          <button className="btn" style={{ width: '100%', padding: 11, marginTop: 6 }}
+            onClick={() => setSt(x => ({ ...x, grades: x.grades === 'v' ? 'font' : 'v' }))}>
+            GRADES {st.grades === 'font' ? 'FONT' : 'V-SCALE'}</button>
+          <div className="sub" style={{ marginTop: 3 }}>
+            {st.grades === 'font'
+              ? 'Fontainebleau. 6A, 7B+, 8A. What most of Europe writes in the book.'
+              : 'Hueco. V3, V7, V11. What most of America writes in the book.'}</div>
           <div className="sub" style={{ marginTop: 3 }}>
             {st.hints ? 'A line or two on why a card fits, on the shelf and in the post.'
               : 'No hints. Work it out.'}</div>
@@ -927,7 +1056,7 @@ export default function App() {
                   startClimb(i)
                 })}>
                   <div className="row"><span className="big">{r.name}</span>
-                    <span className="big" style={{ color: 'var(--red)' }}>{gradeLabel(r)}</span></div>
+                    <span className="big" style={{ color: 'var(--red)' }}>{gradeLabel(r, st.grades)}</span></div>
                   <div className="sub">{r.style} · top out at {r.clear}</div>
                 </div>))}
             </div>) : null}
@@ -1019,7 +1148,15 @@ export default function App() {
           : bossAhead(st) && !campBeforeBoss(st) ? (
           <div className="sub" style={{ color: 'var(--tan)' }}>
             No camp between here and the boss.</div>) : null}
+        {/* RUN-8: the act as a page of the guidebook, not a list of buttons */}
+        <ActMap act={st.act} tier={st.tier} total={ACTS[st.act].length}
+          trail={st.trail} seed={st.runSeed || 1} label={ACT_NAMES[st.act]} />
         <div className="sub">seed {seedCode(st.runSeed)}</div>
+        {/* UX-16: what this trip has actually been */}
+        {st.trail.length ? (
+          <div className="sub" style={{ marginTop: 3, color: 'var(--fade)' }}>
+            ◂ {st.trail.slice(-4).join(' · ')}
+            {st.trail.length > 4 ? ` · and ${st.trail.length - 4} before that` : ''}</div>) : null}
         {st.gear.length ? (
           <div className="sub" style={{ marginTop: 3 }}>
             {st.gear.map(id => gearById(id)?.name).filter(Boolean).join(' · ')}
@@ -1056,7 +1193,7 @@ export default function App() {
                   <div className="row">
                     <span className="big">{r.name}</span>
                     <span className="big" style={{ color: 'var(--red)' }}>
-                      PROJECT · {gradeLabel(r)}</span></div>
+                      PROJECT · {gradeLabel(r, st.grades)}</span></div>
                   <div className="sub">{r.style} · top out at {r.clear} · {r.crux} crux</div>
                   <div className="sub" style={{ color: 'var(--red)' }}>
                     A long line. Falls cost no skin, but there is nothing in it
@@ -1075,7 +1212,7 @@ export default function App() {
                   {...tap(() => takeNode(n, i), `${e.name}, your line, V${e.claimed}`)}>
                   <div className="row"><span className="big">{r.name}</span>
                     <span className="big" style={{ color: 'var(--green)' }}>
-                      FA · {gradeLabel(r)}</span></div>
+                      FA · {gradeLabel(r, st.grades)}</span></div>
                   <div className="sub">{r.style} · top out at {r.clear} · {r.crux} crux</div>
                   <div className="sub" style={{ color: 'var(--green)' }}>{r.note}</div>
                   <div className="sub" style={{ marginTop: 2,
@@ -1097,10 +1234,13 @@ export default function App() {
                 </div>)
             }
             if (n.type === 'shop') return (
-              <div key={i} className="menu-item" {...tap(() => takeNode(n, i))}>
+              <div key={i} className="menu-item" style={{ opacity: postOpen(st) ? 1 : 0.45 }}
+                {...tap(() => takeNode(n, i), postOpen(st) ? 'Trading Post' : 'Trading Post, picked over')}>
                 <div className="row"><span className="big">Trading Post</span>
                   <span className="big" style={{ color: 'var(--tan)' }}>${st.cash}</span></div>
-                <div className="sub">Cards, gear, tape. Cash only.</div>
+                <div className="sub">{postOpen(st)
+                  ? 'Cards, gear, tape. Cash only — and it does not cost you the day.'
+                  : 'You have been round it already. Take a climb.'}</div>
               </div>)
             if (n.type === 'event') return (
               <div key={i} className="menu-item" {...tap(() => takeNode(n, i))}>
@@ -1114,7 +1254,7 @@ export default function App() {
                 <div className="row">
                   <span className="big">{r.name}</span>
                   <span className="big" style={{ color: 'var(--red)' }}>
-                    {n.type === 'boss' ? 'BOSS · ' : ''}{gradeLabel(r)}</span></div>
+                    {n.type === 'boss' ? 'BOSS · ' : ''}{gradeLabel(r, st.grades)}</span></div>
                 {r.signature && sigById(r.signature) ? (
                   <div className="sub" style={{ color: 'var(--red)' }}>
                     {sigById(r.signature)!.name} · {sigById(r.signature)!.note}</div>) : null}
@@ -1131,6 +1271,12 @@ export default function App() {
                   </div>) : null}
                 <div className="sub">{r.style} · top out at {r.clear} · {r.crux} crux
                   {r.roped ? <span style={{ color: 'var(--red)' }}> · {r.pitches} pitches, roped</span> : null}
+                  {r.roped ? (
+                    <div className="sub" style={{
+                      color: st.runDeck.some(c => c.clip) ? 'var(--green)' : 'var(--red)' }}>
+                      {st.runDeck.some(c => c.clip)
+                        ? `${st.runDeck.filter(c => c.clip).length} piece${st.runDeck.filter(c => c.clip).length > 1 ? 's' : ''} on your rack — clip and you can try hard off it`
+                        : 'Nothing on your rack. You can lead it, but you will be climbing scared.'}</div>) : null}
                   {st.book[r.name] ? <span style={{ color: 'var(--green)' }}>
                     {' '}· ticked, best {st.book[r.name].bestBurn}</span> : null}</div>
                 <div className="sub" style={{ marginTop: 2,
@@ -1186,6 +1332,20 @@ export default function App() {
       || a.localeCompare(b))
     const full = mine.length >= DECK_SIZE
     const feet = mine.filter(n => CARDS[n]?.lane === 'feet').length
+    /* UX-14. The pool is everything you own, which BAL-2 just made 203 cards
+       reachable inside 33 runs, and picking fifteen out of it meant scrolling.
+       Search by name or by what a card says, and four ways to narrow it. */
+    const q = deckFind.trim().toLowerCase()
+    const shown = uniq.filter(n => {
+      const c = CARDS[n]
+      if (!c) return false
+      if (deckOnly === 'feet' && c.lane !== 'feet') return false
+      if (deckOnly === 'hands' && (c.lane === 'feet' || c.kind === 'bonus')) return false
+      if (deckOnly === 'technique' && c.kind !== 'bonus') return false
+      if (deckOnly === 'mine' && !count(n)) return false
+      if (!q) return true
+      return n.toLowerCase().includes(q) || (c.text ?? '').toLowerCase().includes(q)
+    })
     return (
       <div className={skin}>
         <div className="row"><span className="h1">LOADOUT</span>
@@ -1207,8 +1367,36 @@ export default function App() {
           })()}
         </div>
         <hr className="rule" />
-        <div style={{ maxHeight: 560, overflowY: 'auto' }}>
-          {uniq.map(n => {
+        {/* DECK-1: put in what you want to build around, and it fills the rest */}
+        <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
+          <button className="btn go" style={{ flex: 2, padding: 10 }} disabled={full}
+            onClick={() => setSt(x => setMine(x, buildLoadout(x, x.loadouts[x.arch] ?? [], x.owned)))}>
+            {mine.length ? `FILL OUT THE OTHER ${DECK_SIZE - mine.length}` : 'BUILD ME ONE ▸'}</button>
+          <button className="btn" style={{ flex: 1, padding: 10 }} disabled={!mine.length}
+            onClick={() => setSt(x => setMine(x, []))}>EMPTY IT</button>
+        </div>
+        <div className="sub" style={{ marginBottom: 6 }}>
+          {mine.length
+            ? 'Keeps everything you have already picked and builds around it.'
+            : 'Not sure where to start? Put in a card or two you like the look of, or let it pick.'}</div>
+        <input value={deckFind} spellCheck={false} placeholder="find a card, or what it does"
+          aria-label="Search your cards"
+          onChange={e => setDeckFind(e.target.value)}
+          style={{ width: '100%', padding: '8px 10px', marginBottom: 5 }} />
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+          {([['all', 'ALL'], ['hands', 'HANDS'], ['feet', 'FEET'],
+            ['technique', 'TECHNIQUE'], ['mine', 'IN THE DECK']] as const).map(([k, label]) => (
+            <button key={k} className={`btn${deckOnly === k ? ' go' : ''}`}
+              style={{ padding: '5px 9px', fontSize: 11 }}
+              onClick={() => setDeckOnly(k)}>{label}</button>))}
+        </div>
+        <div className="sub" style={{ marginBottom: 3 }}>
+          {shown.length === uniq.length
+            ? `${uniq.length} cards you can build with`
+            : `${shown.length} of ${uniq.length}`}
+          {q && !shown.length ? ' — nothing by that name. The pool grows as you level.' : ''}</div>
+        <div style={{ maxHeight: 520, overflowY: 'auto' }}>
+          {shown.map(n => {
             const c = CARDS[n], k = count(n)
             return (
               <div key={n} className="deckrow">
@@ -1261,7 +1449,7 @@ export default function App() {
               <div key={i} className="deckrow">
                 <span className="cnt" style={{ color: 'var(--green)' }}>FA</span>
                 <div className="nmx">
-                  <div className="t1">{f.name} <span style={{ color: 'var(--red)' }}>V{f.claimed}</span></div>
+                  <div className="t1">{f.name} <span style={{ color: 'var(--red)' }}>{gradeText(f.claimed, st.grades)}</span></div>
                   <div className="t2">{ACT_NAMES[f.act]} · {f.burns} burn{f.burns > 1 ? 's' : ''}</div>
                   <div className="t2" style={{
                     color: f.claimed < f.real ? 'var(--red)'
@@ -1294,7 +1482,7 @@ export default function App() {
                     <span className="cnt" style={{ color: e ? 'var(--green)' : 'var(--fade)' }}>
                       {e ? '✓' : '·'}</span>
                     <div className="nmx">
-                      <div className="t1">{r.name} <span style={{ color: 'var(--red)' }}>{gradeLabel(r)}</span>
+                      <div className="t1">{r.name} <span style={{ color: 'var(--red)' }}>{gradeLabel(r, st.grades)}</span>
                         {e?.flashed ? <span style={{ color: 'var(--green)' }}> · flashed</span> : null}</div>
                       <div className="t2">{e
                         ? `${e.sends} send${e.sends > 1 ? 's' : ''} · best ${e.bestBurn} burn${e.bestBurn > 1 ? 's' : ''}`
@@ -1344,7 +1532,7 @@ export default function App() {
                 : k === 'feet' ? 'Plays into the feet lane. Usually carries Support.'
                 : k === 'rest' ? 'Sheds pump instead of making progress.'
                 : k === 'mind' ? 'Played straight away, costs pump, no lane.'
-                : k === 'clip' ? 'Clips the rope. Only does anything on a roped line.'
+                : k === 'clip' ? 'Clips the rope: resets the runout, and for one turn you climb like somebody who is not going to hit the ground.'
                 : k === 'beta' ? 'From a journal page. The finale only.'
                 : 'Nothing good. Cut it when you can.'}</div></div>
           </div>))}
@@ -1535,7 +1723,7 @@ export default function App() {
         {nxt ? (
           <div className="menu-item" style={{ borderWidth: 2, marginTop: 10 }}>
             <div className="row"><span className="big">{nxt.name}</span>
-              <span className="big" style={{ color: 'var(--red)' }}>{gradeLabel(nxt)}</span></div>
+              <span className="big" style={{ color: 'var(--red)' }}>{gradeLabel(nxt, st.grades)}</span></div>
             <div className="sub">{nxt.style} · top out at {nxt.clear}
               {nxt.roped ? <span style={{ color: 'var(--red)' }}> · {nxt.pitches} pitches, roped</span> : null}</div>
             <div className="sub">{nxt.note}</div>
@@ -1543,8 +1731,7 @@ export default function App() {
         <button className="btn go" style={{ width: '100%', marginTop: 10 }} onClick={nextCircuitLine}>
           PULL ON ▸</button>
         <button className="btn" style={{ width: '100%', marginTop: 6 }}
-          onClick={() => setSt(s => ({ ...s, circuit: false, skirmish: null, runDeck: [],
-            bestCircuit: Math.max(s.bestCircuit, s.circuitScore), phase: 'menu', log: [] }))}>
+          onClick={() => setSt(walkAwayStep)}>
           WALK AWAY WITH {st.circuitScore}</button>
         <style>{CSS}</style>
       </div>
@@ -1552,6 +1739,7 @@ export default function App() {
   }
 
   if (st.phase === 'shop') {
+    const postT = postTalk(st)
     const buy = (key: string, cost: number, apply: (s: GameState) => GameState) =>
       setSt(s => s.cash < cost || s.bought.includes(key) ? s
         : { ...apply(s), cash: s.cash - cost, bought: [...s.bought, key] })
@@ -1560,6 +1748,13 @@ export default function App() {
       <div className={skin}>
         <div className="row"><span className="h1"><Lettered t="TRADING POST" seed={53} /></span>
           <span className="big" style={{ color: 'var(--tan)' }}>${st.cash}</span></div>
+        {postT ? (
+          <div className="spot" style={{ borderLeftColor: 'var(--tan)' }}>
+            <b style={{ color: 'var(--tan)' }}>{postT.who.toUpperCase()} IS IN</b>
+            <span className="tap" {...tap(() => setSt(x => ({ ...x, talkId: postT.id,
+              talkReply: null, phase: 'talk' })), `Talk to ${postT.who}`)}>
+              Somebody worth five minutes. Go and say hello ▸</span>
+          </div>) : null}
         <InkRule seed={19} color="var(--ink)" />
         <div className="sub">Gear shop off the back of a van. Cash only.</div>
         <div style={{ maxHeight: 520, overflowY: 'auto', marginTop: 8 }}>
@@ -1618,7 +1813,7 @@ export default function App() {
             </div>))}
         </div>
         <button className="btn go" style={{ width: '100%', marginTop: 8 }}
-          onClick={() => setSt(s => ({ ...s, shopCards: [], shopGear: [], tier: s.tier + 1, phase: 'map' }))}>
+          onClick={() => setSt(leaveShopStep)}>
           ◂ BACK ON THE ROAD</button>
         <style>{CSS}</style>
       </div>
@@ -1838,7 +2033,7 @@ export default function App() {
     return (
       <div className={skin}>
         <div className="row"><span className="h1"><Lettered t={base.name.toUpperCase()} seed={pending.routeIdx * 3 + 2} /></span>
-          <span className="big" style={{ color: 'var(--red)' }}>{gradeLabel(base)}</span></div>
+          <span className="big" style={{ color: 'var(--red)' }}>{gradeLabel(base, st.grades)}</span></div>
         <InkRule seed={91} color="var(--ink)" />
         <div className="sub">{base.note}</div>
         <div className="lbl" style={{ marginTop: 12 }}>WHICH WAY UP</div>
@@ -1876,7 +2071,8 @@ export default function App() {
       const rec: Established = { name, claimed: c.grade, real, act: st.act, burns: st.burn,
         style: spec.style, clear: spec.clear, crux: spec.crux, feet: spec.feet }
       setClaim(null)
-      setSt(x => ({ ...x, established: [rec, ...x.established].slice(0, 40),
+      // CARD-6: the grade you put on it is checked against the ones before it
+      setSt(x => claimCurse({ ...x, established: [rec, ...x.established].slice(0, 40),
         book: { ...x.book, [name]: { sends: 1, bestBurn: st.burn, bestStyle: x.style,
           flashed: st.burn === 1, weather: x.weather, rock: x.rock } },
         skirmish: null, phase: 'map', tier: x.tier + 1 }))
@@ -1902,7 +2098,7 @@ export default function App() {
             padding: '9px 9px', color: 'var(--ink)' }} />
         <div className="row" style={{ marginTop: 12 }}>
           <span className="lbl">WHAT DO YOU GRADE IT</span>
-          <span className="big" style={{ color: 'var(--red)' }}>V{c.grade}</span>
+          <span className="big" style={{ color: 'var(--red)' }}>{gradeText(c.grade, st.grades)}</span>
         </div>
         <div style={{ display: 'flex', gap: 6, marginTop: 5, alignItems: 'center' }}>
           <button className="btn" style={{ padding: '9px 14px' }} disabled={c.grade <= 0}
@@ -1921,33 +2117,90 @@ export default function App() {
 
   if (st.phase === 'epilogue') {
     const choose = (kind: 'told' | 'kept') => setSt(x => endingStep(x, kind))
+    const kind = endingFor(st)
+    const honest = honestyOf(st)
+    const pages = st.journal.length
+    // NARR-8: the same cairn, and three different things to understand about it
+    const body = kind === 'known' ? (
+      <>
+        <p style={{ margin: '0 0 10px' }}>
+          There is a cairn up here. Six stones, the top one gone over with lichen,
+          the kind of thing you would walk past.</p>
+        <p style={{ margin: '0 0 10px' }}>
+          Underneath it, in a freezer bag gone brittle and yellow: one page, folded twice.
+          The same hand as the others. You have read enough of him by now to hear it.</p>
+        <p style={{ margin: '0 0 10px' }}>
+          He did it. Thirty years ago, on his own, in the same nine days of weather
+          you have just used — and he told nobody. Not the book, not the locals,
+          not Marge. He came down and he went home and he let it be. The last page
+          says why, and it is not modesty. He writes that the line was the only thing
+          he had ever done that nobody could take off him by having an opinion about it.</p>
+        <p style={{ margin: '0 0 12px', color: 'var(--fade)' }}>
+          You sit up there a while. The drainage runs out below you towards the road.
+          There is nothing to say you were here either.</p>
+      </>) : kind === 'partial' ? (
+      <>
+        <p style={{ margin: '0 0 10px' }}>
+          There is a cairn up here. Six stones, the top one gone over with lichen.</p>
+        <p style={{ margin: '0 0 10px' }}>
+          Underneath it, in a freezer bag gone brittle and yellow: one page, folded twice.
+          The same hand as the {pages} you found on the way in — you recognise it, which
+          is more than most people would.</p>
+        <p style={{ margin: '0 0 10px' }}>
+          He was here. Thirty years ago, and he told nobody, and the page does not say why.
+          Whatever the reason was, he put it somewhere else — in the pages you did not find,
+          or in nothing at all. You are holding the end of a story you have most of.</p>
+        <p style={{ margin: '0 0 12px', color: 'var(--fade)' }}>
+          It sits badly. Not because you did not climb it. Because you did, and you still
+          do not know what it meant to him.</p>
+      </>) : (
+      <>
+        <p style={{ margin: '0 0 10px' }}>
+          There is a cairn up here. Six stones, the top one gone over with lichen.
+          Somebody built that. It was not the wind.</p>
+        <p style={{ margin: '0 0 10px' }}>
+          Underneath it, in a freezer bag gone brittle and yellow: one page, folded twice,
+          in handwriting you have never seen before. A date. A line you cannot place.
+          Some numbers that might be a grade or might be a time.</p>
+        <p style={{ margin: '0 0 10px' }}>
+          Somebody was up here before you and you have no idea who, or when, or what
+          it cost them. You climbed the hardest thing on the wall and you are standing
+          in the middle of somebody else's story without knowing you are in it.</p>
+        <p style={{ margin: '0 0 12px', color: 'var(--fade)' }}>
+          You could have found his pages. They were down there the whole time.</p>
+      </>)
+    const toldSub = kind === 'known'
+      ? 'Second ascent, thirty years on. You know exactly whose name goes above yours.'
+      : kind === 'partial'
+      ? 'Second ascent, probably. You will have to leave the first line blank.'
+      : 'First ascent, as far as the book will know. That is not the same as true.'
+    const keptSub = kind === 'known'
+      ? 'Leave it the way he left it, for the reason he left it. Nobody has to know.'
+      : kind === 'partial'
+      ? 'Put the stone back. Half a story is not yours to finish.'
+      : 'Put the stone back. You do not know enough to put a name anywhere.'
     return (
       <div className={skin}>
         <div className="h1"><Lettered t="THE TOP" seed={101} /></div>
+        <div className="sub">{pages} of {JOURNAL.length} pages · {gradeLabel(spec, st.grades)}</div>
         <InkRule seed={71} color="var(--ink)" />
-        <div style={{ fontSize: 13, lineHeight: 1.7, marginTop: 10 }}>
-          <p style={{ margin: '0 0 10px' }}>
-            There is a cairn up here. Six stones, the top one gone over with lichen,
-            the kind of thing you would walk past.</p>
-          <p style={{ margin: '0 0 10px' }}>
-            Underneath it, in a freezer bag gone brittle and yellow: one page, folded twice.</p>
-          <p style={{ margin: '0 0 10px' }}>
-            He did it. Thirty years ago, on his own, in the same nine days of weather
-            you have just used — and he told nobody. Not the book, not the locals,
-            not Marge. He came down and he went home and he let it be.</p>
-          <p style={{ margin: '0 0 12px', color: 'var(--fade)' }}>
-            You sit up there a while. The drainage runs out below you towards the road.
-            There is nothing to say you were here either.</p>
-        </div>
-        <div className="lbl">WHAT DO YOU DO</div>
+        <div style={{ fontSize: 13, lineHeight: 1.7, marginTop: 10 }}>{body}</div>
+        {honest !== 'none' && honest !== 'fair' ? (
+          <div className="spot" style={{ borderLeftColor: 'var(--tan)' }}>
+            <b style={{ color: 'var(--tan)' }}>AND ONE OTHER THING</b>
+            {honest === 'sandbagged'
+              ? 'You have been grading your own lines low all trip. Whatever you write in this book, somebody is going to get on it expecting easier.'
+              : 'You have been grading your own lines high all trip. Whatever you write in this book, somebody is going to get on it and know.'}
+          </div>) : null}
+        <div className="lbl" style={{ marginTop: 8 }}>WHAT DO YOU DO</div>
         <div style={{ marginTop: 6 }}>
-          <div className="menu-item" {...tap(() => choose('told'))}>
-            <div className="big">Write your name under his</div>
-            <div className="sub">Second ascent, thirty years on. Let the book have it.</div>
+          <div className="menu-item" {...tap(() => choose('told'), 'Write your name in the book')}>
+            <div className="big">{kind === 'stranger' ? 'Write your name' : 'Write your name under his'}</div>
+            <div className="sub">{toldSub}</div>
           </div>
-          <div className="menu-item" {...tap(() => choose('kept'))}>
+          <div className="menu-item" {...tap(() => choose('kept'), 'Put the stone back')}>
             <div className="big">Put the stone back</div>
-            <div className="sub">Leave it the way he left it. Nobody has to know.</div>
+            <div className="sub">{keptSub}</div>
           </div>
         </div>
         <style>{CSS}</style>
@@ -1960,13 +2213,14 @@ export default function App() {
     return (
       <div className={skin}>
         <div className="h1">{st.circuit ? 'CIRCUIT OVER' : won ? 'THE LOST LINE GOES' : 'RUN OVER'}</div>
-        <div className="sub">Act 1 · stage {st.tier + 1} · deck {st.runDeck.length}</div>
+        {/* UX-11: this said "Act 1" whatever act you actually died in */}
+        <div className="sub">{ACT_NAMES[st.act]} · stage {st.tier + 1} · deck {st.runDeck.length}</div>
         <hr className="rule" />
         <div style={{ fontSize: 13, lineHeight: 1.6, margin: '10px 0' }}>
           {st.circuit
             ? `${st.circuitScore} lines sent${st.circuitScore >= st.bestCircuit ? ' — a new best.' : `. Best is ${st.bestCircuit}.`}`
             : won
-            ? (st.ending === 'told'
+            ? (st.ending.endsWith('told')
               ? `You wrote it in the book. Second ascent, thirty years after the first, and the first ascensionist named at last. People will come now. That was the choice.${
                 st.styleMax > st.style ? ` ${ASCENT[st.style + 1].name} is open to you.` : ''}`
               : `You put the stone back and walked down. Two people have been up there and neither of them told anyone. It stays the way he found it.${
@@ -1975,7 +2229,36 @@ export default function App() {
               ? `You lost the psyche for it on ${spec.name}. Some trips end that way.`
               : `Skin ran out on ${spec.name}. The rock keeps.`}
         </div>
-        <button className="btn go" style={{ width: '100%' }}
+        {/* UX-11. The run-end screen said you won or died and nothing else,
+            while the trail, the logbook, the lines you named and the pages you
+            found were all being tracked. This is the account of the trip. */}
+        {(() => {
+          const ticked = ROUTES.filter(r => st.book[r.name])
+          const hardest = ticked.reduce((a, r) => (r.grade > (a?.grade ?? -1) ? r : a),
+            null as (typeof ROUTES)[number] | null)
+          const flashed = ticked.filter(r => st.book[r.name].flashed).length
+          const mine = st.established.slice(0, 1)
+          const Line = ({ k, v }: { k: string; v: string }) => (
+            <div className="row" style={{ padding: '2px 0' }}>
+              <span className="sub">{k}</span>
+              <span style={{ fontSize: 12, fontWeight: 700 }}>{v}</span></div>)
+          return (<>
+            <div className="lbl" style={{ marginTop: 4 }}>THE TRIP</div>
+            {hardest ? <Line k="hardest thing you have sent" v={`${hardest.name} · ${gradeLabel(hardest, st.grades)}`} /> : null}
+            <Line k="sent this trip" v={`${st.sends}`} />
+            {flashed ? <Line k="flashed, ever" v={`${flashed}`} /> : null}
+            <Line k="his journal" v={`${st.journal.length} of ${JOURNAL.length} pages`} />
+            {mine.length ? <Line k="the last line you put up" v={`${mine[0].name} · ${gradeText(mine[0].claimed, st.grades)}`} /> : null}
+            {st.tweak ? <Line k="carrying" v={`${st.tweak.kind}, ${st.tweak.runs} more trips`} /> : null}
+            {st.trail.length ? (
+              <>
+                <div className="lbl" style={{ marginTop: 8 }}>HOW IT WENT</div>
+                <div className="sub" style={{ color: 'var(--fade)', lineHeight: 1.5 }}>
+                  {st.trail.join(' · ')}</div>
+              </>) : null}
+          </>)
+        })()}
+                <button className="btn go" style={{ width: '100%' }}
           onClick={() => { setSt(x => ({ ...x, inRun: false, circuit: false, skirmish: null,
             runDeck: [], tier: 0 })); toMenu() }}>
           BACK TO THE GUIDEBOOK</button>
@@ -1989,8 +2272,29 @@ export default function App() {
     return (
       <div className={skin}>
         <div className="h1">{sent ? 'SENT' : st.result === 'bail' ? 'WALKED AWAY' : 'NOT TODAY'}</div>
-        <div className="sub">{spec.name} · {gradeLabel(spec)} · {weather.name}, {rock.name}</div>
+        <div className="sub">{spec.name} · {gradeLabel(spec, st.grades)} · {weather.name}, {rock.name}</div>
         {st.runSeed ? <div className="sub">seed {seedCode(st.runSeed)} — same seed, same run</div> : null}
+        {st.ending ? (
+          <div className="spot" style={{ borderLeftColor: 'var(--green)' }}>
+            <b style={{ color: 'var(--green)' }}>
+              {st.ending.startsWith('known') ? 'YOU KNEW WHOSE LINE IT WAS'
+                : st.ending.startsWith('partial') ? 'YOU KNEW MOST OF IT'
+                : 'YOU NEVER FOUND OUT WHOSE IT WAS'}</b>
+            {st.ending.endsWith('told')
+              ? 'You put it in the book.'
+              : 'You put the stone back and left it alone.'}
+            {st.ending.startsWith('stranger')
+              ? ' His pages were down there the whole time — there is another way to end this.'
+              : st.ending.startsWith('partial')
+              ? ' Find more of his pages and you get the rest of it.'
+              : ''}
+          </div>) : null}
+        {st.dailyDay === dayKey() && st.dailyScore > 0 ? (
+          <div className="spot" style={{ borderLeftColor: 'var(--tan)' }}>
+            <b style={{ color: 'var(--tan)' }}>TODAY'S PROBLEM · {st.dailyScore}</b>
+            {st.dailyScore >= st.dailyBest ? 'Your best on a daily yet. ' : `Your best is ${st.dailyBest}. `}
+            {st.dailyStreak > 1 ? `${st.dailyStreak} days running.` : 'Come back tomorrow and keep it going.'}
+          </div>) : null}
         <hr className="rule" />
         <div style={{ fontSize: 13, lineHeight: 1.6, margin: '9px 0' }}>
           {sent ? `Topped out on burn ${st.burn}.`
@@ -2033,7 +2337,7 @@ export default function App() {
         <div className="row">
           <span className="h1"><Lettered t={headline} seed={sent ? 41 : 17} /></span>
           <span className="big" style={{ color: sent ? 'var(--green)' : 'var(--red)' }}>
-            {gradeLabel(spec)}</span></div>
+            {gradeLabel(spec, st.grades)}</span></div>
         <div className="sub">{spec.name} · burn {st.burn} of {attemptsFor(st)}
           {st.line ? ` · ${LINES[st.line].name.toLowerCase()}` : ''}</div>
         <InkRule seed={sent ? 63 : 64} color="var(--ink)" />
@@ -2113,7 +2417,14 @@ export default function App() {
                 + (lanes ? `. ${lanes[i].clears ? 'This works it' : `${lanes[i].gripLeft} grip would remain`}` : ''))}>
               <Ink w={117} h={120} seed={h.uid} color={h.crux ? 'var(--red)' : 'var(--ink)'}
                 sw={h.crux ? 2.2 : 1.5} />
-              <div className="gl"><Glyph name={h.name} size={22}
+              {/* the shape, big and behind the words, plus a small one in the
+                  corner so it is still legible where the wash is faint */}
+              {/* VIS-2: 22px to 26px and darker. Four placements were tried and
+                  three had to be abandoned — behind the text needs a wash the
+                  words survive, and the band above the pump line is where the
+                  preview sits. A long name would wrap into anything bigger than
+                  this, so the corner at 26px is the whole safe headroom. */}
+              <div className="gl"><Glyph name={h.name} size={26}
                 color={h.crux ? 'var(--red)' : 'var(--ink)'} /></div>
               <div>
                 <div className="nm" style={h.crux || h.sig ? { color: 'var(--red)' } : undefined}>
@@ -2196,18 +2507,43 @@ export default function App() {
         <span className="lbl">{st.boardP[2] ? `SUPPORT +${st.boardP[2]!.support}` : `CAMPUSING +${CAMPUS_BITE} BITE`}</span>
       </div>
 
-      <div className="row" style={{ marginTop: 8 }}>
-        <span className="lbl">PUMP</span>
-        <span className="lbl" style={{ color: st.pump >= PUMP_MAX - 3 ? 'var(--red)' : 'var(--tan)' }}>
-          {st.pump} / {PUMP_MAX}</span>
-      </div>
-      <div className={`bar${st.fxLane.some(Boolean) ? ' hot' : ''}`} key={`p-${st.fxTick}`}
-        role="meter" aria-valuemin={0} aria-valuemax={PUMP_MAX} aria-valuenow={st.pump}
-        aria-label={`Pump ${st.pump} of ${PUMP_MAX}`} style={{ marginTop: 2 }}>
-        {Array.from({ length: PUMP_MAX }, (_, i) => (
-          <div key={i} className={`seg${i < st.pump ? (i >= PUMP_MAX - 2 ? ' danger' : ' on') : ''}`} />
-        ))}
-      </div>
+{/* VIS-1. The meter showed where you are. `previewPump` has been computing
+          where COMMIT puts you since UX-4 and never drew it — which is the whole
+          push-your-luck decision, sitting one function call away. */}
+      {(() => {
+        const after = Math.min(PUMP_MAX, pumpAfter)
+        const off = pumpAfter >= PUMP_MAX
+        const climbing = pumpAfter > st.pump
+        const near = after >= PUMP_MAX - 2 || off
+        return (<>
+          <div className="row" style={{ marginTop: 8 }}>
+            <span className="lbl">PUMP</span>
+            <span className="lbl" style={{ color: off ? 'var(--red)'
+              : near ? 'var(--red)' : 'var(--tan)' }}>
+              {st.pump} / {PUMP_MAX}
+              {st.phase === 'climb' && pumpAfter !== st.pump
+                ? ` · ${climbing ? '▴' : '▾'} ${after} AFTER THIS` : ''}
+              {off ? ' · THAT IS A FALL' : ''}</span>
+          </div>
+          <div className={`bar${st.fxLane.some(Boolean) ? ' hot' : ''}${near ? ' tremble' : ''}`}
+            key={`p-${st.fxTick}`}
+            role="meter" aria-valuemin={0} aria-valuemax={PUMP_MAX} aria-valuenow={st.pump}
+            aria-label={`Pump ${st.pump} of ${PUMP_MAX}.`
+              + (st.phase === 'climb' && pumpAfter !== st.pump
+                ? ` ${after} after this turn.${off ? ' That is a fall.' : ''}` : '')}
+            style={{ marginTop: 2 }}>
+            {Array.from({ length: PUMP_MAX }, (_, i) => {
+              const on = i < st.pump
+              // where committing puts you, drawn ahead of where you are
+              const ghost = !on && st.phase === 'climb' && i < after
+              const shed = on && st.phase === 'climb' && i >= after
+              return (<div key={i} className={
+                `seg${on && !shed ? (i >= PUMP_MAX - 2 ? ' danger' : ' on') : ''}`
+                + (ghost ? (off ? ' willfall' : ' will') : '') + (shed ? ' shedding' : '')} />)
+            })}
+          </div>
+        </>)
+      })()}
       {spec.roped ? (
         <div className="row" style={{ marginTop: 3 }}>
           <span className="lbl" style={{ color: st.runout >= 4 ? 'var(--red)' : 'var(--fade)' }}>

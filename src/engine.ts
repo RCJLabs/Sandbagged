@@ -26,7 +26,7 @@ export const SETTLE_MAX = 2
 // Compensates for Settle. Raising Bite kills cards before they settle, which
 // restores difficulty WITHOUT devaluing Contact the way more clock would.
 export const BITE_BUMP = 1
-export const RUN_SKIN = 8       // run-scoped. Falls cost 1. Zero ends the run.
+export const RUN_SKIN = 9       // run-scoped. Falls cost 1. Zero ends the run.
 export const CAMP_SKIN = 2
 export const SAVE_KEY = 'sandbagged.save'
 export const SLOT_KEY = 'sandbagged.slot'
@@ -263,6 +263,8 @@ export type GameState = {
   /** How close it got. Kept per burn so the screen at the end has something
       to tell you beyond "that is a send". */
   peakPump: number
+  /** You just clipped. You are above a bomber piece and you can go for it. */
+  clipped: boolean
   bonusUsed: boolean
   line: number
   rerolls: number
@@ -279,6 +281,31 @@ export type GameState = {
   book: Record<string, LogEntry>
   ticked: string[]
   hints: boolean
+  /** SKIRM-2: which day you last played, and what you got. */
+  dailyDay: string
+  dailyScore: number
+  dailyBest: number
+  dailyStreak: number
+  /* BAL-5. A post used to cost you the stage, and a stage of climbing is worth
+     more than anything on the shelf — so a rational player skipped every one,
+     which the harness did, which is why posts measured 0.4 a run. Forcing the
+     visits cost eight points of completion, proving the skip was correct.
+     A trading post is in town, on the drive between areas. It does not cost you
+     a day on the rock. Once a stage, so it cannot be farmed. */
+  shoppedAt: number[]
+  /** EVT-4: which branch you took, as `eventId:index`. A run remembers. */
+  eventChose: string[]
+  /** INJ-1: something you carry between trips. Never a resource to manage. */
+  tweak: Tweak | null
+  /** This burn is today's problem. */
+  daily: boolean
+  /* UX-16. A run is nine stages and the map showed one, so after twenty
+     minutes you could not see the shape of the trip you had had — which climbs
+     you took, where you rested, what you walked past. One short line per
+     stage behind you, in the order you did them. */
+  trail: string[]
+  /** Which scale grades read in. Both are real; people use both. */
+  grades: GradeScale
   established: Established[]
   vanRaided: number[]
   style: number
@@ -338,7 +365,9 @@ type SaveData = {
   v: number; level: number; xp: number; owned: string[]; sends: number; wins: number
   journal: number[]; loadout: string[]; style: number; styleMax: number; seen: string[]
   arch?: number; loadouts?: string[][]; book?: Record<string, LogEntry>; bestCircuit?: number
-  ticked?: string[]; established?: Established[]; hints?: boolean
+  ticked?: string[]; established?: Established[]; hints?: boolean; grades?: GradeScale
+  tweak?: Tweak | null
+  dailyDay?: string; dailyScore?: number; dailyBest?: number; dailyStreak?: number
   mutators?: string[]
   runs?: number; falls?: number; ending?: string; topRope?: boolean; history?: RunRecord[]
   coaching?: boolean; sound?: boolean; cbSafe?: boolean; tutorialDone?: boolean
@@ -356,7 +385,8 @@ export function saveGame(s: GameState) {
       sends: s.sends, wins: s.wins, journal: s.journal, loadout: s.loadout,
       style: s.style, styleMax: s.styleMax, seen: s.seen, coaching: s.coaching, sound: s.sound, cbSafe: s.cbSafe,
       tutorialDone: s.tutorialDone, motion: s.motion, textScale: s.textScale,
-      arch: s.arch, loadouts: s.loadouts, book: s.book, bestCircuit: s.bestCircuit, ticked: s.ticked, established: s.established, hints: s.hints,
+      arch: s.arch, loadouts: s.loadouts, book: s.book, bestCircuit: s.bestCircuit, ticked: s.ticked, established: s.established, hints: s.hints, grades: s.grades, tweak: s.tweak,
+      dailyDay: s.dailyDay, dailyScore: s.dailyScore, dailyBest: s.dailyBest, dailyStreak: s.dailyStreak,
       mutators: s.mutators,
       runs: s.runs, falls: s.falls, ending: s.ending, topRope: s.topRope,
       history: s.history.slice(0, HISTORY_MAX),
@@ -421,6 +451,9 @@ export function loadGame(slot = 0): Partial<GameState> {
       ...(d.loadouts && d.loadouts.length === ARCHETYPES.length ? { loadouts: d.loadouts } : {}),
       book: d.book ?? {}, bestCircuit: d.bestCircuit ?? 0, mutators: d.mutators ?? [],
       ticked: d.ticked ?? [], established: d.established ?? [], hints: d.hints ?? true,
+      grades: d.grades ?? 'v', tweak: d.tweak ?? null,
+      dailyDay: d.dailyDay ?? '', dailyScore: d.dailyScore ?? 0,
+      dailyBest: d.dailyBest ?? 0, dailyStreak: d.dailyStreak ?? 0,
       runs: d.runs ?? 0, falls: d.falls ?? 0, ending: d.ending ?? '',
       topRope: d.topRope ?? true, history: d.history ?? [],
       ...(d.run ? { inRun: true,
@@ -477,6 +510,8 @@ export const SIGNATURES: Signature[] = [
     note: 'Good, if you are standing somewhere you cannot stand.' },
   { id: 'lastjug', name: 'The Last Jug', base: 'jug', dGrip: -1, ability: 'Rest',
     note: 'The last thing on the route that is kind to you.' },
+  { id: 'bellows', name: 'The Bellows', base: 'pinch', dBite: 1, dGrip: -1,
+    note: 'A slot the wind comes up through. Cold hands, and you can hear it coming.' },
 ]
 export const sigById = (id: string) => SIGNATURES.find(x => x.id === id)
 
@@ -503,6 +538,8 @@ const STYLES: Record<StyleKey, { w: Record<string, number>; dgrip: number; dbite
 
 /* ======================= CONTENT: CONDITIONS ======================= */
 export type Weather = {
+  /** Wet rock: what your feet are worth, which every deck feels. */
+  dSupport?: number
   name: string; text: string; dBite: number; dContact: number; sloperGrip: number
 }
 // NOTE: conditions must never touch Power globally. 1 Power ≈ 4 Contact, so a
@@ -512,8 +549,10 @@ export const WEATHER: Weather[] = [
   { name: 'still', text: 'Nothing doing. Fine conditions.', dBite: 0, dContact: 0, sloperGrip: 0 },
   { name: 'humid', text: 'Greasy. Nothing feels attached.', dBite: 0, dContact: -1, sloperGrip: 2 },
   { name: 'hot sun', text: 'Baking. The holds fight back.', dBite: 1, dContact: 0, sloperGrip: 0 },
-  { name: 'freezing', text: 'Great friction, no feeling.', dBite: -1, dContact: -2, sloperGrip: 0 },
-  { name: 'drizzle', text: 'Seeping. Slopers are off.', dBite: 0, dContact: 0, sloperGrip: 3 },
+  { name: 'freezing', text: 'Great friction, and no feeling in your fingers at all.',
+    dBite: -1, dContact: -3, sloperGrip: 0 },
+  { name: 'drizzle', text: 'Seeping. Slopers are off and your feet are going nowhere.',
+    dBite: 0, dContact: 0, sloperGrip: 3, dSupport: -1 },
 ]
 export type Rock = {
   name: string; text: string; boost: Record<string, number>
@@ -575,9 +614,18 @@ export function phaseOf(s: GameState): BossPhase | null {
   for (const p of spec.phases) if (f >= p.at) out = p
   return out
 }
+/* DES-4. Everything read in V-scale, which is one of the two scales people
+   actually use. Font is the other, and the game is fussy enough about real
+   hold types and real ethics that it should not be parochial about grades. */
+export type GradeScale = 'v' | 'font'
+export const FONT = ['4', '5', '5+', '6A', '6B', '6C', '7A', '7A+', '7B',
+  '7C', '7C+', '8A', '8A+', '8B', '8B+', '8C', '8C+', '9A']
+export const fontOf = (g: number) => FONT[Math.max(0, Math.min(FONT.length - 1, g))]
+export const gradeText = (g: number, scale: GradeScale = 'v') =>
+  scale === 'font' ? fontOf(g) : 'V' + g
 // nobody has graded an unclimbed line, so nobody can tell you what it is
-export const gradeLabel = (r: RouteSpec) =>
-  (r.finale || r.fa) ? '?' : 'V' + (r.shownGrade ?? r.grade)
+export const gradeLabel = (r: RouteSpec, scale: GradeScale = 'v') =>
+  (r.finale || r.fa) ? '?' : gradeText(r.shownGrade ?? r.grade, scale)
 export const ROUTES: RouteSpec[] = [
   { name: 'Warm-Up Rail', grade: 0, style: 'jug haul', clear: 5, crux: 0, feet: 'easy',
     note: 'Everyone starts here. Nobody writes it in the book.' },
@@ -679,9 +727,19 @@ export const ROUTES: RouteSpec[] = [
 
   // Appended last on purpose. Inserting a route mid-table shifts every index
   // after it — which silently pointed the campaign finale at this boulder.
-  { name: 'The Warm-Up Boulder', grade: 0, style: 'jug haul', clear: 8, crux: 0, feet: 'easy',
+  /* NARR-10, appended out of place on purpose: inserting into the act 2 block
+     above would shift every index in acts 2 and 3. Desert towers, indices 31-33. */
+  { name: 'The Blowhole', grade: 6, style: 'compression', clear: 11, crux: 2, feet: 'normal',
+    signature: 'bellows',
+    note: 'The wind comes up through it about four. You want to be off by then.' },
+  { name: 'Squeeze Chimney', grade: 5, style: 'mixed', clear: 12, crux: 1, feet: 'hard',
+    note: 'Nobody has ever enjoyed this. It goes in the book anyway.' },
+  { name: 'Sunstroke Slab', grade: 7, style: 'slab', clear: 10, crux: 2, feet: 'hard',
+    note: 'No shade, no holds, no hurry. Two of those are a problem.' },
+  { name: 'The Warm-Up Boulder', grade: 0, style: 'jug haul', clear: 12, crux: 0, feet: 'easy',
     tutorial: true,
-    holds: ['jug', 'jug', 'sloper', 'crimp', 'pinch', 'sharp crimp', 'crux', 'jug'],
+    holds: ['jug', 'jug', 'jug', 'sloper', 'crimp', 'crimp', 'pinch', 'pinch',
+      'sharp crimp', 'crux', 'jug', 'jug'],
     note: 'Ten minutes from the car. Everybody starts here.' },
 ]
 
@@ -929,9 +987,9 @@ for (const c of [
   bn('Doubt', 1, 'curse', { text: 'You are already thinking about the fall.' }),
 
   // ---------- PROTECTION · a quick action, not a hold you grip ----------
-  bn('Quickdraw', 0, 'common', { clip: true, draw: 1, shed: 1, text: 'Clip · resets the runout. Sheds 1.' }),
-  bn('Wired Nut', 0, 'common', { clip: true, draw: 1, shed: 1, text: 'Clip · resets the runout.' }),
-  bn('Bomber Cam', 0, 'rare', { clip: true, draw: 1, shed: 3, text: 'Clip · shed 3, draw 1. It is not coming out.' }),
+  bn('Quickdraw', 0, 'common', { clip: true, draw: 1, shed: 1, text: 'Clip · shed 1, draw 1. One turn of climbing like you are safe.' }),
+  bn('Wired Nut', 0, 'common', { clip: true, draw: 1, shed: 1, text: 'Clip · resets the runout. One turn of trying hard off it.' }),
+  bn('Bomber Cam', 0, 'rare', { clip: true, draw: 1, shed: 3, text: 'Clip · shed 3, draw 1. It is not coming out, so neither are you.' }),
 
   // ---------- SEQUENCES · a plan you hold across turns ----------
   bn('Link It Up', 1, 'uncommon', { seq: 'linked',
@@ -972,6 +1030,17 @@ for (const c of [
   mv('Beta · Going Alone', 4, 8, 'beta', { fx: 'tough', text: 'Tough · nobody is coming.' }),
   bn('Beta · The Crux', 0, 'beta', { gripCut: 5, cleans: true, targeted: true, text: '−5 Grip, strip its ability.' }),
   bn('Beta · Last Entry', 1, 'beta', { powerAll: 2, text: '+2 Power to every lane.' }),
+  // NARR-11: the eight new pages. Deliberately smaller than the original six —
+  // fifteen pages means fifteen of these on the finale, and NARR-7 measured the
+  // original six at nine points of completion on their own.
+  bn('Beta · The Photograph', 0, 'beta', { gripCut: 2, targeted: true, text: '−2 Grip. He had looked at it for years.' }),
+  bn('Beta · The Rock', 0, 'beta', { gripCut: 2, targeted: true, text: '−2 Grip. He knew which bits were solid.' }),
+  bn('Beta · The Walk In', 0, 'beta', { shed: 2, text: 'Shed 2. He never once found it shorter.' }),
+  bn('Beta · What He Told Her', 0, 'beta', { draw: 1, shed: 1, text: 'Shed 1. Draw 1.' }),
+  mv('Beta · Being Frightened', 3, 7, 'beta', { fx: 'tough', text: 'Tough · frightened the whole time, and going anyway.' }),
+  bn('Beta · The Traverse', 0, 'beta', { gripCut: 3, targeted: true, text: '−3 Grip. The forty feet nobody warns you about.' }),
+  bn('Beta · Waiting It Out', 0, 'beta', { shed: 3, text: 'Shed 3. Six hours under it, and he came back.' }),
+  bn('Beta · The Name', 1, 'beta', { powerAll: 1, text: '+1 Power to every lane. He was never going to sign it.' }),
 
   // ---------- CURSE (never in packs) ----------
   mv('Tweaky Finger', 1, 3, 'curse', { text: 'It twinges. You keep going.' }),
@@ -1094,19 +1163,26 @@ export const LANE_NAMES = ['LEFT HAND', 'RIGHT HAND', 'FEET']
 
 /** A deliberately plain deck — nothing to read, nothing to misplay. */
 export const TUTORIAL_DECK: string[] = [
-  'Crimp Grip', 'Crimp Grip', 'Crimp Grip', 'Open Hand', 'Open Hand', 'Open Hand',
+  'Crimp Grip', 'Crimp Grip', 'Crimp Grip', 'Open Hand', 'Open Hand',
+  'Gaston', 'Gaston', 'Undercling',
   'Lock Off', 'Lock Off', 'Smear', 'Smear', 'Smear', 'Shake Out', 'Shake Out',
 ]
 /** One idea per hold, in the order the rock introduces them. */
 export const TUTORIAL_STEPS: string[] = [
-  'Tap a card, then tap a lane underneath a hold. Then COMMIT — all three lanes resolve at once.',
-  'Your Power — the diamond — chips its Grip. Its Bite chips your Contact. Both happen together.',
-  'Put something in the FEET lane. Leaving it empty is campusing: +1 Bite on both hands.',
-  'That sloper is Greasy. You lose 1 Power on it unless your feet are on.',
-  'Every turn costs pump, plus one for each hold you have not answered. Clearing a lane slows the clock.',
-  'A card that survives a turn settles in — it gains Power for every turn it stays on.',
-  'Sharp holds burn your card out for the rest of the burn when they blow it. Contact matters.',
-  'That is a crux. It needs Power 2 or more, or the move does nothing at all. Last one.',
+  // one per hold, in order — jug jug jug sloper crimp crimp pinch pinch
+  // sharp-crimp crux jug jug
+  'Tap a card, then tap a lane underneath a hold. Then COMMIT — all three go at once, in the order you placed them.',
+  'Your Power — the diamond — chips its Grip. Its Bite chips your Contact. Both at once, so you can work a hold and still come off it.',
+  'The hold reads a range rather than a number. You have not been on it yet. Work it once and it reads true for the rest of the trip.',
+  'That sloper is Greasy: you lose 1 Power on it unless your feet are on something. Put a card in the FEET lane — leaving it empty is campusing, and costs you Bite on both hands.',
+  'Every turn costs pump, plus one for each hold you have not answered. Clearing holds is how you outrun it. Max pump and you are off.',
+  'Watch the top of the screen. Every few turns the route does something — greases up, dries out, a gust — and it always says so a turn beforehand.',
+  'A card that survives a turn settles in, gaining Power for every turn it stays. Leaving a good card where it is usually beats moving it.',
+  'A gaston pulls sideways, and sideways needs something pulling back. On its own it is weak. Put the undercling in the other hand and both get stronger.',
+  'Sharp holds burn your card out for the rest of the burn when they blow it. Careful what you put on them.',
+  'That is a crux. It needs Power 2 or more or the move does nothing at all. Line something real up for it.',
+  'You are near the top, which the game calls EXPOSED. Backing off from here costs an extra psyche. Finishing does not.',
+  'Last one. Everything you have just learned is the whole game — the rest is more of it, harder, and further from the car.',
 ]
 
 /* ===================== CONTENT: THE ACT 1 MAP ======================
@@ -1128,15 +1204,16 @@ export const ACT1_MAP: MapNode[][] = [
   [CAMP, EVT, C(5), SHOP],
   [C(5), C(6)],                  // The Fridge · Deer Tick
   [CAMP, C(7), EVT, FA],
-  [C(7), C(8), PROJ(10)],        // Cathedral Traverse · Wasp Nest · The Sandbag
+  [C(7), C(8), PROJ(10), SHOP],  // Cathedral Traverse · Wasp Nest · The Sandbag
   [B(9)],                        // The Priest
 ]
 const ACT2_MAP: MapNode[][] = [
-  [C(11), C(12)],                // The Gooseneck · Varnish
-  [CAMP, EVT, C(13)],
+  [C(11), C(12), C(31)],         // The Gooseneck · Varnish · Squeeze Chimney
+  [CAMP, EVT, C(13), SHOP],
   [C(13), C(14), PROJ(18), SHOP],// Sun Dagger · The Chimney · Furnace Arete
   [CAMP, C(15), EVT, FA],
-  [C(15), C(16)],                // Rattlesnake Arete · Kiln
+  [C(15), C(16), C(30), SHOP],   // Rattlesnake Arete · Kiln · The Blowhole
+  [C(30), C(32), EVT],           // The Blowhole · Sunstroke Slab
   [CAMP, EVT, PROJ(18)],
   [B(17)],                       // The Hourglass
 ]
@@ -1144,9 +1221,9 @@ const ACT3_MAP: MapNode[][] = [
   [C(19), C(20)],                // The Notch · Cold Shoulder
   [CAMP, EVT, C(21)],
   [C(21), C(22), PROJ(28), SHOP],// Icebox Corner · Whiteout Slab · The Cornice
-  [C(23), C(24)],                // The Nose Direct · Coffin Crack  — roped
+  [C(23), C(24), SHOP],          // The Nose Direct · Coffin Crack  — roped
   [CAMP, C(25), EVT, FA],
-  [C(25), C(26)],                // The Diving Board · Bergschrund
+  [C(25), C(26), SHOP],          // The Diving Board · Bergschrund
   [CAMP, EVT, PROJ(28)],
   [B(27)],                       // Summit Block
   [B(29)],                       // THE LOST LINE
@@ -1160,11 +1237,19 @@ export const ACT_SKIN = 5        // topped up between acts
    that is narrative rather than a stat drip.                        */
 export const JOURNAL: { id: number; title: string; text: string }[] = [
   { id: 1, title: 'First entry', text: 'Came up the drainage looking for the wall in the old survey photo. Found it. Nobody has been here. No chalk, no tick marks, no trail. I sat under it until dark and did not touch it.' },
+  { id: 8, title: 'The survey photo', text: 'The photo is from 1961 and it is nine-tenths cloud. There is a line of shadow on the left edge that is either a corner system or a scratch on the negative. I have looked at it enough to know I am no longer looking at it, I am looking at what I have decided it is.' },
   { id: 2, title: 'On the grade', text: 'I have climbed harder. I have not climbed anything that made less sense. Every sequence I try is the wrong one, and the wrong one still gets me two moves higher than the last.' },
+  { id: 9, title: 'On the rock', text: 'It is better rock than it has any right to be. Everything around it is rubbish — you could pull the whole ridge down with a nut key — and then this one fin of something hard and grey that nobody has touched. I do not know what it is doing there. Neither does the guidebook, because there is no guidebook.' },
   { id: 3, title: 'Conditions', text: 'It only comes into condition for about nine days a year, as far as I can tell. Cold, dry, north wind. The rest of the time it seeps and the crux is a waterfall.' },
+  { id: 10, title: 'The walk in', text: 'Four hours if the creek is low. Six if it is not, and the last hour of it is moraine, which is four hours of its own kind. I have done it eleven times now and the walk has never once got shorter. What changed is that I stopped resenting it.' },
   { id: 4, title: 'On going alone', text: 'Told Marge I was working the Cathedral. Not a lie exactly. She would come if I asked and I am not asking. This one is mine to be stupid about.' },
+  { id: 11, title: 'On Marge', text: 'She asked me straight out tonight and I told her the Cathedral again. She let me. That is the part I keep turning over — she let me, and she knew, and she let me anyway. I do not know what to do with being loved by somebody that patient.' },
+  { id: 12, title: 'On being frightened', text: 'I am not brave. I want that written down somewhere by me and not by somebody else afterwards. I am frightened up there the whole time. What I am is willing to be frightened for nine hours, which is a different thing and a much smaller one.' },
   { id: 5, title: 'The crux', text: 'The move is a cross-through off a two-finger pocket to a sloper you cannot see from the ground. I have done it four times. I have never done it with anything left.' },
+  { id: 13, title: 'The traverse', text: 'Everybody who ever looks at this will think the crux is the crux. It is not. It is the forty feet after it, where you are pumped stupid and the holds are fine and there is nothing to do but keep going sideways with the whole drainage under your heels.' },
+  { id: 14, title: 'The day it rained', text: 'Sat under it for six hours watching water come down the line I want to climb. Ate everything I had. Walked out in the dark. That was the seventh attempt and I want to be honest that I cried on the moraine, and that it was not about the climb.' },
   { id: 6, title: 'Last entry', text: 'Conditions are perfect. Skin is good. If it goes I will name it for the drainage and not for me. If it does not go I will be back in the spring.' },
+  { id: 15, title: 'On the name', text: 'If it goes I am not putting my name on it. I have thought about this the whole walk in and out, eleven times. A name is a way of telling people you were there, and the only thing I have ever wanted from this line is the part where nobody was.' },
   { id: 7, title: 'At the top', text: 'Nine days of weather and it went on the seventh. I have not told anybody and I do not think I am going to. Marge would want to know, and I would want to tell her, and both of those are reasons to keep it. A line nobody knows about stays the way it was when I found it. So I am going to call it nothing at all. Whoever comes up here next can do the naming.' },
 ]
 
@@ -1178,6 +1263,12 @@ export type GameEvent = {
   id: string; title: string; text: string
   /** Undefined means it can happen anywhere. */
   act?: number
+  /* EVT-4. Thirty-two events, all self-contained: you caused an access closure,
+     you trundled a block, you believed a man about a grade, and nothing ever
+     referred back. `eventsSeen` recorded WHICH event fired and never which
+     branch you took, so nothing could look back even if it wanted to.
+     An event can now require a specific choice you made earlier, as `id:index`. */
+  after?: string
   choices: { label: string; outcome: EventOutcome }[]
 }
 export const EVENTS: GameEvent[] = [
@@ -1253,13 +1344,13 @@ export const EVENTS: GameEvent[] = [
   { id: 'cairn', title: 'A Cairn Where There Should Not Be One',
     text: 'Six stones stacked on a boulder well off the trail. Old lichen on the top one.',
     choices: [
-      { label: 'Look underneath', outcome: { text: 'A page in a ziplock, gone soft with damp.', journal: 1, xp: 10 } },
+      { label: 'Look underneath', outcome: { text: 'A page in a ziplock, gone soft with damp.', journal: 0, xp: 10 } },
       { label: 'Leave it be', outcome: { text: 'Somebody meant that. You keep walking.', xp: 4 } },
     ] },
   { id: 'campsite', title: 'The Old Campsite',
     text: 'Fire ring grown over, a bent pot, and a stuff sack wedged under a rock.',
     choices: [
-      { label: 'Go through it', outcome: { text: 'Notebook pages, a wire brush, and a name you half recognise.', journal: 2, card: 'Guidebook' } },
+      { label: 'Go through it', outcome: { text: 'Notebook pages, a wire brush, and a name you half recognise.', journal: 0, card: 'Guidebook' } },
       { label: 'Make camp and leave it alone', outcome: { text: 'You sleep well in somebody else\'s good spot.', skin: 1, xp: 4 } },
     ] },
   { id: 'seep', title: 'Seepage',
@@ -1284,7 +1375,7 @@ export const EVENTS: GameEvent[] = [
   { id: 'notebook', title: 'Loose Pages',
     text: 'Under a flat rock at the base of the wall, weighted deliberately.',
     choices: [
-      { label: 'Read them', outcome: { text: 'Handwriting you have seen once before, on a cairn note.', journal: 3, xp: 10 } },
+      { label: 'Read them', outcome: { text: 'Handwriting you have seen once before, on a cairn note.', journal: 0, xp: 10 } },
       { label: 'Put the rock back', outcome: { text: 'Not yours. You leave them for whoever they were for.', xp: 6 } },
     ] },
 
@@ -1377,10 +1468,43 @@ export const EVENTS: GameEvent[] = [
       { label: 'Wait for the sun to touch it', outcome: { text: 'Three hours shivering, then perfect friction.', skin: -1, xp: 16 } },
       { label: 'Go somewhere south-facing', outcome: { text: 'Warmer rock, easier line, day saved.', psyche: 1, cash: 10 } },
     ] },
+  /* EVT-4. These do not appear unless the thing they refer to happened, and a
+     callback never repeats even once the range is exhausted — meeting the same
+     consequence twice reads as a bug rather than as a consequence. */
+  { id: 'access2', title: 'The Sign Is Bigger Now', after: 'access:1',
+    text: 'Same pullout. The sign has been replaced with a larger one, and somebody has added a second board underneath it listing the dates the gate is locked. Which is all of them.',
+    choices: [
+      { label: 'This is on me.',
+        outcome: { text: 'It is partly on you. There were four other cars.', psyche: -1, xp: 20 } },
+      { label: 'Park at the next pullout and walk.',
+        outcome: { text: 'Three miles now instead of two. You have the whole walk to think about it.', skin: -1, xp: 24 } },
+    ] },
+  { id: 'hold2', title: 'Where The Block Was', after: 'hold:0',
+    text: 'You come back past the line you trundled. The scar is pale and obvious from the trail, and there is a party under it looking up at it, and one of them is saying it must have come off in the winter.',
+    choices: [
+      { label: 'Say nothing.', outcome: { text: 'You let them have the winter. It is not even a lie, exactly.', xp: 12 } },
+      { label: 'Tell them it was you.',
+        outcome: { text: 'The oldest one nods. "Better on the ground than on somebody." He means it, and it helps more than you expected.', psyche: 1, xp: 22 } },
+    ] },
+  { id: 'ethics2', title: 'Word Got Round', after: 'ethics:0',
+    text: 'Somebody you have never met knows what you said at the campsite about the bolt, and repeats it back to you slightly wrong, as though it were a thing you are known for.',
+    choices: [
+      { label: 'Let it stand.', outcome: { text: 'It is close enough, and arguing would make it a bigger thing than it was.', xp: 14 } },
+      { label: 'Correct it, carefully.',
+        outcome: { text: 'You get it back to what you actually said. It takes ten minutes and they respect you more for the ten minutes than for the opinion.', psyche: 1, xp: 18 } },
+    ] },
+  { id: 'sandbag2', title: 'Him Again', after: 'sandbag:0',
+    text: 'The same man, at the same table, with the same certainty, about a different line. He does not remember telling you the last one was V2.',
+    choices: [
+      { label: 'Ask him about the last one.',
+        outcome: { text: '"That thing? That is nails." Not a flicker. He has simply moved the number and taken the memory with it.', xp: 16 } },
+      { label: 'Take the beta anyway.',
+        outcome: { text: 'You know exactly what you are getting and you take it anyway, which is at least an informed decision.', card: 'Beta · The Grade', curse: 'Sandbagged Beta', xp: 12 } },
+    ] },
   { id: 'moraine', act: 2, title: 'Something In The Moraine',
     text: 'A stuff sack, bleached almost white, wedged between two blocks.',
     choices: [
-      { label: 'Work it free', outcome: { text: 'Rope, a rack of nuts, and a folded page.', journal: 4, card: 'Wired Nut' } },
+      { label: 'Work it free', outcome: { text: 'Rope, a rack of nuts, and a folded page.', journal: 0, card: 'Wired Nut' } },
       { label: 'Leave it where it is', outcome: { text: 'Whoever put it there had reasons.', psyche: 1, xp: 6 } },
     ] },
 ]
@@ -1388,12 +1512,17 @@ export const EVENTS: GameEvent[] = [
 /** Generic events plus whatever belongs to the range you are standing in —
     and never one you have already had this trip if there is any alternative.
     68% of runs used to repeat one, which reads as the world being small. */
-export function rollEvent(rng: RNG, act = 0, seen: string[] = []): GameEvent {
+export function rollEvent(rng: RNG, act = 0, seen: string[] = [],
+  chose: string[] = []): GameEvent {
   const inRange = EVENTS.filter(e => e.act === undefined || e.act === act)
-  const fresh = inRange.filter(e => !seen.includes(e.id))
-  // once the range is exhausted, repeats are allowed rather than nothing
-  const pool = fresh.length ? fresh : inRange
-  return pool[rng.int(pool.length)]
+  // EVT-4: a callback only exists if the thing it calls back to happened
+  const open = inRange.filter(e => !e.after || chose.includes(e.after))
+  const fresh = open.filter(e => !seen.includes(e.id))
+  /* Once the range is exhausted, repeats are allowed rather than nothing — but
+     never a callback, because meeting the same consequence twice reads as a bug
+     rather than as a consequence. */
+  const pool = fresh.length ? fresh : open.filter(e => !e.after)
+  return pool[rng.int(pool.length)] ?? inRange[rng.int(inRange.length)]
 }
 
 /* ======================= CONTENT: ARCHETYPES ======================
@@ -1403,6 +1532,13 @@ export type Archetype = {
   id: string; name: string; text: string; sig: string; sigText: string
   unlock: number; gear: string; loadout: string[]
   betaGrip?: number; firstTurnPower?: number; noBeta?: boolean
+  /* BAL-12. Three signatures compound over a burn — beta coming back cheaper,
+     Contact on every move, settling to +3. The Comp Kid's fired once, on turn
+     one, worth about half a hold on a twelve-hold route. It measured bottom of
+     the four at 8.2% against 12.4%, on 80-turn runs against 121: explosive,
+     then out of ideas. Power on every move, and a smaller hand to pay for it. */
+  dPower?: number
+  dHand?: number
   dContact?: number; settleMax?: number; ignoreWeather?: boolean; dSkin?: number
   dAttempts?: number
 }
@@ -1420,10 +1556,10 @@ export const ARCHETYPES: Archetype[] = [
       ['Shake Out', 2], ['Breathe', 2], ['Chalk Up', 1]) },
   { id: 'comp', name: 'The Comp Kid', unlock: 4, gear: 'downturn',
     text: 'Trained on plastic. Enormously strong, no patience at all.',
-    sig: 'Flash', sigText: '+4 Power on the first turn of every burn.',
-    firstTurnPower: 4,
-    loadout: L(['Deadpoint', 2], ['Lunge', 2], ['Bump', 2], ['Mantle', 1], ['Crimp Grip', 1],
-      ['Smear', 2], ['High Step', 1], ['Shake Out', 1], ['Deep Breath', 1],
+    sig: 'Plastic', sigText: '+2 Power on every move, and one less burn a day. All engine, no patience.',
+    dPower: 2, dAttempts: -1,
+    loadout: L(['Deadpoint', 2], ['Lunge', 2], ['Bump', 1], ['Mantle', 1], ['Crimp Grip', 1],
+      ['Smear', 2], ['High Step', 1], ['Shake Out', 2], ['Deep Breath', 1],
       ['Breathe', 1], ['Chalk Up', 1]) },
   { id: 'trad', name: 'The Trad Dad', unlock: 8, gear: 'tape',
     text: 'Slow, bomber, and will tell you about the rack.',
@@ -1724,7 +1860,7 @@ export const TALKS: Talk[] = [
   { id: 'marge2', who: 'Marge', act: 0, after: 'marge1',
     text: 'He did not tell me where it was. Twenty-two years and he did not tell me. I have decided that was kindness and not cowardice, most days.',
     replies: [
-      { label: 'Most days.', text: '"Most days." She almost laughs.' },
+      { label: 'Most days.', text: '"Most days." She almost laughs. Later she comes back with a page out of a box in the van and does not say anything about it.', outcome: { journal: 0 } },
       { label: 'Why would that be kind?', text: '"Because I would have gone up there after him. And I would still be up there."' },
     ] },
   { id: 'marge3', who: 'Marge', act: 1, after: 'marge2',
@@ -1736,19 +1872,19 @@ export const TALKS: Talk[] = [
   { id: 'marge4', who: 'Marge', act: 1, after: 'marge3', needsPage: 4,
     text: 'That is his hand. I would know it upside down in the rain. Where.',
     replies: [
-      { label: 'Under a cairn, well off the trail.', text: 'She reads it four times. Then she gives it back. "Keep it. It is beta now, not a letter."', outcome: { journal: 5 } },
+      { label: 'Under a cairn, well off the trail.', text: 'She reads it four times. Then she gives it back. "Keep it. It is beta now, not a letter."', outcome: { journal: 0 } },
     ] },
   { id: 'marge5', who: 'Marge', act: 2, after: 'marge4',
     text: 'North side of the third drainage, above the moraine. There is a wall you cannot see from the valley and he never once drew it in the margin, which is how I know.',
     replies: [
       { label: 'Come with me.', text: '"No." A long pause. "Take the cams. He would want them up there and not in my shed."', outcome: { cardRarity: 'rare' } },
-      { label: 'Thank you.', text: '"Do not thank me. Come back down."', outcome: { journal: 6 } },
+      { label: 'Thank you.', text: '"Do not thank me. Come back down."', outcome: { journal: 0 } },
     ] },
   { id: 'marge6', who: 'Marge', act: 0, after: 'marge5', needsPage: 7,
     text: 'You have got that look. The one he used to come back with.',
     replies: [
       { label: 'I found it. He did it first.', text: '"Of course he did." She is quiet for a long time. "Thirty years I have been angry at a man for dying on something he had already climbed." She laughs, once, and it is not really a laugh.' },
-      { label: 'Say nothing.', text: 'She looks at you, and then at the fire, and does not ask again. Some of it she works out anyway.' },
+      { label: 'Say nothing.', text: 'She looks at you, and then at the fire, and does not ask again. Some of it she works out anyway.', outcome: { journal: 0 } },
     ] },
   { id: 'marge7', who: 'Marge', act: 0, after: 'marge6',
     text: 'One thing. Did he name it?',
@@ -1759,18 +1895,18 @@ export const TALKS: Talk[] = [
     text: 'Everybody wants the ghost story. Nobody wants to hear he was a bit of a show-off who left his rubbish at the crag.',
     replies: [
       { label: 'Was he strong?', text: '"Strongest I ever saw. That is the boring part of it."' },
-      { label: 'Did you like him?', text: 'Long pause. "I did, actually. That is the annoying part of it."' },
+      { label: 'Did you like him?', text: 'Long pause. "I did, actually. That is the annoying part of it."', outcome: { journal: 0 } },
     ] },
   { id: 'dale2', who: 'Dale', act: 1, after: 'dale1',
     text: 'He used to say a grade is just a rumour that got organised. Drove the guidebook people mad.',
     replies: [
       { label: 'He was not wrong.', text: '"He was not wrong. He was insufferable about it."', outcome: { xp: 8 } },
-      { label: 'Sounds like an excuse.', text: '"It was. He was also the only one who could back it up."' },
+      { label: 'Sounds like an excuse.', text: '"It was. He was also the only one who could back it up."', outcome: { journal: 0 } },
     ] },
   { id: 'dale3', who: 'Dale', act: 2, after: 'dale2',
     text: 'If you find it and it is not as hard as he said, you keep that to yourself. Let him have the one thing.',
     replies: [
-      { label: 'And if it is harder?', text: '"Then you tell everyone. Loudly. He would have."', outcome: { cardRarity: 'uncommon' } },
+      { label: 'And if it is harder?', text: '"Then you tell everyone. Loudly. He would have."', outcome: { cardRarity: 'uncommon', journal: 0 } },
     ] },
   { id: 'nita1', who: 'Nita', act: 0,
     text: 'Honest question. Do you actually believe there is a wall up there, or is this a nice long walk with a story attached?',
@@ -1782,12 +1918,12 @@ export const TALKS: Talk[] = [
     text: 'I climb harder than he did. On plastic. I know exactly what that sentence is worth, before you say it.',
     replies: [
       { label: 'It is worth something.', text: '"It is worth something on plastic." She is quiet a moment. "Show me the pages."', outcome: { cardRarity: 'uncommon' } },
-      { label: 'Say it out loud again.', text: 'She does. It sounds smaller the second time and she knows it.' },
+      { label: 'Say it out loud again.', text: 'She does. It sounds smaller the second time and she knows it.', outcome: { journal: 0 } },
     ] },
   { id: 'nita3', who: 'Nita', act: 2, after: 'nita2',
     text: 'I found this wedged in a crack on the approach. I nearly used it for kindling before I read it.',
     replies: [
-      { label: 'Let me see.', text: 'A page, water-stained, in the same hand as the rest.', outcome: { journal: 3 } },
+      { label: 'Let me see.', text: 'A page, water-stained, in the same hand as the rest.', outcome: { journal: 0 } },
     ] },
   { id: 'ellis1', who: 'Ranger Ellis', act: 1,
     text: 'Whatever you are doing up the third drainage, do it before the fifteenth. After that the road closes and I am not coming to get you.',
@@ -1798,7 +1934,7 @@ export const TALKS: Talk[] = [
   { id: 'ellis2', who: 'Ranger Ellis', act: 2, after: 'ellis1',
     text: 'We pulled a pack out of the moraine field in ninety-eight. No name in it. It is in a box in the office if you want to look at it.',
     replies: [
-      { label: 'I want to look at it.', text: 'Rope, a rack, and a notebook with the last four pages torn out.', outcome: { journal: 2, xp: 10 } },
+      { label: 'I want to look at it.', text: 'Rope, a rack, and a notebook with the last four pages torn out.', outcome: { journal: 0, xp: 10 } },
       { label: 'Leave it in the box.', text: '"That is probably the right answer." He does not sound sure.', outcome: { skin: 1 } },
     ] },
   { id: 'pim1', who: 'Pim', act: 0,
@@ -1811,6 +1947,29 @@ export const TALKS: Talk[] = [
     text: 'Everyone out here is looking for something. Mine is a shower. Yours seems harder to find.',
     replies: [
       { label: 'Yours sounds better.', text: '"Mine is achievable. That is the whole trick."', outcome: { skin: 1, xp: 6 } },
+    ] },
+  { id: 'pim3', who: 'Pim', act: 2, after: 'pim2',
+    text: 'This is where I turn round. I have been very clear with myself about what I am and am not doing, and that wall is in the second category.',
+    replies: [
+      { label: 'Sensible.', text: '"It is. It is also the most boring thing about me." He leaves you the rest of his coffee and most of his tape.', outcome: { skin: 2, cash: 20, xp: 10 } },
+      { label: 'You could come as far as the moraine.',
+        text: 'He thinks about it longer than you expected. "No. But ask me again next year." He means it, which is worse.', outcome: { psyche: 1, xp: 14 } },
+    ] },
+  { id: 'nita4', who: 'Nita', act: 2, after: 'nita3',
+    text: 'I have been up on that face twice. Both times I came down and could not tell anybody why I had. It is not the difficulty. It is that it does not want anybody on it.',
+    replies: [
+      { label: 'And you think I should go anyway.',
+        text: '"I think you are going anyway. I am telling you what it is like so it does not surprise you."', outcome: { psyche: 1, xp: 12 } },
+      { label: 'That sounds like superstition.',
+        text: 'She does not argue. "Come and find me after." Then, quieter: "Please come and find me after."', outcome: { xp: 16 } },
+    ] },
+  { id: 'marge8', who: 'Marge', act: 2, after: 'marge5',
+    text: 'You have got the look he had the last week. I am not going to talk you out of it. I would like it on the record that I did not try.',
+    replies: [
+      { label: 'It is on the record.',
+        text: '"Good." She puts something in your hand — a stub of chalk gone hard with age. "That was in his van. Do what you like with it."', outcome: { psyche: 1, xp: 18 } },
+      { label: 'Would you have talked him out of it?',
+        text: '"No." A long pause. "I have had twenty-two years to decide whether that was love or laziness. I still do not know."', outcome: { xp: 20 } },
     ] },
 ]
 
@@ -1853,6 +2012,19 @@ export function faTalk(s: GameState): Talk | null {
     ] }
 }
 
+/** A trading post has people in it. Somebody who has been out there is
+    exactly who tells you something you did not know. */
+export function postTalk(s: GameState): Talk | null {
+  // Marge is at the fire, not behind a counter — her thread stays at camps.
+  // This has to look PAST her rather than stop at her: she holds seven of the
+  // seventeen and sits at the front of the queue, so filtering the first
+  // available conversation returned nothing almost every time.
+  return TALKS.find(t =>
+    t.who !== 'Marge' && t.act <= s.act && !s.seen.includes(t.id)
+    && (!t.after || s.seen.includes(t.after))
+    && (t.needsPage === undefined || s.journal.includes(t.needsPage))) ?? null
+}
+
 export function availableTalk(s: GameState): Talk | null {
   // what you put your name to comes first — she has been waiting to say it
   const fa = faTalk(s)
@@ -1868,9 +2040,31 @@ export function availableTalk(s: GameState): Talk | null {
 export const BETA_CARDS: Record<number, string> = {
   1: 'Beta · The Approach', 2: 'Beta · The Grade', 3: 'Beta · Conditions',
   4: 'Beta · Going Alone', 5: 'Beta · The Crux', 6: 'Beta · Last Entry',
+  // NARR-11: the eight new pages. Page 7 is what you find at the top, so it
+  // has never been a beta card and still is not — you read it after.
+  8: 'Beta · The Photograph', 9: 'Beta · The Rock', 10: 'Beta · The Walk In',
+  11: 'Beta · What He Told Her', 12: 'Beta · Being Frightened',
+  13: 'Beta · The Traverse', 14: 'Beta · Waiting It Out',
+  15: 'Beta · The Name',
 }
+
+/* A page grant used to name a specific page, which meant every page needed its
+   own event branch and is why there were only ever six findable. An event can
+   now ask for "the next one he wrote" and the pool does the rest. */
+export function nextPage(s: GameState): number | null {
+  const found = new Set(s.journal)
+  const p = JOURNAL.find(j => j.id !== 7 && !found.has(j.id))
+  return p ? p.id : null
+}
+/* You cannot carry the whole journal up there. Measured: seven pages is worth
+   twelve points of completion and fourteen is worth the same — every beta card
+   past the ones you need is a card you draw instead of a move, which is the
+   same thing DECK-1 found from the other end. So the pages are the story and
+   the ending; the beta you take onto the wall is capped. */
+export const BETA_TAKE = 8
 export function betaDeck(journal: number[]): Card[] {
-  return journal.map(id => BETA_CARDS[id]).filter(n => n && CARDS[n]).map(spawn)
+  return journal.map(id => BETA_CARDS[id]).filter(n => n && CARDS[n])
+    .slice(0, BETA_TAKE).map(spawn)
 }
 
 export function applyOutcome(s: GameState, o: EventOutcome, rng: RNG): GameState {
@@ -1892,8 +2086,12 @@ export function applyOutcome(s: GameState, o: EventOutcome, rng: RNG): GameState
     const i = rng.int(n.runDeck.length)
     n.runDeck = n.runDeck.filter((_, k) => k !== i)
   }
-  if (o.journal !== undefined && !n.journal.includes(o.journal))
-    n.journal = [...n.journal, o.journal]
+  if (o.journal !== undefined) {
+    // NARR-11: 0 means "the next one he wrote", so all fourteen are reachable
+    // rather than only the six that happened to have their own event branch.
+    const id = o.journal === 0 ? nextPage(n) : o.journal
+    if (id !== null && !n.journal.includes(id)) n.journal = [...n.journal, id]
+  }
   if (o.xp) n = gainXp(n, o.xp, rng)
   return { ...n, eventResult: o.text ?? '' }
 }
@@ -1951,6 +2149,49 @@ export function circuitRoute(n: number, rng: RNG): RouteSpec {
     roped, pitches: roped ? 2 : undefined,
     note: roped ? 'Two pitches. Rack up.' : SK_NOTE[rng.int(SK_NOTE.length)],
   }
+}
+
+/* SKIRM-2. Every design note since v0 justified the seeded RNG the same way:
+   it is "what makes daily-seeded skirmish possible later". Every shuffle,
+   draw, event roll and hold wobble has gone through it for ninety versions,
+   and the word "daily" appeared nowhere in the file. This is the collection. */
+export const DAILY_ATTEMPTS = 1
+
+/** The day itself, as a number. Same date, same problem, everywhere. */
+export function dayKey(d = new Date()): string {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+}
+export function dailySeed(key = dayKey()): number {
+  // a plain string hash: everyone with the same date gets the same number
+  let h = 2166136261
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return (h >>> 0) || 1
+}
+/** Today's problem. Harder than a skirmish and the same for everyone. */
+export function dailyRoute(key = dayKey()): RouteSpec {
+  const rng = new RNG(dailySeed(key))
+  const styles: StyleKey[] = ['mixed', 'slab', 'crimp ladder', 'compression', 'power', 'jug haul']
+  const feet: FeetKey[] = ['normal', 'hard']
+  const grade = 3 + rng.int(5)
+  return {
+    name: `${SK_A[rng.int(SK_A.length)]} ${SK_B[rng.int(SK_B.length)]}`,
+    grade, style: styles[rng.int(styles.length)],
+    clear: 9 + rng.int(5), crux: 1 + rng.int(3), feet: feet[rng.int(feet.length)],
+    note: 'Today only. Everybody is on this one.',
+  }
+}
+/** What a daily attempt was worth. Topping out matters most; being quick and
+    unpumped is the tiebreak, which is how people actually compare a session. */
+export function dailyScore(s: GameState): number {
+  const spec = specOf(s)
+  const topped = s.result === 'send'
+  const holds = Math.min(s.cleared, spec.clear)
+  return Math.max(0, holds * 10 + (topped ? 100 + spec.grade * 15 : 0)
+    + (topped ? Math.max(0, 40 - s.turn) * 2 : 0)
+    + Math.max(0, PUMP_MAX - s.peakPump) * 3)
 }
 
 export function skirmishRoute(level: number, rng: RNG): RouteSpec {
@@ -2149,7 +2390,7 @@ export function buildRoute(s: GameState, rng: RNG): { holds: Hold[]; feet: Hold[
       bite: Math.max(1, d.bite + st.dbite + biteBump + BITE_BUMP + (rock.bite[t] ?? 0) + w.dBite + asc.dBite),
       grip: Math.max(1, d.grip + st.dgrip + bump + (rock.grip[t] ?? 0) + asc.dGrip + blind
         + (spec.fa ? DIRT_GRIP : 0) + wob
-        + (t === 'sloper' ? w.sloperGrip : 0)),
+        + (t === 'sloper' ? w.sloperGrip : 0) + tweakGrip(s, t)),
       ...(wob ? { wobble: wob } : {}),
       ...(spec.fa ? { dirt: DIRT_GRIP } : {}),
     })
@@ -2209,6 +2450,23 @@ export function codeSeed(code: string): number | null {
   return Number.isFinite(n) ? (n >>> 0) : null
 }
 
+/** Everything that belongs to you rather than to a run. A new expedition must
+    carry all of it; hand-copying a subset is how it got lost. */
+export function carryOver(s: GameState): Partial<GameState> {
+  return {
+    level: s.level, xp: s.xp, owned: s.owned, sends: s.sends, wins: s.wins,
+    runs: s.runs, falls: s.falls, seen: s.seen, book: s.book, ticked: s.ticked,
+    established: s.established, history: s.history, bestCircuit: s.bestCircuit,
+    loadouts: s.loadouts, styleMax: s.styleMax, tutorialDone: s.tutorialDone,
+    slot: s.slot, ending: s.ending, tweak: s.tweak,
+    // settings are the player's, not the run's
+    sound: s.sound, motion: s.motion, cbSafe: s.cbSafe, textScale: s.textScale,
+    coaching: s.coaching, hints: s.hints, topRope: s.topRope, grades: s.grades,
+    dailyDay: s.dailyDay, dailyScore: s.dailyScore,
+    dailyBest: s.dailyBest, dailyStreak: s.dailyStreak,
+  }
+}
+
 export function newRun(seed: number, loadout?: string[], style = 0, arch = 0,
   mutators: string[] = []): GameState {
   // mutators must be in place BEFORE the run is built: two of them act here,
@@ -2245,14 +2503,31 @@ export function freshRun(routeIdx: number, deckTier: number, seed: number): Game
     shopCards: [], shopGear: [], bought: [],
     coaching: true, sound: true, cbSafe: false, motion: true, textScale: 0,
     tutorialDone: false,
-    fxLane: ['', '', ''], fxTick: 0, gear: [], boons: [], gearOffers: [], savedBlow: false, peakPump: 0, bonusUsed: false, line: 0, rerolls: 0, mutators: [], seq: null, order: [], routeMove: null, arch: 0,
-    loadouts: ARCHETYPES.map(a => a.loadout.slice()), reroll: 0, book: {}, ticked: [], hints: true, vanRaided: [], established: [],
+    fxLane: ['', '', ''], fxTick: 0, gear: [], boons: [], gearOffers: [], savedBlow: false, peakPump: 0, clipped: false, bonusUsed: false, line: 0, rerolls: 0, mutators: [], seq: null, order: [], routeMove: null, arch: 0,
+    loadouts: ARCHETYPES.map(a => a.loadout.slice()), reroll: 0, book: {}, ticked: [], hints: true, grades: 'v',
+    dailyDay: '', dailyScore: 0, dailyBest: 0, dailyStreak: 0, daily: false, trail: [],
+    shoppedAt: [], tweak: null, eventChose: [], vanRaided: [], established: [],
   }
 }
 
 /** Session over: pay skin, hand out a reward, or end the run. */
+/** Bank today's attempt. Called once, when the burn that used it ends. */
+export function bankDaily(s: GameState): GameState {
+  if (!s.daily) return s
+  const key = dayKey()
+  const score = dailyScore(s)
+  // a streak is consecutive days, so yesterday must have been the last one
+  const y = new Date(); y.setUTCDate(y.getUTCDate() - 1)
+  const kept = s.dailyDay === dayKey(y) ? s.dailyStreak : 0
+  return { ...s, daily: false, dailyDay: key, dailyScore: score,
+    dailyBest: Math.max(s.dailyBest, score), dailyStreak: kept + 1 }
+}
+
 export function endSession(s0: GameState, rng: RNG): GameState {
-  let s = s0
+  let s = bankDaily(s0)
+  // CARD-6: the consequence arrives here, once, on the way off the boulder
+  const cause = s.inRun ? curseEarned(s) : null
+  if (cause) s = addCurse(s, cause)
   const beta = Array.from(new Set([...s.beta, ...s.worked]))
   if (s.circuit) {
     if (s.result !== 'send') {
@@ -2309,7 +2584,8 @@ export function endSession(s0: GameState, rng: RNG): GameState {
   }
   if (s.onProject) {
     // it did not go. The days are spent either way.
-    return gate({ ...s, beta, onProject: false, tier: s.tier + 1, phase: 'map' })
+    return gate(noteTrail({ ...s, beta, onProject: false, tier: s.tier + 1, phase: 'map' },
+      trailNote(s)))
   }
   if (s.result === 'send') {
     if (isBoss) {
@@ -2354,7 +2630,8 @@ function refillAndDraw(s: GameState, rng: RNG): GameState {
   }
   if (!boardH[2] && feetDeck.length) boardH[2] = feetDeck.pop()!
   const gm = gearMods(s.gear)
-  const want = HAND_SIZE + gm.handSize + boonMods(s.boons).dDraw + (s.turn === 1 ? gm.drawFirst : 0)
+  const want = HAND_SIZE + gm.handSize + boonMods(s.boons).dDraw
+    + (s.inRun ? (archOf(s).dHand ?? 0) : 0) + (s.turn === 1 ? gm.drawFirst : 0)
   const piles = pileDraw(s.piles, Math.max(0, want - s.piles.hand.length), rng)
   if (gm.brushFirst && s.turn === 1) for (const i of [0, 1])
     if (boardH[i]) { boardH[i] = clearDirt({ ...boardH[i]!, clean: true }); break }
@@ -2384,7 +2661,8 @@ export function startBurn(s: GameState, rng: RNG): GameState {
     piles: { draw: deck, discard: [], exhaust: [], hand: [] },
     pump: 0, flow: 0, cleared: 0, worked: [], turn: 1, phaseSeen: '',
     // the belay is your first piece: on a rope you are never on nothing
-    runout: 0, lastPiece: spec.roped ? 0 : -1, pitch: 0, savedBlow: false, peakPump: 0, seq: null,
+    runout: 0, lastPiece: spec.roped ? 0 : -1, pitch: 0, savedBlow: false, peakPump: 0,
+    clipped: false, seq: null,
     order: [],
     routeMove: null,
     beta: (styleMods(s.inRun ? s.style : 0).noBeta || (s.inRun && archOf(s).noBeta))
@@ -2485,6 +2763,12 @@ export function campBeforeBoss(s: GameState): boolean {
   return false
 }
 
+/* ROPE-4. Protection only ever reduced what a fall cost, and with an average
+   runout of 1.2 holds that was worth about one skin — never a card slot. A
+   rack measured 5%→2%, 2%→2%, 0%→0% across the three roped routes: engaging
+   with the subsystem made you worse at it. What a piece actually buys a
+   climber is not a smaller fall, it is the nerve to try the move. */
+export const CLIPPED_POWER = 1
 export const EXPOSED_AT = 0.7
 /* Measured twice: a per-FALL penalty is not a sharpening, it is a different
    game. Charging a skin took skin deaths from ~25% to 58-81%; charging a
@@ -2576,7 +2860,11 @@ export function powerAgainst(s: GameState, card: Card, hold: Hold, lane: number,
   const feetHold = s.boardH[2]
   const featureless = feetHold ? abilityOf(feetHold) === 'Featureless' : false
   const bm = boonMods(s.boons)
-  const sup = feetCard ? feetCard.support + gearMods(s.boardP ? s.gear : []).dSupport : 0
+  // wet rock: your feet are worth less, which every deck feels
+  const sup = feetCard
+    ? Math.max(0, feetCard.support + gearMods(s.boardP ? s.gear : []).dSupport
+        + (WEATHER[s.weather]?.dSupport ?? 0))
+    : 0
   // Big Hands: Support normally favours one hand; this reaches both
   // Big Hands doubles what the feet give; it does not gate the default
   const eff = bm.wideSupport ? sup * 2 : sup
@@ -2585,9 +2873,12 @@ export function powerAgainst(s: GameState, card: Card, hold: Hold, lane: number,
   let p = card.power + (card.settled ?? 0) + support
   // ENG-16: was a binary +2 above pump 7 on two cards. It scales now, so
   // being pumped is a thing some of your deck actually wants.
+  // above a piece you have just placed, you commit
+  if (s.clipped && specOf(s).roped) p += CLIPPED_POWER
   if (card.fx === 'greedy') p += desperationOf(s)
   if (card.fx === 'momentum') p += s.flow
   if (s.inRun && s.turn === 1) p += archOf(s).firstTurnPower ?? 0
+  if (s.inRun) p += archOf(s).dPower ?? 0
   if (card.fx === 'weight') p += s.boardP.filter((c, k) => c && k !== lane).length
   if (abilityOf(hold) === 'Greasy' && card.fx !== 'friction' && !s.boardP[2]) p -= 1
   if (abilityOf(hold) === 'Slick') p -= 1
@@ -2797,7 +3088,8 @@ export function resolve(s: GameState, rng: RNG): GameState {
   if (out.phase === 'climb' && out.turn % MOVE_EVERY === 0) move = rollRouteMove(out, rng)
   out = { ...out, routeMove: move }
   if (move) out = { ...out, log: [...out.log, `▸ ${move.text}`] }
-  out = { ...out, bonusUsed: false }
+  // the nerve a piece buys you lasts exactly one turn
+  out = { ...out, bonusUsed: false, clipped: false }
   const nowPh = phaseOf(out)
   if (nowPh && out.phaseSeen !== nowPh.name)
     out = { ...out, phaseSeen: nowPh.name, log: [...out.log, `— ${nowPh.name.toUpperCase()} — ${nowPh.text}`] }
@@ -2855,6 +3147,64 @@ export function resolve(s: GameState, rng: RNG): GameState {
   return refillAndDraw({ ...out, piles: pileDiscard(out.piles, out.piles.hand), selected: null }, rng)
 }
 
+/* SIM-5. Playing a technique card was implemented twice — once in the screen's
+   `playBonus` and once inside `autoPlay` — and a rule added to one failed to
+   reach the other three times running. Sequences never started for the
+   drafter (SIM-3), Free Rein measured +0 for two versions (BAL-9), and
+   clipping bought nothing (ROPE-4). Every time the mechanic looked worthless
+   and the fix was to teach the harness the rule it already had.
+   One function. The screen and the policy both call it; neither owns the
+   rules. What each keeps is its own business: the screen keeps the sound and
+   the undo stack, the policy keeps deciding which card to play at all. */
+export function playBonusStep(s: GameState, c: Card, lane: number, rng: RNG): GameState {
+  const bn = boonMods(s.boons)
+  let piles = pileFromHand(s.piles, c.uid)
+  // Free Rein pays for the first technique card of the turn, and replaces it
+  const free = bn.freeBonus && !s.bonusUsed
+  if (free && bn.freeDraws) piles = pileDraw(piles, 1, rng)
+  let pump = s.pump + (free ? 0 : c.cost)
+  const boardP = s.boardP.slice(), boardH = s.boardH.slice(), log: string[] = []
+
+  let seq = s.seq
+  if (c.seq) {
+    const q = seqById(c.seq)
+    if (q) { seq = { id: q.id, left: q.turns }; log.push(`${q.name}. ${q.turns} turns — ${seqNeedText(q)}.`) }
+  }
+  let runout = s.runout, lastPiece = s.lastPiece, clipped = s.clipped
+  if (c.clip && specOf(s).roped) {
+    runout = 0; lastPiece = s.cleared; clipped = true
+    log.push(`${c.name} in. Clipped — you can try hard off that.`)
+  }
+  if (c.skinCost) log.push(`${c.name}. That is skin you do not get back.`)
+  if (c.shed) { pump = Math.max(0, pump - c.shed); log.push(`${c.name}. −${c.shed} pump.`) }
+  if (c.draw) { piles = pileDraw(piles, c.draw, rng); log.push(`${c.name}. Draw ${c.draw}.`) }
+  if (c.restore && piles.exhaust.length) {
+    const n = Math.min(c.restore, piles.exhaust.length)
+    const back = piles.exhaust.slice(-n)
+    piles = { ...piles, exhaust: piles.exhaust.slice(0, -n), hand: [...piles.hand, ...back] }
+    log.push(`${c.name}. ${n} back from the burnt pile.`)
+  }
+  if (c.powerAll) {
+    for (let i = 0; i < 3; i++) if (boardP[i]) boardP[i] = { ...boardP[i]!, power: boardP[i]!.power + c.powerAll }
+    log.push(`${c.name}. +${c.powerAll} Power everywhere.`)
+  }
+  if (c.power && lane >= 0 && boardP[lane]) {
+    boardP[lane] = { ...boardP[lane]!, power: boardP[lane]!.power + c.power }
+    log.push(`${c.name}. +${c.power} Power.`)
+  }
+  if (c.gripCut && lane >= 0 && boardH[lane]) {
+    boardH[lane] = { ...boardH[lane]!, grip: Math.max(1, boardH[lane]!.grip - c.gripCut),
+      clean: c.cleans ? true : boardH[lane]!.clean }
+    if (c.cleans) boardH[lane] = clearDirt(boardH[lane]!)
+    log.push(`${c.name}. −${c.gripCut} Grip${c.cleans ? ', ability stripped' : ''}.`)
+  }
+  piles = { ...piles, discard: [...piles.discard, c] }
+  return { ...s, piles, pump, skin: Math.max(0, s.skin - c.skinCost),
+    peakPump: Math.min(PUMP_MAX, Math.max(s.peakPump, pump)),
+    boardP, boardH, runout, lastPiece, seq, clipped, bonusUsed: true,
+    selected: null, log: [...s.log, ...log] }
+}
+
 /** Headless policy — used by the sim so it exercises the shipping engine. */
 export function autoPlay(s: GameState, rng: RNG): GameState {
   let st = { ...s, boardP: s.boardP.slice(), piles: { ...s.piles, hand: s.piles.hand.slice() } }
@@ -2882,74 +3232,49 @@ export function autoPlay(s: GameState, rng: RNG): GameState {
     } else pick = rests[0]
     st.boardP[i] = pick; st.piles = pileFromHand(st.piles, pick.uid)
   }
-  // bonuses last, once we know which lanes need help. Targeted ones included —
-  // a policy that cannot play a card makes that card look bad in every deck.
+  // bonuses last, once we know which lanes need help. The POLICY lives here —
+  // which card, which lane, whether it is worth the pump — but the RULES are
+  // `playBonusStep`, the same function the screen calls. See SIM-5.
   const ab = boonMods(s.boons)
   let freeUsed = false
   for (const c of st.piles.hand.filter(c => c.kind === 'bonus')) {
     const isFree = ab.freeBonus && !freeUsed
     const cost = isFree ? 0 : c.cost
-    const afford = st.pump + cost < PUMP_MAX - 2
-    const spend = (extra: Partial<GameState> = {}) => {
-      st = { ...st, pump: st.pump + cost, piles: pileFromHand(st.piles, c.uid), ...extra }
-      st.piles = { ...st.piles, discard: [...st.piles.discard, c] }
-      if (isFree) {
-        freeUsed = true
-        if (ab.freeDraws) st.piles = pileDraw(st.piles, 1, rng)
+    if (st.pump + cost >= PUMP_MAX - 2) continue
+    /* Where to point it. A grip cut wants the hold that is furthest from
+       going; a Power boost wants the lane closest to clearing, because that is
+       where it turns a near miss into a hold worked. Picking the first lane
+       that happened to be occupied cost the sim about ten points. */
+    const best = (score: (i: number) => number) => {
+      let at = -1, bestScore = -Infinity
+      for (const i of [0, 1, 2]) {
+        const v = score(i)
+        if (v > bestScore) { bestScore = v; at = i }
       }
+      return bestScore > -Infinity ? at : -1
     }
-    if (c.restore && st.piles.exhaust.length) {
-      const n = Math.min(c.restore, st.piles.exhaust.length)
-      const back = st.piles.exhaust.slice(-n)
-      const trimmed = pileFromHand(st.piles, c.uid)
-      st = { ...st, pump: st.pump + c.cost, piles: { ...trimmed,
-        exhaust: st.piles.exhaust.slice(0, st.piles.exhaust.length - n),
-        hand: [...trimmed.hand, ...back], discard: [...trimmed.discard, c] } }
-      continue
-    }
-    if (c.clip && specOf(st).roped && (st.runout >= 3 || st.lastPiece < 0)) {
-      spend({ runout: 0, lastPiece: st.cleared, pump: Math.max(0, st.pump - c.shed) }); continue
-    }
-    if (c.clip) { if (st.pump >= 3) spend({ pump: Math.max(0, st.pump - c.shed) }); continue }
-    if (c.shed && st.pump >= 3) { spend({ pump: Math.max(0, st.pump - c.shed) }); continue }
-    // only dig when the hand is actually thin — otherwise draw cards just burn pump
-    if (c.draw && afford && st.piles.hand.length <= 3) {
-      st = { ...st, pump: st.pump + c.cost, piles: pileDraw(pileFromHand(st.piles, c.uid), c.draw, rng) }
-      st.piles = { ...st.piles, discard: [...st.piles.discard, c] }
-      continue
-    }
-    if (!afford) continue
-    if (c.gripCut) {
-      // strip the nastiest ability / shave the tankiest hold we are actually fighting
-      const live = [0, 1, 2].filter(i => st.boardH[i] && st.boardP[i])
-      if (live.length) {
-        const t = live.reduce((a, b) => (st.boardH[b]!.grip > st.boardH[a]!.grip ? b : a))
-        const bh = st.boardH.slice()
-        bh[t] = { ...bh[t]!, grip: Math.max(1, bh[t]!.grip - c.gripCut), clean: c.cleans || bh[t]!.clean }
-        spend({ boardH: bh })
-      }
-      continue
-    }
-    if (c.powerAll && st.boardP.filter(Boolean).length >= 2) {
-      const bp = st.boardP.map(x => x ? { ...x, power: x.power + c.powerAll } : x)
-      spend({ boardP: bp }); continue
-    }
-    if (c.power) {
-      // only if it converts a stall into a clear
-      const t = [0, 1].find(i => {
-        const h = st.boardH[i], m = st.boardP[i]
-        if (!h || !m) return false
-        const need = gripFor(st, h)
-        const now = powerAgainst(st, m, h, i)
-        return now < need && now + c.power >= need
-      })
-      if (t !== undefined) {
-        const bp = st.boardP.slice()
-        bp[t] = { ...bp[t]!, power: bp[t]!.power + c.power }
-        spend({ boardP: bp })
-      }
-    }
+    const lane = !c.targeted ? -1
+      : c.gripCut ? best(i => (st.boardH[i] ? gripFor(st, st.boardH[i]!) : -Infinity))
+      : best(i => {
+          const card = st.boardP[i], hold = st.boardH[i]
+          if (!card || !hold) return -Infinity
+          const short = gripFor(st, hold) - powerAgainst(st, card, hold, i, st.boardP)
+          // closest to clearing without being there already
+          return short > 0 && short <= c.power ? 100 - short : -short
+        })
+    const worth =
+      (c.restore > 0 && st.piles.exhaust.length > 0)
+      || (c.draw > 0)
+      || (c.shed > 0 && st.pump >= Math.min(c.shed, 2))
+      || (c.clip === true && specOf(st).roped)
+      || (!!c.seq && !st.seq)
+      || (c.powerAll > 0 && st.boardP.some(Boolean))
+      || ((c.power > 0 || c.gripCut > 0) && lane >= 0)
+    if (!worth) continue
+    st = playBonusStep(st, c, lane, rng)
+    if (isFree) freeUsed = true
   }
+
   return st
 }
 
@@ -3178,6 +3503,74 @@ function seqValue(c: Card, deck: Card[]): number {
     : Math.min(1, power / 1.6)
   return payout * Math.pow(hold, q.turns - 1)
 }
+/* DECK-1. Fifteen slots out of everything you own is a real decision and not
+   everybody wants to make it from scratch. Put in the two or three cards you
+   actually want to build around and this fills the rest — using `cardValue`,
+   which is the most carefully measured thing in this game and until now was
+   only ever consulted by the drafter, plus the two things a deck needs
+   structurally and a new player will not think of: feet, and something to rest
+   on. It does not overrule you. Whatever you put in stays in. */
+export const WANT_FEET = 3
+export const WANT_RESTS = 2
+export const MAX_RESTS = 3          // more than this and you cannot work a hold
+export const MAX_TECH = 3
+export const MIN_MOVES = 9
+/* The board is two hand lanes and one feet lane, so a deck is mostly hands.
+   `cardValue` scores a card on its own and has no idea what a deck looks like:
+   given a floor for feet and no ceiling it built THIRTEEN feet cards, which
+   cannot work a hold at all. Shape is the builder's job, not the valuation's. */
+export const MAX_FEET = 4
+export const MIN_HANDS = 8
+
+export function buildLoadout(s: GameState, seed: string[], owned: string[]): string[] {
+  const pool = buildable(owned)
+  const deck = seed.filter(n => CARDS[n]).slice(0, DECK_SIZE)
+  const copies = (n: string) => deck.filter(x => x === n).length
+  let guard = 0
+  while (deck.length < DECK_SIZE && guard++ < 400) {
+    const spawned = deck.map(spawn)
+    const feet = spawned.filter(c => c.lane === 'feet').length
+    const rests = spawned.filter(c => c.shed > 0).length
+    const tech = spawned.filter(c => c.kind === 'bonus').length
+    const moves = spawned.filter(c => c.kind === 'move').length
+    const hands = spawned.filter(c => c.lane === 'hand' || c.lane === 'any').length
+    const left = DECK_SIZE - deck.length
+    const tags = tagCounts(spawned)
+    let bestName: string | null = null, bestScore = -Infinity
+    for (const n of pool) {
+      const d = CARDS[n]
+      if (!d || d.rarity === 'curse') continue
+      if (copies(n) >= copyLimit(d.rarity ?? 'common')) continue
+      const c = spawn(n)
+      /* A deck that cannot work a hold is not a deck. The first version had no
+         structural limits and `cardValue` plus an uncapped synergy bonus built
+         fifteen rest cards, every time — so these are hard gates rather than
+         weights, and the move floor takes over once the slots run short. */
+      if (c.shed > 0 && rests >= MAX_RESTS) continue
+      if (c.kind === 'bonus' && tech >= MAX_TECH) continue
+      if (c.kind !== 'move' && moves + left <= MIN_MOVES) continue
+      if (c.lane === 'feet' && feet >= MAX_FEET) continue
+      // once the slots left would not cover the hands a deck needs, only hands
+      if (c.lane !== 'hand' && c.lane !== 'any' && hands + left <= MIN_HANDS) continue
+      let v = cardValue(s, c, spawned)
+      if (c.lane === 'feet' && feet < WANT_FEET) v += 14
+      if (c.shed > 0 && rests < WANT_RESTS) v += 12
+      // build on what the player chose — but the bonus stops growing at the
+      // point synergy itself stops paying, or it feeds on itself
+      const tag = tagOf(c)
+      if (tag) {
+        const have = Math.min(tags[tag] ?? 0, SYNERGY_PER)
+        if (have > 0) v += 3 + have * 2
+      }
+      v -= copies(n) * 4
+      if (v > bestScore) { bestScore = v; bestName = n }
+    }
+    if (!bestName) break
+    deck.push(bestName)
+  }
+  return deck
+}
+
 export function cardValue(s: GameState, c: Card, deck: Card[]): number {
   if (c.rarity === 'curse') return -20
   const arch = archOf(s)
@@ -3249,6 +3642,27 @@ export function bestOffer(s: GameState, offers: Card[], deck: Card[]): Card | nu
 const toMapNext = (s: GameState): GameState =>
   s.packCards.length ? { ...s, afterPack: 'map', phase: 'pack' } : { ...s, phase: 'map' }
 
+/** What a finished stage is remembered as. Short — it goes in a list on a
+    phone — and specific enough to be worth reading back. */
+export function trailNote(s: GameState): string {
+  const spec = specOf(s)
+  if (s.eventId) {
+    const ev = EVENTS.find(e => e.id === s.eventId)
+    return ev ? ev.title.toLowerCase() : 'an event'
+  }
+  if (s.phase === 'camp') return 'camped'
+  if (s.phase === 'shop') return 'the post'
+  if (spec.fa) return s.result === 'send' ? 'put up a line' : 'failed on the unclimbed one'
+  if (spec.finale) return s.result === 'send' ? 'topped The Lost Line' : 'off The Lost Line'
+  const name = spec.name
+  return s.result === 'send'
+    ? (s.burn === 1 ? `flashed ${name}` : `sent ${name}`)
+    : `off ${name}`
+}
+/** Note what this stage turned out to be. */
+export const noteTrail = (s: GameState, what: string): GameState =>
+  ({ ...s, trail: [...s.trail, what] })
+
 export const rerollCost = (n: number) => REROLL_BASE + REROLL_STEP * n
 
 /** Pay to see three different cards. */
@@ -3319,7 +3733,7 @@ export function takeOfferStep(s: GameState, card: Card | null): GameState {
   const deck = card ? [...s.runDeck, card] : s.runDeck
   const next = { ...s, runDeck: deck, offers: [], rerolls: 0 }
   if (s.circuit) return { ...next, phase: 'circuitNext' }
-  return toMapNext({ ...next, tier: s.tier + 1 })
+  return toMapNext(noteTrail({ ...next, tier: s.tier + 1 }, trailNote(s)))
 }
 /** Gear picked. A card may still be waiting behind it — that is the chain
     the harness got wrong. Note the tier is NOT advanced here: whoever set
@@ -3337,9 +3751,107 @@ export type CampAction =
   | { kind: 'van'; rng: RNG }
 /** Have you already been through the van in this range? */
 export const vanOpen = (s: GameState) => !s.vanRaided.includes(s.act)
+/** Have you already been through the post at this stage? */
+export const postOpen = (s: GameState) =>
+  !s.shoppedAt.includes(s.act * 100 + s.tier)
+/* TEST-4. Three of the four screens with no coverage are where a run ENDS,
+   which is where state gets written to the save — and `NARR-4` found that class
+   of bug by accident, after it had been silently emptying saves for a while.
+   The circuit's exit was doing its own `Math.max` on your best score inline in
+   the screen, which is the same shape as the bug that started all this. */
+/* CARD-6. Ten curses, and only two of them ever arrived: Cold Shut and
+   Sandbagged Beta, from three events of which two give the same one, plus the
+   Sandbagged mutator and TAKE TWO. Eight were unreachable. A curse should be
+   the price of something you wanted, not a rare accident — so these come from
+   decisions the game already watches you make.
+
+   Note what this is NOT: a reward for climbing hurt. Per the design values,
+   climbing on wrecked skin is a bad decision the game permits and never
+   rewards — a curse is the consequence arriving, not a payout. */
+/* INJ-1. A run was 26 minutes and then nothing carried but XP and cards, so a
+   bad decision had no memory. This gives one a memory, and the design values
+   set hard limits on how:
+
+     "Skin, injury and psyche model care, risk and consequence — not
+      grind-through-pain optimization... nothing valorizes training through
+      injury."
+
+   So this is deliberately NOT a system. There is no way to speed it up, no item
+   that clears it, nothing to buy, and no reward whatsoever for climbing with
+   one — an injury pays you nothing, which is the whole design. It arrives when
+   you climbed a run down to nothing, it makes one thing harder, and it goes
+   when it goes. The only thing you can do about it is the honest one: go
+   anyway, or wait. */
+export type Tweak = { kind: string; hold: string; runs: number; text: string }
+export const TWEAKS: Omit<Tweak, 'runs'>[] = [
+  { kind: 'pulley', hold: 'crimp',
+    text: 'A pulley in the ring finger. Crimps are going to let you know about it.' },
+  { kind: 'elbow', hold: 'sloper',
+    text: 'Something in the elbow. Anything you have to press down on aches.' },
+  { kind: 'shoulder', hold: 'sharp crimp',
+    text: 'The shoulder again. It is fine until it is above your head.' },
+  { kind: 'tips', hold: 'pinch',
+    text: 'The tips have not come back properly. Anything you have to squeeze is raw.' },
+]
+export const TWEAK_RUNS = 2
+export const TWEAK_GRIP = 1
+
+/** You climbed a whole trip down to nothing. That leaves a mark. */
+export function tweakEarned(s: GameState, rng: RNG): Tweak | null {
+  if (s.tweak) return null            // one at a time; they do not stack
+  if (s.skin > 0) return null         // you walked off it with something left
+  const t = TWEAKS[rng.int(TWEAKS.length)]
+  return { ...t, runs: TWEAK_RUNS }
+}
+/** A trip goes by. Nothing else moves this — no camp, no cash, no gear. */
+export function tweakAfterRun(s: GameState): GameState {
+  if (!s.tweak) return s
+  const runs = s.tweak.runs - 1
+  return { ...s, tweak: runs > 0 ? { ...s.tweak, runs } : null }
+}
+/** What a tweak costs you on a hold, which is the only thing it ever does. */
+export const tweakGrip = (s: GameState, holdName: string) =>
+  s.tweak && s.tweak.hold === holdName ? TWEAK_GRIP : 0
+
+export type CurseCause = 'rawskin' | 'exposed' | 'sprayed' | 'bargain'
+export const EARNED_CURSES: Record<CurseCause, { card: string; why: string }> = {
+  rawskin: { card: 'Flapper', why: 'You went again on tips that were already gone.' },
+  exposed: { card: 'Doubt', why: 'You came off with the top in reach. That stays with you.' },
+  sprayed: { card: 'Ego', why: 'You told everyone the grade before anybody repeated it.' },
+  bargain: { card: 'Sandbagged Beta', why: 'Cheap topo, cheap for a reason.' },
+}
+export const RAW_SKIN_AT = 2
+
+/** Has this fall earned you something? Checked once, as the burn ends. */
+export function curseEarned(s: GameState): CurseCause | null {
+  if (s.result === 'send') return null
+  if (s.skin <= RAW_SKIN_AT) return 'rawskin'
+  if (exposed(s)) return 'exposed'
+  return null
+}
+/** Put it in the deck, once. A run collects consequences, not a collection. */
+export function addCurse(s: GameState, cause: CurseCause): GameState {
+  const c = EARNED_CURSES[cause]
+  if (!c || !CARDS[c.card]) return s
+  // one of each kind a run; the same mistake twice is the same lesson
+  if (s.runDeck.some(x => x.name === c.card)) return s
+  return { ...s, runDeck: [...s.runDeck, spawn(c.card)],
+    log: [...s.log, `${c.card}. ${c.why}`] }
+}
+
+export function walkAwayStep(s: GameState): GameState {
+  return { ...s, circuit: false, skirmish: null, runDeck: [], log: [],
+    bestCircuit: Math.max(s.bestCircuit, s.circuitScore), phase: 'menu' }
+}
+
+/** Leave the post. You are back where you were, not a stage further on. */
+export function leaveShopStep(s: GameState): GameState {
+  return { ...s, shopCards: [], shopGear: [], phase: 'map',
+    shoppedAt: [...s.shoppedAt, s.act * 100 + s.tier] }
+}
 
 export function campStep(s: GameState, a: CampAction): GameState {
-  const base = { ...s, tier: s.tier + 1 }
+  const base = noteTrail({ ...s, tier: s.tier + 1 }, trailNote(s))
   // A run was ending with barely two pieces of kit out of twenty-two, because
   // there were only two places to find any. The van is the third choice at a
   // camp, and it costs you the rest you came for.
@@ -3365,6 +3877,15 @@ export function campStep(s: GameState, a: CampAction): GameState {
     times, so the recording lives in it rather than at each call site. */
 export function recordRun(s: GameState, won: boolean): GameState {
   if (!s.inRun && !s.circuit) return s
+  /* INJ-1. A trip ending is the only thing that moves a tweak: the one you were
+     carrying gets a trip closer to gone, and if you climbed this one down to
+     nothing you pick one up. In that order, so a tweak earned today is not
+     already a trip old. */
+  const rng0 = new RNG(s.seed)
+  let tw = tweakAfterRun(s)
+  const got = tweakEarned(tw, rng0)
+  if (got) tw = { ...tw, tweak: got, seed: rng0.s }
+  s = tw
   const cause = won ? 'topped out'
     : s.circuit ? `${s.circuitScore} lines`
     : s.psyche <= 0 ? 'lost the psyche'
@@ -3380,12 +3901,49 @@ export function recordRun(s: GameState, won: boolean): GameState {
 /** The choice at the top. Part of the phase graph so the harness cannot
     miss it — adding a phase and not telling the sim is how v4.9 silently
     read every campaign win as a loss. */
+/* NARR-8. One epilogue, and it told you he did it and told nobody —
+   regardless of whether you had read seven of his pages or none of them. That
+   is the one thing `NARR-7` built the pages for: the cost of ignorance. The
+   top of the wall now depends on what you actually know when you get there,
+   and on whether you have been honest about your own lines on the way up. */
+export type EndingKind = 'known' | 'partial' | 'stranger'
+/* NARR-11 rescaled these. They were 5 and 2 out of seven pages; there are
+   fifteen now, so they are proportions rather than counts and cannot drift
+   apart from the journal again. */
+export const FINDABLE = JOURNAL.filter(j => j.id !== 7).length
+export const KNOWN_AT = Math.ceil(FINDABLE * 0.7)
+export const PARTIAL_AT = Math.ceil(FINDABLE * 0.3)
+
+/** What you understand when you get up there. */
+export function endingFor(s: GameState): EndingKind {
+  const pages = s.journal.length
+  return pages >= KNOWN_AT ? 'known' : pages >= PARTIAL_AT ? 'partial' : 'stranger'
+}
+/** Have you told the truth about your own first ascents? The game has been
+    keeping count, and it comes up at the top. */
+export function honestyOf(s: GameState): 'sandbagged' | 'sprayed' | 'fair' | 'none' {
+  const own = s.established
+  if (!own.length) return 'none'
+  const drift = own.reduce((a, e) => a + (e.claimed - e.real), 0) / own.length
+  // more than a full grade out, on average. One grade either way is an opinion,
+  // not a lie — every guidebook in the world disagrees with itself by that much.
+  return drift < -1 ? 'sandbagged' : drift > 1 ? 'sprayed' : 'fair'
+}
+
+/** Spraying your own grades earns Ego — checked when you put a line in the
+    book, because that is the moment you are doing it. */
+export function claimCurse(s: GameState): GameState {
+  return honestyOf(s) === 'sprayed' ? addCurse(s, 'sprayed') : s
+}
+
 export function endingStep(s: GameState, kind: 'told' | 'kept'): GameState {
-  return recordRun({ ...s, ending: kind, phase: 'runEnd', result: 'send' }, true)
+  return recordRun({ ...s, ending: `${endingFor(s)}-${kind}`,
+    phase: 'runEnd', result: 'send' }, true)
 }
 export function leaveEventStep(s: GameState): GameState {
-  return toMapNext({ ...s, eventId: null, eventResult: null, tier: s.tier + 1,
-    eventsSeen: s.eventId ? Array.from(new Set([...s.eventsSeen, s.eventId])) : s.eventsSeen })
+  return toMapNext(noteTrail({ ...s, eventId: null, eventResult: null, tier: s.tier + 1,
+    eventsSeen: s.eventId ? Array.from(new Set([...s.eventsSeen, s.eventId])) : s.eventsSeen },
+    trailNote(s)))
 }
 
 /* ========================= THE SPOTTER =============================
@@ -3435,6 +3993,14 @@ export function coach(s: GameState): string | null {
 }
 
 export const KEYWORDS: { name: string; text: string }[] = [
+  { name: 'What a hold reads', text: 'A hold you have not worked shows a range, not a number — you have not been on it yet. Beta makes it exact. That is what projecting buys.' },
+  { name: 'Opposition', text: 'A move that pulls sideways needs the other hand pulling back. Alone it is weaker; opposed by another sideways move it is stronger. Which hand you use is a decision.' },
+  { name: 'Resolve order', text: 'Lanes resolve in the order you placed them, and a hand that has already come off stops holding for the other one.' },
+  { name: 'The route acts', text: 'Every few turns the route does something, and always says so a turn beforehand. Greasing up, drying out, a gust, a flake coming off.' },
+  { name: 'Exposed', text: 'Past about two thirds of the way up, backing off costs an extra psyche. Walking away from something you had nearly done is not free.' },
+  { name: 'Clipping', text: 'On a rope, placing a piece resets your runout and, for one turn, lets you climb like somebody who is not going to hit the ground.' },
+  { name: 'Sequence', text: 'A plan held across turns. Meet its condition every turn and it pays out; miss once and it is gone.' },
+  { name: 'Boons', text: 'Found where gear is found. Gear gives you numbers; a boon changes a rule. The wild ones change how a turn feels.' },
   { name: 'Power / Contact', text: 'Your Power chips a hold\'s Grip. Its Bite chips your Contact. Both happen at once.' },
   { name: 'Bite / Grip', text: 'A hold\'s attack and its health. Grip to 0 works the hold; Contact to 0 burns your card.' },
   { name: 'Pump', text: 'Your health and your mana in one bar. Bonus cards spend it. Fill it and you fall.' },
@@ -3446,12 +4012,12 @@ export const KEYWORDS: { name: string; text: string }[] = [
   { name: 'Latch', text: 'Survives its first blow at 1 Contact instead of being destroyed.' },
   { name: 'Precise', text: '+2 Power against crimps and sharp crimps.' },
   { name: 'Friction', text: 'Ignores a sloper\'s Greasy penalty.' },
-  { name: 'Static', text: 'Takes 1 less Bite.' },
+  { name: 'Static', text: 'Takes 1 less Bite. A move made slowly and deliberately costs you less when it goes wrong.' },
   { name: 'Tough', text: 'Ignores Sharp and Razor when it blows.' },
   { name: 'Balance', text: 'Prevents a pinch\'s Squeeze.' },
   { name: 'Hooked', text: 'Cancels the extra hang tax a crux adds.' },
   { name: 'Snap', text: 'Outright clears any hold at Grip 3 or less.' },
-  { name: 'Commit', text: 'Clears any hold regardless of Grip, then burns out.' },
+  { name: 'Commit', text: 'A dyno. Roll to stick it — better fresh, worse pumped, better with feet on. Stick it and you skip the next hold as well. Miss and you are off it.' },
   { name: 'Guard', text: 'While it survives, the other hand lane takes 1 less Bite.' },
   { name: 'Momentum', text: '+1 Power for each point of flow.' },
   { name: 'Weight', text: '+1 Power for every other card you have on the board.' },
@@ -3459,7 +4025,7 @@ export const KEYWORDS: { name: string; text: string }[] = [
   { name: 'Peel', text: 'Draw a card when it blows.' },
   { name: 'Cycle', text: 'Draw a card when you place it.' },
   { name: 'Chip', text: 'Also damages the Grip of every other hold on the board.' },
-  { name: 'Greedy', text: '+2 Power while your pump is high.' },
+  { name: 'Greedy', text: 'Stronger the closer you are to coming off: +1 Power for every 2 pump you are carrying.' },
 ]
 
 
@@ -3478,6 +4044,64 @@ export function jit(a: number): number {
 // rebuilt every render — ~6KB of string building per frame for paths that
 // never change. Cached, with a cap so a long session cannot grow it forever.
 const PATHS = new Map<string, string>()
+/* RUN-8. Where each stage sits on the act map. In the engine rather than the
+   component because it is geometry, and geometry goes quietly out of bounds. */
+export const MAP_W = 352
+export const MAP_H = 212
+export const MAP_PAD = 26
+export const ACT_TERRAIN = ['FOREST', 'DESERT', 'ALPINE']
+export const MAP_TOP = 34        // the cliff line sits above this
+export const MAP_BOT = MAP_H - 26 // the road runs below it
+
+/* The first version swung the path by 0.28 of the width on a sine of the stage
+   index, which at nine stages is a ±99px zigzag — it read as a scribble rather
+   than a line up a hill. A path meanders; it does not oscillate. Amplitude is a
+   sixth of the width now and the period is set across the whole act rather than
+   per stage, so it drifts once or twice instead of switching back every step. */
+export function mapPoints(total: number, seed: number): [number, number][] {
+  const n = Math.max(1, total)
+  return Array.from({ length: n }, (_, i) => {
+    const t = n > 1 ? i / (n - 1) : 0
+    const x = MAP_W / 2 + Math.sin(t * Math.PI * 1.6 + seed * 0.7) * (MAP_W * 0.16)
+      + jit(seed * 31 + i) * 7
+    return [Math.max(MAP_PAD, Math.min(MAP_W - MAP_PAD, x)),
+      MAP_BOT - t * (MAP_BOT - MAP_TOP)]
+  })
+}
+/** The contours: arcs that bulge uphill and narrow toward the wall, rather than
+    the full-width ruled lines the first version drew. */
+export function mapContours(act: number, seed: number): { d: string; y: number }[] {
+  const rows = 4 + (act % 3)
+  const out: { d: string; y: number }[] = []
+  for (let k = 0; k < rows; k++) {
+    const t = rows > 1 ? k / (rows - 1) : 0
+    const y = MAP_BOT - t * (MAP_BOT - MAP_TOP) * 0.92
+    const span = MAP_W * 0.46 * (1 - t * 0.42)
+    const cx = MAP_W / 2 + jit(seed * 11 + k) * 10
+    const bulge = 9 + t * 7
+    let d = ''
+    for (let i = 0; i <= 24; i++) {
+      const u = i / 24
+      const x = cx - span + 2 * span * u
+      const yy = y - Math.sin(u * Math.PI) * bulge + jit(seed * 17 + k * 31 + i) * 1.6
+      d += `${i ? 'L' : 'M'}${x.toFixed(1)},${yy.toFixed(1)}`
+    }
+    out.push({ d, y })
+  }
+  return out
+}
+/** The wall, as a guidebook draws one: a line with hachures on the uphill side. */
+export function mapCliff(seed: number): { d: string; ticks: [number, number][] } {
+  const pts: [number, number][] = []
+  for (let i = 0; i <= 24; i++) {
+    const u = i / 24
+    pts.push([MAP_PAD - 4 + (MAP_W - (MAP_PAD - 4) * 2) * u,
+      MAP_TOP - 8 + Math.sin(u * 3.1) * 4 + jit(seed * 41 + i) * 1.5])
+  }
+  const d = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join('')
+  return { d, ticks: pts.filter((_, i) => i % 2 === 0) }
+}
+
 export function roughPath(w: number, h: number, seed: number, amp = 1.25, segs = 1): string {
   const key = `${w}|${h}|${seed}|${amp}|${segs}`
   const hit = PATHS.get(key)
