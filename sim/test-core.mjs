@@ -494,8 +494,13 @@ test('every climber has a signature that pays over a burn', () => {
      worth about half a hold on a twelve-hold route, and it measured bottom of
      the four at 8.2% against 12.4%. A signature that fires once is a footnote. */
   for (const a of E.ARCHETYPES) {
+    // over a burn, not once. betaGrip/dPower/dContact/settleMax all compound;
+    // so do noBeta (every hold stays a guess) and ignoreWeather (conditions
+    // nulled the whole climb). firstTurnPower alone would NOT count — it fires
+    // once, which is the footnote this guard was written to reject.
     const compounds = (a.betaGrip ?? 0) !== 0 || (a.dPower ?? 0) !== 0
       || (a.dContact ?? 0) !== 0 || a.settleMax !== undefined
+      || a.noBeta === true || a.ignoreWeather === true
     ok(compounds, `${a.name}'s signature does not do anything over a burn`)
     ok(a.sigText.length > 25, `${a.name}'s signature does not explain itself`)
     // the starting climber is the baseline the others are measured against, so
@@ -1734,7 +1739,8 @@ test('climbers unlock in order and the first is always available', () => {
   for (let i = 1; i < E.ARCHETYPES.length; i++)
     ok(E.ARCHETYPES[i].unlock > E.ARCHETYPES[i - 1].unlock,
       `${E.ARCHETYPES[i].name} unlocks no later than the one before`)
-  ok(!E.archUnlocked(E.ARCHETYPES[3], 1), 'the last climber is available at level 1')
+  ok(!E.archUnlocked(E.ARCHETYPES[E.ARCHETYPES.length - 1], 1),
+    'the last climber is available at level 1')
 })
 test('a phase summary describes every phase a boss has', () => {
   for (const r of E.ROUTES.filter(r => r.phases?.length)) {

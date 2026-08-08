@@ -1248,7 +1248,7 @@ if (SLOW) {
     // guard was failing on variance — the same fix the ladder guard needed
     const out = execSync('PROJECTS=0 node sim/run.mjs arch 600', { encoding: 'utf8' })
     const pcts = [...out.matchAll(/\s([\d.]+)%\s+\d+/g)].map(m => Number(m[1]))
-    ok(pcts.length === 4, `read ${pcts.length} climbers, expected 4`)
+    eq(pcts.length, E.ARCHETYPES.length, `read ${pcts.length} climbers, expected ${E.ARCHETYPES.length}`)
     const lo = Math.min(...pcts), hi = Math.max(...pcts)
     /* Floor back to 5 at v9.35. It was lowered to 4 at v9.32 to accommodate a
        drift rather than to fix it, which is the thing BAL-9 exists to prevent.

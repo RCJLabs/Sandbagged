@@ -1635,6 +1635,24 @@ export const ARCHETYPES: Archetype[] = [
     settleMax: 3, dContact: -2,
     loadout: L(['Open Hand', 3], ['Jug Haul', 2], ['Flag', 2], ['Heel Hook', 2],
       ['Gaston', 2], ['Shake Out', 1], ['Breathe', 2], ['Brush', 1]) },
+  /* META-7. The one climber built out of the hooks the engine already had and
+     nobody used: noBeta, ignoreWeather, firstTurnPower, dHand, dSkin. She never
+     rehearses — no beta ever banks, so every hold stays a guess and projecting
+     buys her nothing. noBeta is a blunt, heavy cost (projecting is a pillar), so
+     it is paid back not with one clever lever but with raw ability: nothing the
+     sky does touches her, her hand runs a card deeper, she reads a move tougher,
+     and she commits off the first one. An onsight is one try, so she gets no
+     extra burns — the compensation is being strong, not getting more goes. Her
+     deck reads the line as it goes (Sight the Line) rather than working it.
+     Landed at 7.7% against a 5% floor and a 1.37x spread — every lever below is
+     there because the sim asked for it, dHand:2 being a cliff to 11.8%. */
+  { id: 'onsight', name: 'The Onsighter', unlock: 16, gear: 'ball',
+    text: 'Walks up, ties in, and climbs it. Strong, unfussy, no tick marks.',
+    sig: 'Onsight', sigText: 'No beta ever — every hold stays a guess — but nothing the weather does touches you, your hand runs a card deeper, and you commit hard off the first move.',
+    noBeta: true, ignoreWeather: true, dHand: 1, dContact: 1, dSkin: 1, firstTurnPower: 2,
+    loadout: L(['Crimp Grip', 2], ['Open Hand', 2], ['Lock Off', 2], ['Mantle', 1],
+      ['Smear', 2], ['Flag', 1], ['Shake Out', 2], ['Breathe', 1],
+      ['Sight the Line', 1], ['Chalk Up', 1]) },
 ]
 export const archOf = (s: GameState) => ARCHETYPES[Math.min(s.arch, ARCHETYPES.length - 1)]
 export const archUnlocked = (a: Archetype, level: number) => level >= a.unlock
