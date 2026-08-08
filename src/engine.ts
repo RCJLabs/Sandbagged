@@ -577,10 +577,26 @@ export type BossPhase = {
   at: number; name: string; text: string
   allCrux?: boolean; dBite?: number; dTax?: number; lockLane?: number; noRest?: boolean
 }
+/* ROUTE-6. The weather window — ENG-20 measured conditions as the largest lever
+   in the game (46 points crisp→hot) and VIS-3 put them on the paper, but they
+   were fixed for a whole climb — a still morning stayed a still morning to the
+   top. On the alpine wall and the finale the window closes partway up: cloud
+   comes over, the wind gets under everything and your feet stop trusting the
+   rock. It is telegraphed a hold ahead like a phase, so it is a decision rather
+   than an ambush, and — like every condition in this game — it may move Bite
+   and Support but NEVER Power (the absolute rule from ENG-20). `dBite` sharpens
+   the whole route; `dSupport` is the feet going, which every deck feels. */
+export type WeatherWindow = {
+  at: number; dBite?: number; dSupport?: number
+  /** Shown a hold before it lands. */ warn: string
+  /** Shown when it arrives. */ text: string
+}
 export type RouteSpec = {
   name: string; grade: number; style: StyleKey
   clear: number; crux: number; feet: FeetKey; note: string; finale?: boolean
   phases?: BossPhase[]
+  /** ROUTE-6: the conditions turn partway up. */
+  window?: WeatherWindow
   roped?: boolean; pitches?: number
   /** An unclimbed line: no grade shown, dirty holds, yours to name. */
   fa?: boolean
@@ -613,6 +629,28 @@ export function phaseOf(s: GameState): BossPhase | null {
   let out: BossPhase | null = null
   for (const p of spec.phases) if (f >= p.at) out = p
   return out
+}
+
+/* ROUTE-6. The window is read off the height you START the turn at, exactly as
+   phaseOf is, so resolve and the preview agree — both call these before any
+   hold clears this turn. Its Bite lands in biteAgainst and its Support in
+   powerAgainst, which the preview already routes through, so it is exact for
+   free. */
+export function windowOf(s: GameState): WeatherWindow | null {
+  const spec = specOf(s)
+  const w = spec.window
+  if (!w) return null
+  const f = spec.clear ? s.cleared / spec.clear : 0
+  return f >= w.at ? w : null
+}
+/** What the sky is about to do, and how many holds away — so it is a decision. */
+export function windowNear(s: GameState): { w: WeatherWindow; away: number } | null {
+  const spec = specOf(s)
+  const w = spec.window
+  if (!w) return null
+  const f = spec.clear ? s.cleared / spec.clear : 0
+  if (f >= w.at) return null
+  return { w, away: Math.max(1, Math.ceil(w.at * spec.clear) - s.cleared) }
 }
 /* DES-4. Everything read in V-scale, which is one of the two scales people
    actually use. Font is the other, and the game is fussy enough about real
@@ -717,6 +755,12 @@ export const ROUTES: RouteSpec[] = [
   { name: 'The Lost Line', grade: 10, style: 'compression', clear: 15, crux: 6, feet: 'hard',
     finale: true,
     note: 'No chalk. No tick marks. No trail. Exactly as he left it.',
+    // ROUTE-6: the nine-day window the journal keeps circling. It holds while
+    // you climb the lower wall and shuts on the headwall — cloud over, the wind
+    // gets under everything, feet off. Bite and Support only; never Power.
+    window: { at: 0.65, dBite: 1, dSupport: -1,
+      warn: 'The light is going flat. Weather is coming in.',
+      text: 'The window shuts. Wind on the wall and nothing under your feet.' },
     phases: [
       { at: 0.35, name: 'The Traverse', dTax: 1,
         text: 'Forty feet sideways with nothing under you. The clock runs faster here.' },
@@ -2863,7 +2907,8 @@ export function powerAgainst(s: GameState, card: Card, hold: Hold, lane: number,
   // wet rock: your feet are worth less, which every deck feels
   const sup = feetCard
     ? Math.max(0, feetCard.support + gearMods(s.boardP ? s.gear : []).dSupport
-        + (WEATHER[s.weather]?.dSupport ?? 0))
+        + (WEATHER[s.weather]?.dSupport ?? 0)
+        + (windowOf(s)?.dSupport ?? 0))       // ROUTE-6: the feet stop trusting it
     : 0
   // Big Hands: Support normally favours one hand; this reaches both
   // Big Hands doubles what the feet give; it does not gate the default
@@ -2903,6 +2948,8 @@ export function biteAgainst(s: GameState, card: Card | null, hold: Hold, lane: n
   if (lane < 2 && s.boardP[1 - lane]?.fx === 'guard') b -= 1
   const ph = phaseOf(s)
   if (ph) b += ph.dBite ?? 0
+  const win = windowOf(s)                  // ROUTE-6: the window closes
+  if (win) b += win.dBite ?? 0
   if (s.inRun && s.topRope) b -= 1        // the rope is doing some of the work
   return Math.max(0, b)
 }
@@ -3093,6 +3140,14 @@ export function resolve(s: GameState, rng: RNG): GameState {
   const nowPh = phaseOf(out)
   if (nowPh && out.phaseSeen !== nowPh.name)
     out = { ...out, phaseSeen: nowPh.name, log: [...out.log, `— ${nowPh.name.toUpperCase()} — ${nowPh.text}`] }
+  // ROUTE-6: the window closing is logged the turn it lands (it did not apply
+  // last turn and does this one), and telegraphed a hold before, like a phase.
+  if (windowOf(out) && !windowOf(s))
+    out = { ...out, log: [...out.log, `— THE WINDOW — ${windowOf(out)!.text}`] }
+  else {
+    const near = windowNear(out)
+    if (near && near.away === 1) out = { ...out, log: [...out.log, `▸ ${near.w.warn}`] }
+  }
   const spec = specOf(s)
   if (cleared >= spec.clear)
     return { ...out, peakPump: Math.min(PUMP_MAX, Math.max(out.peakPump, out.pump)), phase: 'burnEnd', result: 'send', log: [...out.log, `Topped out. ${spec.name} goes.`] }

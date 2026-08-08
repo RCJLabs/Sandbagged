@@ -219,6 +219,64 @@ test('the preview is exact for every shape of deck on every kind of route', () =
   eq(worst.length, 0, `the preview is systematically wrong for: ${worst.join(' · ')}`)
 })
 
+group('weather window (ROUTE-6)')
+test('the window is telegraphed a hold before it lands and never touches Power', () => {
+  const finale = E.ROUTES.findIndex(r => r.finale)
+  const spec = E.ROUTES[finale]
+  const w = spec.window
+  ok(w, 'the finale carries a weather window')
+  ok(w.at > 0 && w.at < 1, 'the window lands partway up, not at the start or the top')
+  ok(w.warn && w.text, 'the window has a warning and an arrival line')
+  // ENG-20's absolute rule: conditions move Bite and Contact, never Power. The
+  // window mirrors the Weather type, which has no Power field at all — assert it.
+  ok(!('dPower' in w) && !('powerAll' in w) && !('dPowerAll' in w),
+    'a weather window must never carry a Power term')
+  const base = { ...E.freshRun(finale, 0, 5), inRun: true, skirmish: null,
+    weather: 1, rock: 0, boardH: [null, null, null], boardP: [null, null, null] }
+  const thresh = Math.ceil(w.at * spec.clear)
+  const before = { ...base, cleared: thresh - 1 }
+  const after = { ...base, cleared: thresh }
+  ok(!E.windowOf(before), 'the window is not active the hold before it lands')
+  const near = E.windowNear(before)
+  ok(near && near.away === 1, 'the window is telegraphed exactly one hold before it lands')
+  ok(E.windowOf(after), 'the window is active once you reach its height')
+  ok(!E.windowNear(after), 'there is nothing left to telegraph once it has landed')
+  // With no feet on, Support is 0 either way, so a move's Power is untouched by
+  // the window — it only ever reaches Bite and (with feet on) Support.
+  const card = E.spawn('Crimp Grip')
+  const hold = { name: 'crimp', grip: 5, bite: 3 }
+  eq(E.powerAgainst(after, card, hold, 0), E.powerAgainst(before, card, hold, 0),
+    'the window changed a move\'s Power, which conditions must never do')
+  eq(E.biteAgainst(after, card, hold, 0) - E.biteAgainst(before, card, hold, 0), w.dBite ?? 0,
+    'the window did not sharpen Bite by the amount it states')
+})
+test('the preview stays exact on the turn the window shuts', () => {
+  /* The window feeds Bite through biteAgainst and Support through powerAgainst,
+     both of which the preview already routes through — so it must be exact for
+     free. Forced to the window height so every measured turn has it shut. */
+  const finale = E.ROUTES.findIndex(r => r.finale)
+  const spec = E.ROUTES[finale]
+  const thresh = Math.ceil(spec.window.at * spec.clear)
+  const rng = new E.RNG(9091)
+  let seen = 0, bad = 0
+  for (let t = 0; t < 80; t++) {
+    let st = startClimb(finale, rng, { seed: Math.floor(rng.next() * 2 ** 31) })
+    st = E.autoPlay({ ...st, cleared: thresh }, rng)
+    ok(E.windowOf(st), 'the window should be shut at this height')
+    const lanes = [0, 1, 2].map(i => E.previewLane(st, i))
+    const predicted = lanes.filter(p => p.clears).length
+    const before = st.cleared
+    const next = E.resolve(st, rng)
+    const rewound = next.burn !== st.burn || next.cleared < before
+    if (!lanes.some(p => p.stick !== undefined) && !rewound) {
+      seen++
+      if (next.cleared - before !== predicted) bad++
+    }
+  }
+  ok(seen > 50, `only ${seen} turns measured with the window shut`)
+  eq(bad, 0, `the preview mismatched resolve on ${bad} of ${seen} turns with the window shut`)
+})
+
 test('lane outcomes and pump match resolve exactly', () => {
   const rng = new E.RNG(2027)
   let laneOk = 0, laneBad = 0, pumpOk = 0, pumpBad = 0

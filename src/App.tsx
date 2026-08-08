@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.41 — EVT-4: events that remember
+// SANDBAGGED v9.42 — ROUTE-6: the weather window
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -28,7 +28,7 @@ import {
   pickGearStep, pileFromHand, playBonusStep, postOpen, postTalk, powerAgainst,
   previewLane, previewPump, priceOf, recordRun, rerollCost, rerollStep, resolve,
   rollEvent, roughPath, saveGame, seedCode, seqById, seqNeedText, sigById, skirmishRoute,
-  slotSummary, slotsUsed, spawn, specFromEstablished, specOf, startBurn, stockShop,
+  slotSummary, slotsUsed, spawn, specFromEstablished, specOf, startBurn, stockShop, windowNear, windowOf,
   styleMods, tagCounts, tagOf, takeOfferStep, takeTwoStep, vanOpen, walkAwayStep,
   wipeSlot, xpForSend, xpMult, xpToNext,
 } from './engine'
@@ -879,7 +879,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.41 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.42 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2666,6 +2666,20 @@ function startTutorial() {
               {nx.away} HOLD{nx.away === 1 ? '' : 'S'} TO {nx.p.name.toUpperCase()}</b>
             {nx.p.text}</div>)
       })()}
+      {/* ROUTE-6: the weather window — telegraphed a hold ahead, then live. */}
+      {st.phase === 'climb' ? (windowOf(st) ? (
+        <div className="spot" role="status" aria-live="polite"
+          style={{ borderLeftColor: 'var(--blue)' }}>
+          <b style={{ color: 'var(--blue)' }}>THE WINDOW HAS SHUT</b>{windowOf(st)!.text}</div>
+      ) : (() => {
+        const wn = windowNear(st)
+        if (!wn || wn.away > 2) return null
+        return (
+          <div className="spot" role="status" aria-live="polite"
+            style={{ borderLeftColor: 'var(--blue)' }}>
+            <b style={{ color: 'var(--blue)' }}>
+              WEATHER · {wn.away} HOLD{wn.away === 1 ? '' : 'S'} OFF</b>{wn.w.warn}</div>)
+      })()) : null}
       {tip ? <div className="spot" role="status" aria-live="polite">
         <b>FROM THE GROUND</b>{tip}</div> : null}
       <div className="log">{st.log.slice(-3).map((l, i) => <div key={i}>{l}</div>)}</div>
