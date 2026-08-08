@@ -351,6 +351,44 @@ test('reading is information only — it never changes how a turn resolves', () 
   ok(seen > 60, `only ${seen} turns compared`)
 })
 
+group('accessibility (A11Y-4)')
+test('haptics ride their own switch, not the sound one', () => {
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const buzzes = [...app.matchAll(/buzz\([^;]*?\)/g)].map(m => m[0])
+  ok(buzzes.length >= 3, `only ${buzzes.length} buzz calls found`)
+  for (const b of buzzes)
+    ok(/st\.haptics|,\s*true\)/.test(b), `a buzz still reads the sound setting: ${b}`)
+  ok(/HAPTICS \{st\.haptics/.test(app), 'there is no HAPTICS toggle in settings')
+  ok(/ASSIST \{st\.assist/.test(app), 'there is no ASSIST toggle in settings')
+})
+test('the assist shows a hold exactly, and shows the real grip', () => {
+  const h = { name: 'crux', grip: 8, bite: 3, crux: true, clean: false, wobble: 1 }
+  const off = { ...E.freshRun(4, 0, 1), inRun: true, assist: false, beta: [] }
+  const gOff = E.gripShown(off, h), gOn = E.gripShown({ ...off, assist: true }, h)
+  ok(!gOff.sure && gOff.hi > gOff.lo, 'without assist an unworked hold should read as a range')
+  ok(gOn.sure && gOn.lo === gOn.hi, 'with assist a hold should read as one exact number')
+  eq(gOn.lo, gOff.hi, 'the assist showed something other than the hold\'s real grip')
+})
+test('the assist is display only — it never changes how a turn resolves', () => {
+  /* The uncertainty is a pillar, so the assist may only change what you SEE.
+     A turn must resolve identically with it on or off. */
+  const rng = new E.RNG(4242)
+  let seen = 0
+  for (let t = 0; t < 80; t++) {
+    let s = startClimb(4 + rng.int(5), rng, { seed: Math.floor(rng.next() * 2 ** 31) })
+    if (s.phase !== 'climb') continue
+    s = E.autoPlay(s, rng)
+    const plain = E.resolve({ ...s, assist: false }, new E.RNG(7))
+    const asst = E.resolve({ ...s, assist: true }, new E.RNG(7))
+    seen++
+    eq(asst.cleared, plain.cleared, 'the assist changed how many holds were worked')
+    eq(asst.pump, plain.pump, 'the assist changed the pump')
+    eq(JSON.stringify(asst.boardH.map(h => h?.grip ?? null)),
+      JSON.stringify(plain.boardH.map(h => h?.grip ?? null)), 'the assist changed a grip underneath')
+  }
+  ok(seen > 60, `only ${seen} turns compared`)
+})
+
 test('lane outcomes and pump match resolve exactly', () => {
   const rng = new E.RNG(2027)
   let laneOk = 0, laneBad = 0, pumpOk = 0, pumpBad = 0

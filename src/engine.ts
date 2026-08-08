@@ -267,6 +267,14 @@ export type GameState = {
   talkReply: string | null
   coaching: boolean
   sound: boolean
+  /** A11Y-4: haptics on their own switch. The buzz used to ride on `sound`, so
+      you could not have one without the other. */
+  haptics: boolean
+  /** A11Y-4: an assist that shows every hold's grip exactly instead of a range.
+      Display only — the grip underneath and everything resolve does with it are
+      unchanged — so it trades the guessing game for clarity without touching a
+      single number. */
+  assist: boolean
   cbSafe: boolean
   motion: boolean
   textScale: number
@@ -391,7 +399,7 @@ type SaveData = {
   dailyDay?: string; dailyScore?: number; dailyBest?: number; dailyStreak?: number
   mutators?: string[]
   runs?: number; falls?: number; ending?: string; topRope?: boolean; history?: RunRecord[]
-  coaching?: boolean; sound?: boolean; cbSafe?: boolean; tutorialDone?: boolean
+  coaching?: boolean; sound?: boolean; haptics?: boolean; assist?: boolean; cbSafe?: boolean; tutorialDone?: boolean
   motion?: boolean; textScale?: number
   run: { deck: string[]; tier: number; skin: number; seed: number; act: number
     gear: string[]; boons: string[]; cash: number; psyche: number; runSeed: number
@@ -404,7 +412,7 @@ export function saveGame(s: GameState) {
     const d: SaveData = {
       v: SAVE_FILE_VERSION, level: s.level, xp: s.xp, owned: s.owned,
       sends: s.sends, wins: s.wins, journal: s.journal, loadout: s.loadout,
-      style: s.style, styleMax: s.styleMax, seen: s.seen, coaching: s.coaching, sound: s.sound, cbSafe: s.cbSafe,
+      style: s.style, styleMax: s.styleMax, seen: s.seen, coaching: s.coaching, sound: s.sound, haptics: s.haptics, assist: s.assist, cbSafe: s.cbSafe,
       tutorialDone: s.tutorialDone, motion: s.motion, textScale: s.textScale,
       arch: s.arch, loadouts: s.loadouts, book: s.book, bestCircuit: s.bestCircuit, ticked: s.ticked, established: s.established, hints: s.hints, grades: s.grades, tweak: s.tweak,
       dailyDay: s.dailyDay, dailyScore: s.dailyScore, dailyBest: s.dailyBest, dailyStreak: s.dailyStreak,
@@ -465,7 +473,7 @@ export function loadGame(slot = 0): Partial<GameState> {
       journal: d.journal ?? [],
       ...(d.loadout && d.loadout.length === DECK_SIZE ? { loadout: d.loadout } : {}),
       style: d.style ?? 0, styleMax: d.styleMax ?? 0, seen: d.seen ?? [],
-      coaching: d.coaching ?? true, sound: d.sound ?? true, cbSafe: d.cbSafe ?? false,
+      coaching: d.coaching ?? true, sound: d.sound ?? true, haptics: d.haptics ?? true, assist: d.assist ?? false, cbSafe: d.cbSafe ?? false,
       tutorialDone: d.tutorialDone ?? false,
       motion: d.motion ?? true, textScale: d.textScale ?? 0,
       arch: d.arch ?? 0,
@@ -2554,7 +2562,7 @@ export function carryOver(s: GameState): Partial<GameState> {
     loadouts: s.loadouts, styleMax: s.styleMax, tutorialDone: s.tutorialDone,
     slot: s.slot, ending: s.ending, tweak: s.tweak,
     // settings are the player's, not the run's
-    sound: s.sound, motion: s.motion, cbSafe: s.cbSafe, textScale: s.textScale,
+    sound: s.sound, haptics: s.haptics, assist: s.assist, motion: s.motion, cbSafe: s.cbSafe, textScale: s.textScale,
     coaching: s.coaching, hints: s.hints, topRope: s.topRope, grades: s.grades,
     dailyDay: s.dailyDay, dailyScore: s.dailyScore,
     dailyBest: s.dailyBest, dailyStreak: s.dailyStreak,
@@ -2595,7 +2603,7 @@ export function freshRun(routeIdx: number, deckTier: number, seed: number): Game
     runout: 0, lastPiece: -1, pitch: 0, cash: 0, psyche: PSYCHE_MAX,
     circuit: false, circuitScore: 0, bestCircuit: 0, slot: 0, runSeed: 0, ending: '', topRope: true, history: [], runs: 0, falls: 0,
     shopCards: [], shopGear: [], bought: [],
-    coaching: true, sound: true, cbSafe: false, motion: true, textScale: 0,
+    coaching: true, sound: true, haptics: true, assist: false, cbSafe: false, motion: true, textScale: 0,
     tutorialDone: false,
     fxLane: ['', '', ''], fxTick: 0, gear: [], boons: [], gearOffers: [], savedBlow: false, peakPump: 0, clipped: false, bonusUsed: false, line: 0, rerolls: 0, mutators: [], seq: null, readAhead: 0, order: [], routeMove: null, arch: 0,
     loadouts: ARCHETYPES.map(a => a.loadout.slice()), reroll: 0, book: {}, ticked: [], hints: true, grades: 'v',
@@ -2944,7 +2952,9 @@ export const holdKnown = (s: GameState, h: Hold) => s.beta.includes(h.name)
     of it this particular hold sits on. */
 export function gripShown(s: GameState, h: Hold): { lo: number; hi: number; sure: boolean } {
   const g = gripFor(s, h)
-  if (holdKnown(s, h)) return { lo: g, hi: g, sure: true }
+  // A11Y-4: the assist reads it exactly, the way projecting or beta would — a
+  // clarity option, not a change to the grip itself.
+  if (holdKnown(s, h) || s.assist) return { lo: g, hi: g, sure: true }
   const base = Math.max(1, g - (h.wobble ?? 0))
   return { lo: base, hi: base + WOBBLE, sure: false }
 }

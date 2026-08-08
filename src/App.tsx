@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.46 — ROUTE-8: choose your line
+// SANDBAGGED v9.47 — A11Y-4: haptics on their own switch, and an assist
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -575,15 +575,15 @@ export default function App() {
     setUndo([])
     const rng = new RNG(st.seed)
     const next = resolve(st, rng)
-    sfx('commit', st.sound); buzz(12, st.sound)
+    sfx('commit', st.sound); buzz(12, st.haptics)
     // stagger the outcome so the trade reads as a sequence, not a jump cut
     if (next.fxLane.includes('clear')) window.setTimeout(() => sfx('clear', st.sound), 150)
     if (next.fxLane.includes('blow')) window.setTimeout(() => sfx('blow', st.sound), 190)
     if (next.phaseSeen !== st.phaseSeen && next.phaseSeen) {
-      window.setTimeout(() => sfx('phase', st.sound), 240); buzz([0, 25, 40, 25], st.sound)
+      window.setTimeout(() => sfx('phase', st.sound), 240); buzz([0, 25, 40, 25], st.haptics)
     }
-    if (next.result === 'fall') { window.setTimeout(() => sfx('fall', st.sound), 300); buzz([0, 40, 60, 90], st.sound) }
-    if (next.result === 'send') { window.setTimeout(() => sfx('send', st.sound), 220); buzz([0, 30, 40, 30, 40, 80], st.sound) }
+    if (next.result === 'fall') { window.setTimeout(() => sfx('fall', st.sound), 300); buzz([0, 40, 60, 90], st.haptics) }
+    if (next.result === 'send') { window.setTimeout(() => sfx('send', st.sound), 220); buzz([0, 30, 40, 30, 40, 80], st.haptics) }
     setSt({ ...next, seed: rng.s })
   }
   function bail() {
@@ -879,7 +879,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.46 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.47 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -1016,6 +1016,17 @@ function startTutorial() {
               onClick={() => { const on = !st.sound; if (on) sfx('lift', true); setSt(x => ({ ...x, sound: on })) }}>
               SOUND {st.sound ? 'ON' : 'OFF'}</button>
           </div>
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            {/* A11Y-4: haptics on their own switch, no longer riding on sound */}
+            <button className={`btn${st.haptics ? ' go' : ''}`} style={{ flex: 1, padding: 11 }}
+              onClick={() => { const on = !st.haptics; if (on) buzz(12, true); setSt(x => ({ ...x, haptics: on })) }}>
+              HAPTICS {st.haptics ? 'ON' : 'OFF'}</button>
+            <button className={`btn${st.assist ? ' go' : ''}`} style={{ flex: 1, padding: 11 }}
+              onClick={() => setSt(x => ({ ...x, assist: !x.assist }))}>
+              ASSIST {st.assist ? 'ON' : 'OFF'}</button>
+          </div>
+          {st.assist ? <div className="sub" style={{ marginTop: 3 }}>
+            Every hold reads its exact Grip. Clearer, but you give up the guessing game.</div> : null}
           <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
             <button className={`btn${st.motion ? '' : ' go'}`} style={{ flex: 1, padding: 11 }}
               onClick={() => setSt(x => ({ ...x, motion: !x.motion }))}>

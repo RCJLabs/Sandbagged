@@ -1575,13 +1575,13 @@ test('a new expedition keeps everything that is yours', () => {
     established: [{ name: 'Quiet Arete', claimed: 5, real: 8, act: 0, burns: 2 }],
     history: [{ seed: 1, arch: 0, style: 0, rope: false, circuit: false, act: 1, tier: 2, won: false, cause: 'x', sends: 3, deck: 15 }],
     bestCircuit: 9, styleMax: 3, tutorialDone: true, slot: 2, ending: 'told',
-    sound: false, motion: false, cbSafe: true, textScale: 2, coaching: false,
+    sound: false, haptics: false, assist: true, motion: false, cbSafe: true, textScale: 2, coaching: false,
     hints: false, topRope: false, loadouts: [['Crimp Grip']],
   }
   const carried = { ...E.newRun(99, E.DEFAULT_LOADOUT, 0, 0, []), ...E.carryOver(lived) }
   // everything the save file keeps must survive starting a new expedition
   for (const k of ['level', 'xp', 'sends', 'wins', 'runs', 'falls', 'bestCircuit',
-    'styleMax', 'tutorialDone', 'slot', 'ending', 'sound', 'motion', 'cbSafe',
+    'styleMax', 'tutorialDone', 'slot', 'ending', 'sound', 'haptics', 'assist', 'motion', 'cbSafe',
     'textScale', 'coaching', 'hints', 'topRope'])
     eq(JSON.stringify(carried[k]), JSON.stringify(lived[k]), `a new run lost ${k}`)
   for (const k of ['owned', 'seen', 'book', 'ticked', 'established', 'history', 'loadouts'])
