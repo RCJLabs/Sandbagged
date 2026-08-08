@@ -1359,6 +1359,23 @@ if (SLOW) {
     ok(pcts.length >= 3, 'could not read completion from the harness')
     for (const p of pcts) ok(p > 15 && p < 85, `completion ${p}% is outside 15–85%`)
   })
+  test('ROUTE-8: the line you pick is a choice, not a free win', () => {
+    /* The direct used to be −2 holds and +3 cruxes and measured the EASIEST of
+       the three — a shorter climb banks less pump than extra cruxes ever cost —
+       so always taking it beat always-guide by six points of free completion.
+       The lines trade texture now, not difficulty: none may beat the guide by
+       more than a hair, and none may sink into a trap far below it. */
+    const full = line => {
+      const out = execSync(`LINE=${line} SHARP_AT=99 node sim/run.mjs campaign 150`, { encoding: 'utf8' })
+      const pcts = [...out.matchAll(/completion\s+([\d.]+)%/g)].map(m => Number(m[1]))
+      return pcts[pcts.length - 1]
+    }
+    const guide = full('off'), direct = full(1), traverse = full(2)
+    ok(direct <= guide + 3, `the direct completes ${direct}% against the guide's ${guide}% — a free win`)
+    ok(traverse <= guide + 3, `the traverse completes ${traverse}% against the guide's ${guide}% — a free win`)
+    ok(direct >= guide - 8 && traverse >= guide - 8,
+      `a line is a trap: guide ${guide}, direct ${direct}, traverse ${traverse}`)
+  })
 }
 
 /* ---- report ------------------------------------------------------------ */

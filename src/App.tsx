@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.45 — META-7: the Onsighter
+// SANDBAGGED v9.46 — ROUTE-8: choose your line
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -879,7 +879,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.45 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.46 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

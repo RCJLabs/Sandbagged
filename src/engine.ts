@@ -181,12 +181,26 @@ export const HISTORY_MAX = 20
    about your deck rather than about difficulty.                       */
 export type Line = { id: string; name: string; text: string
   dClear?: number; dCrux?: number; dTax?: number }
+/* ROUTE-8. The three were a false choice. "The direct" was −2 holds and +3
+   cruxes and measured the EASIEST line of the three — 53% against the guide's
+   47% and the traverse's 42% — because a shorter climb banks less pump than a
+   handful of extra cruxes ever costs, so always taking the direct was strictly
+   best (the auto-picker beat always-guide by six points of free completion).
+   The lever choice is the whole story: tax is enormous (±1 swung a line ~27
+   points — the compounding trap this project has hit five times), grip is
+   superlinear and nearly as violent, and crux is almost free. Only hold count
+   is a medium lever, and shorter is always easier. So the lines trade TEXTURE,
+   not difficulty: the direct keeps just one fewer hold but four more cruxes, a
+   short cruxy line that a powerful deck eats and a weak one walls on; the
+   traverse drops two cruxes at the same height, the safe way past the hard
+   moves. All three land within a point of the guide for a default deck — none a
+   free win, none a trap — with the deck lean underneath. See the balance guard. */
 export const LINES: Line[] = [
   { id: 'guide', name: 'As it goes', text: 'The line in the book. No arguments.' },
-  { id: 'direct', name: 'The direct', dClear: -2, dCrux: 3,
-    text: 'Straight up it. Two fewer holds to work, but three more cruxes on the way.' },
-  { id: 'traverse', name: 'The traverse', dClear: 1, dCrux: -2,
-    text: 'Out left and back in. One more hold, two fewer cruxes, and a longer day.' },
+  { id: 'direct', name: 'The direct', dClear: -1, dCrux: 4,
+    text: 'Straight up it. One fewer hold to work, but four more cruxes on the way.' },
+  { id: 'traverse', name: 'The traverse', dCrux: -2,
+    text: 'Out left and back in, past the worst of it. Two fewer cruxes for the same height.' },
 ]
 export type RunRecord = {
   seed: number; arch: number; style: number; rope: boolean; circuit: boolean
