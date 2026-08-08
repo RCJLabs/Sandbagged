@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.42 — ROUTE-6: the weather window
+// SANDBAGGED v9.43 — ROUTE-7: boss signatures
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -879,7 +879,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.42 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.43 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -1261,6 +1261,11 @@ function startTutorial() {
                 {r.phases?.length ? (
                   <div className="sub" style={{ color: 'var(--tan)' }}>
                     it changes at {phaseSummary(r)}</div>) : null}
+                {/* ROUTE-6/7: the weather turns high on this one — a decision
+                    you can make on the ground, before you commit to it. */}
+                {r.window ? (
+                  <div className="sub" style={{ color: 'var(--blue)' }}>
+                    the window shuts at {Math.round(r.window.at * 100)}% — be through the hard climbing before it does</div>) : null}
                 {r.finale ? (
                   <div className="sub" style={{
                     color: st.journal.length >= JOURNAL.length - 1 ? 'var(--green)' : 'var(--red)' }}>

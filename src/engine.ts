@@ -743,8 +743,18 @@ export const ROUTES: RouteSpec[] = [
   { name: 'Summit Block', grade: 9, style: 'compression', clear: 13, crux: 4, feet: 'hard',
     signature: 'lastjug',
     note: 'Last thing between you and the drainage he wrote about.',
+    // ROUTE-7: the alpine act is the weather act. Summit Block's signature is
+    // the gale that funnels over the roof — the same difficulty as before (the
+    // Roof's +1 Bite, then no rest over the lip), reflavoured as weather so it
+    // reads as a sibling of the finale's — but NOT a persistent ROUTE-6
+    // window: BAL-13 proved that any added Bite on the act-3 critical path
+    // charges the Comp Kid (one less burn) and the Alpinist (-2 Contact) twice,
+    // and a window that reaches the top does exactly that. Measured: it dropped
+    // the Comp Kid to 5.0 against a floor of 5. So the mechanic stays on the
+    // finale, which few runs reach, and this boss keeps its numbers.
     phases: [
-      { at: 0.45, name: 'The Roof', dBite: 1, text: 'Out horizontal. Everything bites harder out here.' },
+      { at: 0.45, name: 'The Gale', dBite: 1,
+        text: 'The wind funnels over the roof. Everything bites harder in it.' },
       { at: 0.8, name: 'The Lip', noRest: true, text: 'Over the lip. Nowhere left to shake out.' }] },
 
   { name: 'The Cornice', grade: 8, style: 'slab', clear: 14, crux: 3, feet: 'hard',

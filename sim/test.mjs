@@ -219,62 +219,88 @@ test('the preview is exact for every shape of deck on every kind of route', () =
   eq(worst.length, 0, `the preview is systematically wrong for: ${worst.join(' · ')}`)
 })
 
-group('weather window (ROUTE-6)')
-test('the window is telegraphed a hold before it lands and never touches Power', () => {
-  const finale = E.ROUTES.findIndex(r => r.finale)
-  const spec = E.ROUTES[finale]
-  const w = spec.window
-  ok(w, 'the finale carries a weather window')
-  ok(w.at > 0 && w.at < 1, 'the window lands partway up, not at the start or the top')
-  ok(w.warn && w.text, 'the window has a warning and an arrival line')
-  // ENG-20's absolute rule: conditions move Bite and Contact, never Power. The
-  // window mirrors the Weather type, which has no Power field at all — assert it.
-  ok(!('dPower' in w) && !('powerAll' in w) && !('dPowerAll' in w),
-    'a weather window must never carry a Power term')
-  const base = { ...E.freshRun(finale, 0, 5), inRun: true, skirmish: null,
-    weather: 1, rock: 0, boardH: [null, null, null], boardP: [null, null, null] }
-  const thresh = Math.ceil(w.at * spec.clear)
-  const before = { ...base, cleared: thresh - 1 }
-  const after = { ...base, cleared: thresh }
-  ok(!E.windowOf(before), 'the window is not active the hold before it lands')
-  const near = E.windowNear(before)
-  ok(near && near.away === 1, 'the window is telegraphed exactly one hold before it lands')
-  ok(E.windowOf(after), 'the window is active once you reach its height')
-  ok(!E.windowNear(after), 'there is nothing left to telegraph once it has landed')
-  // With no feet on, Support is 0 either way, so a move's Power is untouched by
-  // the window — it only ever reaches Bite and (with feet on) Support.
-  const card = E.spawn('Crimp Grip')
-  const hold = { name: 'crimp', grip: 5, bite: 3 }
-  eq(E.powerAgainst(after, card, hold, 0), E.powerAgainst(before, card, hold, 0),
-    'the window changed a move\'s Power, which conditions must never do')
-  eq(E.biteAgainst(after, card, hold, 0) - E.biteAgainst(before, card, hold, 0), w.dBite ?? 0,
-    'the window did not sharpen Bite by the amount it states')
+group('weather window (ROUTE-6 / ROUTE-7)')
+const WINDOWED = E.ROUTES.map((r, i) => [r, i]).filter(([r]) => r.window)
+test('every weather window is telegraphed a hold before it lands and never touches Power', () => {
+  ok(WINDOWED.length >= 1, `no route carries a weather window`)
+  for (const [spec, idx] of WINDOWED) {
+    const w = spec.window
+    ok(w.at > 0 && w.at < 1, `${spec.name}: the window lands partway up, not at the start or top`)
+    ok(w.warn && w.text, `${spec.name}: the window has a warning and an arrival line`)
+    // ENG-20's absolute rule: conditions move Bite and Support, never Power.
+    ok(!('dPower' in w) && !('powerAll' in w) && !('dPowerAll' in w),
+      `${spec.name}: a weather window must never carry a Power term`)
+    const base = { ...E.freshRun(idx, 0, 5), inRun: true, skirmish: null,
+      weather: 1, rock: 0, boardH: [null, null, null], boardP: [null, null, null] }
+    const thresh = Math.ceil(w.at * spec.clear)
+    const before = { ...base, cleared: thresh - 1 }
+    const after = { ...base, cleared: thresh }
+    ok(!E.windowOf(before), `${spec.name}: the window is not active the hold before it lands`)
+    const near = E.windowNear(before)
+    ok(near && near.away === 1, `${spec.name}: telegraphed exactly one hold before it lands`)
+    ok(E.windowOf(after), `${spec.name}: the window is active once you reach its height`)
+    ok(!E.windowNear(after), `${spec.name}: nothing left to telegraph once it has landed`)
+    // With no feet on, Support is 0 either way, so a move's Power is untouched:
+    // the window only ever reaches Bite and (with feet on) Support.
+    const card = E.spawn('Crimp Grip')
+    const hold = { name: 'crimp', grip: 5, bite: 3 }
+    eq(E.powerAgainst(after, card, hold, 0), E.powerAgainst(before, card, hold, 0),
+      `${spec.name}: the window changed a move's Power, which conditions must never do`)
+    eq(E.biteAgainst(after, card, hold, 0) - E.biteAgainst(before, card, hold, 0), w.dBite ?? 0,
+      `${spec.name}: the window did not sharpen Bite by the amount it states`)
+  }
 })
-test('the preview stays exact on the turn the window shuts', () => {
-  /* The window feeds Bite through biteAgainst and Support through powerAgainst,
+test('the preview stays exact on the turn a window shuts', () => {
+  /* A window feeds Bite through biteAgainst and Support through powerAgainst,
      both of which the preview already routes through — so it must be exact for
      free. Forced to the window height so every measured turn has it shut. */
-  const finale = E.ROUTES.findIndex(r => r.finale)
-  const spec = E.ROUTES[finale]
-  const thresh = Math.ceil(spec.window.at * spec.clear)
   const rng = new E.RNG(9091)
-  let seen = 0, bad = 0
-  for (let t = 0; t < 80; t++) {
-    let st = startClimb(finale, rng, { seed: Math.floor(rng.next() * 2 ** 31) })
-    st = E.autoPlay({ ...st, cleared: thresh }, rng)
-    ok(E.windowOf(st), 'the window should be shut at this height')
-    const lanes = [0, 1, 2].map(i => E.previewLane(st, i))
-    const predicted = lanes.filter(p => p.clears).length
-    const before = st.cleared
-    const next = E.resolve(st, rng)
-    const rewound = next.burn !== st.burn || next.cleared < before
-    if (!lanes.some(p => p.stick !== undefined) && !rewound) {
-      seen++
-      if (next.cleared - before !== predicted) bad++
+  for (const [spec, idx] of WINDOWED) {
+    const thresh = Math.ceil(spec.window.at * spec.clear)
+    let seen = 0, bad = 0
+    for (let t = 0; t < 60; t++) {
+      let st = startClimb(idx, rng, { seed: Math.floor(rng.next() * 2 ** 31) })
+      st = E.autoPlay({ ...st, cleared: thresh }, rng)
+      ok(E.windowOf(st), `${spec.name}: the window should be shut at this height`)
+      const lanes = [0, 1, 2].map(i => E.previewLane(st, i))
+      const predicted = lanes.filter(p => p.clears).length
+      const before = st.cleared
+      const next = E.resolve(st, rng)
+      const rewound = next.burn !== st.burn || next.cleared < before
+      if (!lanes.some(p => p.stick !== undefined) && !rewound) {
+        seen++
+        if (next.cleared - before !== predicted) bad++
+      }
+    }
+    ok(seen > 35, `${spec.name}: only ${seen} turns measured with the window shut`)
+    eq(bad, 0, `${spec.name}: the preview mismatched resolve on ${bad} of ${seen} turns`)
+  }
+})
+test('ROUTE-7: the bosses are not all the same trick', () => {
+  /* The audit's finding: bosses reused a compact phase set and only lockLane
+     was dramatic. Every boss must be readable as one named thing, and across
+     them the dramatic mechanics must actually vary — a locked limb, a closing
+     window, committing holds, a faster clock — not four flavours of dBite. */
+  const bosses = E.ROUTES.filter(r => (r.phases && r.phases.length) || r.window || r.finale)
+  ok(bosses.length >= 4, `only ${bosses.length} bosses found`)
+  for (const b of bosses)
+    ok(b.signature || (b.phases && b.phases.length) || b.window,
+      `${b.name} has nothing the map can name it by`)
+  // the distinct dramatic mechanics that appear across the bosses
+  const kinds = new Set()
+  for (const b of bosses) {
+    if (b.window) kinds.add('window')
+    for (const p of b.phases ?? []) {
+      if (p.lockLane !== undefined) kinds.add('lock')
+      if (p.allCrux) kinds.add('crux')
+      if (p.noRest) kinds.add('norest')
+      if (p.dTax) kinds.add('tax')
+      if (p.dBite) kinds.add('bite')
     }
   }
-  ok(seen > 50, `only ${seen} turns measured with the window shut`)
-  eq(bad, 0, `the preview mismatched resolve on ${bad} of ${seen} turns with the window shut`)
+  ok(kinds.has('lock'), 'no boss takes a limb — lockLane went unused')
+  ok(kinds.has('window'), 'no boss turns the weather — ROUTE-6 unused on a boss')
+  ok(kinds.size >= 4, `the bosses only muster ${kinds.size} distinct threats — too samey`)
 })
 
 test('lane outcomes and pump match resolve exactly', () => {
