@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.43 — ROUTE-7: boss signatures
+// SANDBAGGED v9.44 — RUN-9: read the sequence
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -879,7 +879,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.43 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.44 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -1266,6 +1266,9 @@ function startTutorial() {
                 {r.window ? (
                   <div className="sub" style={{ color: 'var(--blue)' }}>
                     the window shuts at {Math.round(r.window.at * 100)}% — be through the hard climbing before it does</div>) : null}
+                {st.runDeck.some(c => c.read) || st.customDeck?.some(c => c.read) ? (
+                  <div className="sub" style={{ color: 'var(--green)' }}>
+                    you can read the sequence on this one</div>) : null}
                 {r.finale ? (
                   <div className="sub" style={{
                     color: st.journal.length >= JOURNAL.length - 1 ? 'var(--green)' : 'var(--red)' }}>
@@ -2685,6 +2688,20 @@ function startTutorial() {
             <b style={{ color: 'var(--blue)' }}>
               WEATHER · {wn.away} HOLD{wn.away === 1 ? '' : 'S'} OFF</b>{wn.w.warn}</div>)
       })()) : null}
+      {/* RUN-9: what you have read off the wall — the next holds, nearest first,
+          each as a range until you have been on it. Information you paid for. */}
+      {st.phase === 'climb' && st.readAhead > 0 ? (() => {
+        const up = st.holdDeck.slice(-st.readAhead).reverse()
+        if (!up.length) return null
+        return (
+          <div className="spot" role="status" aria-live="polite"
+            style={{ borderLeftColor: 'var(--green)' }}>
+            <b style={{ color: 'var(--green)' }}>COMING UP</b>
+            {up.map((h, i) => {
+              const g = gripShown(st, h)
+              return `${i ? ' · ' : ''}${holdLabel(h)} ${g.sure ? g.lo : `${g.lo}–${g.hi}`}`
+            }).join('')}</div>)
+      })() : null}
       {tip ? <div className="spot" role="status" aria-live="polite">
         <b>FROM THE GROUND</b>{tip}</div> : null}
       <div className="log">{st.log.slice(-3).map((l, i) => <div key={i}>{l}</div>)}</div>

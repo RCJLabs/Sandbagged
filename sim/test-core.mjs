@@ -1601,7 +1601,7 @@ test('there is one way to play a card', () => {
     'playBonusStep is declared more than once')
   // the screen must not re-implement any of the rules
   const screen = app.slice(app.indexOf('function playBonus('), app.indexOf('function playBonus(') + 900)
-  for (const rule of ['c.shed', 'c.draw', 'c.gripCut', 'c.powerAll', 'c.clip', 'c.seq'])
+  for (const rule of ['c.shed', 'c.draw', 'c.gripCut', 'c.powerAll', 'c.clip', 'c.seq', 'c.read'])
     ok(!screen.includes(rule), `the screen still handles ${rule} itself`)
   // and the harness must call it rather than its own
   const auto = engine.slice(engine.indexOf('export function autoPlay'))

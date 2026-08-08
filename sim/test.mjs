@@ -303,6 +303,54 @@ test('ROUTE-7: the bosses are not all the same trick', () => {
   ok(kinds.size >= 4, `the bosses only muster ${kinds.size} distinct threats — too samey`)
 })
 
+group('read the sequence (RUN-9)')
+test('Sight the Line reveals the next holds without touching the deck', () => {
+  ok(E.CARDS['Sight the Line'], 'the card exists')
+  const rng = new E.RNG(321)
+  const st = startClimb(4, rng, { seed: 55 })
+  const before = st.holdDeck.length
+  const st2 = E.playBonusStep(st, E.spawn('Sight the Line'), -1, rng)
+  eq(st2.readAhead, Math.min(2, before), 'reading did not reveal what the card says it reads')
+  eq(st2.holdDeck.length, before, 'reading popped the deck — it must only look, not draw')
+  const shown = st2.holdDeck.slice(-st2.readAhead)
+  ok(shown.length === st2.readAhead && shown.length > 0, 'nothing was actually revealed')
+})
+test('a read counts down as holds come onto the board and stays in range', () => {
+  const rng = new E.RNG(654)
+  let st = E.playBonusStep(startClimb(4, rng, { seed: 77 }), E.spawn('Sight the Line'), -1, rng)
+  const r0 = st.readAhead
+  ok(r0 > 0, 'nothing was read to begin with')
+  let counted = false
+  for (let k = 0; k < 8 && st.phase === 'climb'; k++) {
+    const rBefore = st.readAhead
+    st = E.resolve(E.autoPlay(st, rng), rng)
+    ok(st.readAhead >= 0 && st.readAhead <= st.holdDeck.length,
+      `readAhead ${st.readAhead} is out of range against ${st.holdDeck.length} holds`)
+    if (st.readAhead < rBefore) counted = true
+  }
+  ok(counted, 'a read never counted down even as holds came up')
+})
+test('reading is information only — it never changes how a turn resolves', () => {
+  /* The whole safety of RUN-9: it is what you know, not what you can do. A turn
+     must resolve identically whether you have read ahead or not. */
+  const rng = new E.RNG(987)
+  let seen = 0
+  for (let t = 0; t < 80; t++) {
+    let s = startClimb(4 + rng.int(5), rng, { seed: Math.floor(rng.next() * 2 ** 31) })
+    if (s.phase !== 'climb') continue
+    s = E.autoPlay(s, rng)
+    const blind = E.resolve({ ...s, readAhead: 0 }, new E.RNG(42))
+    const read = E.resolve({ ...s, readAhead: 5 }, new E.RNG(42))
+    seen++
+    eq(read.cleared, blind.cleared, 'reading changed how many holds were worked')
+    eq(read.pump, blind.pump, 'reading changed the pump')
+    eq(JSON.stringify([read.boardP, read.boardH].map(b => b.map(x => x?.name ?? null))),
+      JSON.stringify([blind.boardP, blind.boardH].map(b => b.map(x => x?.name ?? null))),
+      'reading changed the board')
+  }
+  ok(seen > 60, `only ${seen} turns compared`)
+})
+
 test('lane outcomes and pump match resolve exactly', () => {
   const rng = new E.RNG(2027)
   let laneOk = 0, laneBad = 0, pumpOk = 0, pumpBad = 0

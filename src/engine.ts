@@ -72,6 +72,9 @@ export type Card = {
   power: number; contact: number; lane: LaneTag
   shed: number; support: number; anchor: boolean; latch: boolean
   cost: number; powerAll: number; gripCut: number; draw: number; cleans: boolean
+  /** RUN-9: read the next N holds off the route deck — the order of what is
+      coming, which projecting never showed. Information, not power. */
+  read: number
   restore: number; rarity: Rarity; chip: number; skinCost: number; synergy: Tag
   clip: boolean; seq: string
   /** ENG-12. A move that pulls sideways needs the other hand pulling back.
@@ -270,6 +273,10 @@ export type GameState = {
   rerolls: number
   mutators: string[]
   seq: { id: string; left: number } | null
+  /** RUN-9. How many upcoming hand-holds you have read off the deck. Counts
+      down as they come onto the board, so it always means "the next this-many
+      are known". Climb-scoped; costs a card to top up. */
+  readAhead: number
   /** ENG-18. The order you placed your cards is the order they resolve in.
       Every cross-lane rule reads the board as it stands, so a hand that has
       already come off is no longer holding anything for the other one. */
@@ -857,6 +864,7 @@ for (const c of [
   bn('Brush', 0, 'common', { gripCut: 2, cleans: true, targeted: true, text: '−2 Grip, strip its ability.' }),
   bn('Tick Marks', 0, 'common', { gripCut: 2, targeted: true, text: '−2 Grip to one hold.' }),
   bn('Read the Sequence', 0, 'common', { draw: 2, text: 'Draw 2.' }),
+  bn('Sight the Line', 0, 'common', { read: 2, draw: 1, text: 'Read the next 2 holds. Draw 1.' }),
   bn('Warm Up', 0, 'common', { shed: 1, draw: 1, text: 'Shed 1. Draw 1.' }),
   bn('Trust the Feet', 1, 'common', { power: 2, targeted: true, text: '+2 Power to one lane.' }),
   bn('Downclimb', 2, 'common', { shed: 5, text: 'Shed 5 pump.' }),
@@ -2327,7 +2335,7 @@ export function spawn(name: string): Card {
   return { uid: nextUid(), name: d.name, kind: d.kind ?? 'move', power: d.power ?? 0,
     contact: d.contact ?? 0, lane: d.lane ?? 'hand', shed: d.shed ?? 0, support: d.support ?? 0,
     anchor: d.anchor ?? false, latch: d.latch ?? false, cost: d.cost ?? 0,
-    powerAll: d.powerAll ?? 0, gripCut: d.gripCut ?? 0, draw: d.draw ?? 0,
+    powerAll: d.powerAll ?? 0, gripCut: d.gripCut ?? 0, draw: d.draw ?? 0, read: d.read ?? 0,
     cleans: d.cleans ?? false, restore: d.restore ?? 0, rarity: d.rarity ?? 'common',
     chip: d.chip ?? 0, skinCost: d.skinCost ?? 0, synergy: d.synergy ?? '', clip: d.clip ?? false, seq: d.seq ?? '', opposes: d.opposes ?? false,
     fx: d.fx ?? '', targeted: d.targeted ?? false, text: d.text ?? '' }
@@ -2335,7 +2343,7 @@ export function spawn(name: string): Card {
 export function synth(power: number, contact: number): Card {
   return { uid: nextUid(), name: `T${power}/${contact}`, kind: 'move', power, contact,
     lane: 'hand', shed: 0, support: 0, anchor: false, latch: false, cost: 0,
-    powerAll: 0, gripCut: 0, draw: 0, cleans: false, restore: 0, rarity: 'common',
+    powerAll: 0, gripCut: 0, draw: 0, read: 0, cleans: false, restore: 0, rarity: 'common',
     chip: 0, skinCost: 0, synergy: '', clip: false, seq: '', opposes: false, fx: '', targeted: false, text: '' }
 }
 
@@ -2348,7 +2356,7 @@ export function makeDeck(tier: number): Card[] {
       power: d.power ?? 0, contact: d.contact ?? 0, lane: d.lane ?? 'hand',
       shed: d.shed ?? 0, support: d.support ?? 0, anchor: d.anchor ?? false,
       latch: d.latch ?? false, cost: d.cost ?? 0, powerAll: d.powerAll ?? 0,
-      gripCut: d.gripCut ?? 0, draw: d.draw ?? 0, cleans: d.cleans ?? false,
+      gripCut: d.gripCut ?? 0, draw: d.draw ?? 0, read: d.read ?? 0, cleans: d.cleans ?? false,
       restore: d.restore ?? 0, rarity: d.rarity ?? 'common',
       chip: d.chip ?? 0, skinCost: d.skinCost ?? 0, synergy: d.synergy ?? '', clip: d.clip ?? false, seq: d.seq ?? '', opposes: d.opposes ?? false,
       fx: d.fx ?? '', targeted: d.targeted ?? false, text: d.text ?? '',
@@ -2557,7 +2565,7 @@ export function freshRun(routeIdx: number, deckTier: number, seed: number): Game
     shopCards: [], shopGear: [], bought: [],
     coaching: true, sound: true, cbSafe: false, motion: true, textScale: 0,
     tutorialDone: false,
-    fxLane: ['', '', ''], fxTick: 0, gear: [], boons: [], gearOffers: [], savedBlow: false, peakPump: 0, clipped: false, bonusUsed: false, line: 0, rerolls: 0, mutators: [], seq: null, order: [], routeMove: null, arch: 0,
+    fxLane: ['', '', ''], fxTick: 0, gear: [], boons: [], gearOffers: [], savedBlow: false, peakPump: 0, clipped: false, bonusUsed: false, line: 0, rerolls: 0, mutators: [], seq: null, readAhead: 0, order: [], routeMove: null, arch: 0,
     loadouts: ARCHETYPES.map(a => a.loadout.slice()), reroll: 0, book: {}, ticked: [], hints: true, grades: 'v',
     dailyDay: '', dailyScore: 0, dailyBest: 0, dailyStreak: 0, daily: false, trail: [],
     shoppedAt: [], tweak: null, eventChose: [], vanRaided: [], established: [],
@@ -2675,13 +2683,17 @@ function refillAndDraw(s: GameState, rng: RNG): GameState {
   const boardH = s.boardH.slice()
   const holdDeck = s.holdDeck.slice(), feetDeck = s.feetDeck.slice()
   const ph = phaseOf(s)
+  let drawn = 0                                              // RUN-9: holds that came up
   for (const i of [0, 1]) {
     if (ph?.lockLane === i) { boardH[i] = null; continue }   // nothing out there
     if (!boardH[i] && holdDeck.length) {
       const h = holdDeck.pop()!
+      drawn++
       boardH[i] = ph?.allCrux && !h.crux ? { ...h, crux: true, grip: h.grip + 2 } : h
     }
   }
+  // RUN-9: a hold you had read is on the board now, so it is no longer "ahead".
+  const readAhead = Math.min(holdDeck.length, Math.max(0, s.readAhead - drawn))
   if (!boardH[2] && feetDeck.length) boardH[2] = feetDeck.pop()!
   const gm = gearMods(s.gear)
   const want = HAND_SIZE + gm.handSize + boonMods(s.boons).dDraw
@@ -2689,7 +2701,7 @@ function refillAndDraw(s: GameState, rng: RNG): GameState {
   const piles = pileDraw(s.piles, Math.max(0, want - s.piles.hand.length), rng)
   if (gm.brushFirst && s.turn === 1) for (const i of [0, 1])
     if (boardH[i]) { boardH[i] = clearDirt({ ...boardH[i]!, clean: true }); break }
-  return { ...s, boardH, holdDeck, feetDeck, piles }
+  return { ...s, boardH, holdDeck, feetDeck, piles, readAhead }
 }
 
 export function startBurn(s: GameState, rng: RNG): GameState {
@@ -2716,7 +2728,7 @@ export function startBurn(s: GameState, rng: RNG): GameState {
     pump: 0, flow: 0, cleared: 0, worked: [], turn: 1, phaseSeen: '',
     // the belay is your first piece: on a rope you are never on nothing
     runout: 0, lastPiece: spec.roped ? 0 : -1, pitch: 0, savedBlow: false, peakPump: 0,
-    clipped: false, seq: null,
+    clipped: false, seq: null, readAhead: 0,
     order: [],
     routeMove: null,
     beta: (styleMods(s.inRun ? s.style : 0).noBeta || (s.inRun && archOf(s).noBeta))
@@ -3243,6 +3255,13 @@ export function playBonusStep(s: GameState, c: Card, lane: number, rng: RNG): Ga
   if (c.skinCost) log.push(`${c.name}. That is skin you do not get back.`)
   if (c.shed) { pump = Math.max(0, pump - c.shed); log.push(`${c.name}. −${c.shed} pump.`) }
   if (c.draw) { piles = pileDraw(piles, c.draw, rng); log.push(`${c.name}. Draw ${c.draw}.`) }
+  // RUN-9: read the sequence — reveal the next N upcoming holds. Information
+  // only: it draws nothing, spends no randomness, and never touches the board.
+  let readAhead = s.readAhead
+  if (c.read) {
+    readAhead = Math.min(s.holdDeck.length, Math.max(readAhead, c.read))
+    log.push(`${c.name}. You read the next ${readAhead} hold${readAhead === 1 ? '' : 's'} off the wall.`)
+  }
   if (c.restore && piles.exhaust.length) {
     const n = Math.min(c.restore, piles.exhaust.length)
     const back = piles.exhaust.slice(-n)
@@ -3266,7 +3285,7 @@ export function playBonusStep(s: GameState, c: Card, lane: number, rng: RNG): Ga
   piles = { ...piles, discard: [...piles.discard, c] }
   return { ...s, piles, pump, skin: Math.max(0, s.skin - c.skinCost),
     peakPump: Math.min(PUMP_MAX, Math.max(s.peakPump, pump)),
-    boardP, boardH, runout, lastPiece, seq, clipped, bonusUsed: true,
+    boardP, boardH, runout, lastPiece, seq, readAhead, clipped, bonusUsed: true,
     selected: null, log: [...s.log, ...log] }
 }
 
