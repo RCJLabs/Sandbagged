@@ -88,7 +88,7 @@ type Piles = { draw: Card[]; discard: Card[]; exhaust: Card[]; hand: Card[] }
 export type Phase = 'menu' | 'map' | 'climb' | 'burnEnd' | 'sessionEnd'
   | 'reward' | 'camp' | 'runEnd' | 'pack' | 'collection' | 'event' | 'journal' | 'deck' | 'talk'
   | 'glossary' | 'gear' | 'logbook' | 'shop' | 'circuitNext' | 'saves' | 'stats'
-  | 'prepare' | 'more' | 'epilogue' | 'history' | 'line' | 'claim'
+  | 'prepare' | 'more' | 'epilogue' | 'history' | 'line' | 'claim' | 'deeds'
 export type NodeType = 'climb' | 'camp' | 'boss' | 'event' | 'project' | 'shop' | 'fa'
   | 'established'
 // Skin is worth ~16 points of completion — far too coarse for a small
@@ -1681,6 +1681,43 @@ export const ARCHETYPES: Archetype[] = [
 ]
 export const archOf = (s: GameState) => ARCHETYPES[Math.min(s.arch, ARCHETYPES.length - 1)]
 export const archUnlocked = (a: Archetype, level: number) => level >= a.unlock
+
+/* META-8. Deeds — a tick-list of things worth doing, read straight off the
+   record the game already keeps (the logbook, the lines you put up, the pages
+   you found, the daily streak). It doubles as a map of the game's breadth: a
+   new player learns conditions matter, that you can put up your own lines and
+   sandbag them, that there is a style past Redpoint. Narrative only — a deed
+   pays NOTHING (no XP, no card), the same rule INJ-1 holds to, because the
+   moment a deed pays you it becomes a grind rather than a record. It is the
+   surface META-6 can later gate a climber unlock on; it does not gate anything
+   yet. Every predicate is pure and safe on an empty save. */
+export type Deed = { id: string; name: string; text: string; done: (s: GameState) => boolean }
+const tickedGrades = (s: GameState) => ROUTES.filter(r => s.book[r.name]).map(r => r.grade)
+export const DEEDS: Deed[] = [
+  { id: 'send', name: 'Topped One Out', text: 'Send your first boulder.',
+    done: s => s.sends >= 1 },
+  { id: 'flash', name: 'Flashed It', text: 'Top a boulder out on the first burn.',
+    done: s => Object.values(s.book).some(b => b.flashed) },
+  { id: 'strong', name: 'Strong', text: 'Send something V5 or harder.',
+    done: s => tickedGrades(s).some(g => g >= 5) },
+  { id: 'wet', name: 'Bad Conditions', text: 'Send a boulder in the wet — humid or drizzle.',
+    done: s => Object.values(s.book).some(b => b.weather === 2 || b.weather === 5) },
+  { id: 'pages', name: 'The Whole Story', text: 'Find ten pages of his journal.',
+    done: s => s.journal.filter(p => p !== 7).length >= 10 },
+  { id: 'lostline', name: 'The Lost Line', text: 'Top out the finale.',
+    done: s => s.wins >= 1 },
+  { id: 'fa', name: 'First Ascensionist', text: 'Put up a line of your own.',
+    done: s => s.established.length >= 1 },
+  { id: 'sandbagger', name: 'Sandbagger', text: 'Put a line in the book graded soft — the game\'s namesake.',
+    done: s => s.established.some(e => e.claimed < e.real) },
+  { id: 'streak', name: 'Every Morning', text: "Play the day's problem three days running.",
+    done: s => s.dailyStreak >= 3 },
+  { id: 'enduro', name: 'Enduro', text: 'Climb eight lines in a single Circuit.',
+    done: s => s.bestCircuit >= 8 },
+  { id: 'onsight', name: 'No Rehearsal', text: 'Unlock the Onsight style.',
+    done: s => s.styleMax >= 5 },
+]
+export const deedsDone = (s: GameState) => DEEDS.filter(d => d.done(s)).map(d => d.id)
 
 /* ======================== CONTENT: SEQUENCES ======================
    A turn was: place three, commit. A sequence is a plan held across turns

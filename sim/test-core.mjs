@@ -1773,6 +1773,29 @@ test('climbers unlock in order and the first is always available', () => {
   ok(!E.archUnlocked(E.ARCHETYPES[E.ARCHETYPES.length - 1], 1),
     'the last climber is available at level 1')
 })
+test('deeds are earnable, pure, and pay nothing (META-8)', () => {
+  ok(E.DEEDS.length >= 8, `only ${E.DEEDS.length} deeds`)
+  const fresh = E.freshRun(0, 0, 1)
+  for (const d of E.DEEDS) {
+    ok(d.name && d.text.length > 12, `${d.id} does not explain itself`)
+    eq(typeof d.done(fresh), 'boolean', `${d.id}'s predicate is not a clean yes/no on a fresh save`)
+    // a deed is a record, not a reward — the INJ-1 rule. No payout fields.
+    eq(JSON.stringify(Object.keys(d).sort()), JSON.stringify(['done', 'id', 'name', 'text']),
+      `${d.id} carries something beyond a record — a deed must pay nothing`)
+  }
+  // a brand-new climber has done nothing
+  eq(E.deedsDone(fresh).length, 0, 'a fresh save has already earned a deed')
+  // a lived-in record earns the deeds it should — The Priest is V5 and drizzle,
+  // the line is graded soft, the journal is ten pages in, the streak is up
+  const lived = { ...fresh, sends: 5, wins: 1, dailyStreak: 3, bestCircuit: 9, styleMax: 5,
+    journal: [1, 2, 3, 4, 5, 6, 8, 9, 10, 11],
+    book: { 'The Priest': { sends: 1, bestBurn: 1, bestStyle: 0, flashed: true, weather: 5, rock: 0 } },
+    established: [{ name: 'Soft Touch', claimed: 4, real: 7, act: 0, burns: 2 }] }
+  const got = new Set(E.deedsDone(lived))
+  for (const id of ['send', 'flash', 'strong', 'wet', 'pages', 'lostline', 'fa', 'sandbagger', 'streak', 'enduro', 'onsight'])
+    ok(got.has(id), `a lived-in save did not earn ${id}`)
+  eq(got.size, E.DEEDS.length, 'that record should have earned every deed')
+})
 test('a phase summary describes every phase a boss has', () => {
   for (const r of E.ROUTES.filter(r => r.phases?.length)) {
     const sum = E.phaseSummary(r)

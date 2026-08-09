@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.49 — CARD-7: one-shot kit
+// SANDBAGGED v9.50 — META-8: deeds
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -20,7 +20,7 @@ import {
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
   campStep, cardHints, carryOver, cashForSend, circuitRoute, claimCurse, claimVerdict,
   consumableById, KIT_MAX, useKitStep,
-  coach, codeSeed, copyLimit, cropStep, dailyRoute, dailySeed, dayKey, desperationOf,
+  coach, codeSeed, copyLimit, cropStep, dailyRoute, dailySeed, dayKey, DEEDS, deedsDone, desperationOf,
   endSession, endingFor, endingStep, establishedIn, exportSave, exposed, exposureOf,
   faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
   gearMods, gradeLabel, gradeText, gripShown, holdLabel, honestyOf, importSave,
@@ -718,7 +718,7 @@ function startTutorial() {
   const BACK_TO: Partial<Record<Phase, Phase>> = {
     prepare: 'menu', more: 'menu', deck: 'prepare',
     collection: 'more', logbook: 'more', journal: 'more', stats: 'more',
-    glossary: 'more', saves: 'more', history: 'more',
+    glossary: 'more', saves: 'more', history: 'more', deeds: 'more',
   }
   const goBack = () => setSt(s => ({ ...s, phase: BACK_TO[s.phase] ?? 'menu',
     skirmish: s.phase in BACK_TO ? s.skirmish : null }))
@@ -887,7 +887,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.49 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.50 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -1010,6 +1010,7 @@ function startTutorial() {
             on={go('logbook')} />
           <Item t="The Journal" sub={`${st.journal.length}/${JOURNAL.length} pages`} on={go('journal')} />
           <Item t="The Numbers" sub="everything recorded" on={go('stats')} />
+          <Item t="Deeds" sub={`${deedsDone(st).length}/${DEEDS.length} done`} on={go('deeds')} />
           <Item t="Every Trip" sub={st.history.length ? `last ${Math.min(st.history.length, HISTORY_MAX)} runs` : 'nothing yet'}
             on={go('history')} />
           <Item t="How It Works" sub="holds, keywords, marks" on={go('glossary')} />
@@ -1629,6 +1630,31 @@ function startTutorial() {
     )
   }
 
+  if (st.phase === 'deeds') {
+    const done = new Set(deedsDone(st))
+    return (
+      <div className={skin}>
+        <div className="row"><span className="h1"><Lettered t="DEEDS" seed={71} /></span>
+          <button className="btn" style={{ padding: '5px 10px', fontSize: 11 }} onClick={goBack}>◂ BOOKS</button></div>
+        <InkRule seed={41} color="var(--ink)" />
+        <div className="sub">{done.size} of {DEEDS.length} done. No prizes — a record, not a grind.</div>
+        <div style={{ maxHeight: 660, overflowY: 'auto', marginTop: 8 }}>
+          {DEEDS.map(d => {
+            const got = done.has(d.id)
+            return (
+              <div key={d.id} className="menu-item" style={{ opacity: got ? 1 : 0.6,
+                borderLeft: `3px solid ${got ? 'var(--green)' : 'var(--ink)'}` }}>
+                <div className="row"><span className="big">{d.name}</span>
+                  <span className="big" style={{ color: got ? 'var(--green)' : 'var(--tan)' }}>
+                    {got ? '✓ done' : '—'}</span></div>
+                <div className="sub">{d.text}</div>
+              </div>)
+          })}
+        </div>
+        <style>{CSS}</style>
+      </div>
+    )
+  }
   if (st.phase === 'stats') {
     const inAct = ROUTES.filter((_, i) => ACT_OF_ROUTE[i] !== undefined)
     const ticked = inAct.filter(r => st.book[r.name])
