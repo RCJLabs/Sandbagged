@@ -361,6 +361,27 @@ test('haptics ride their own switch, not the sound one', () => {
   ok(/HAPTICS \{st\.haptics/.test(app), 'there is no HAPTICS toggle in settings')
   ok(/ASSIST \{st\.assist/.test(app), 'there is no ASSIST toggle in settings')
 })
+test('A11Y-5: one-handed reach is a setting, it persists, and it is layout only', () => {
+  const app = readFileSync('src/App.tsx', 'utf8')
+  // the toggle exists and cycles all three states
+  ok(/ONE-HANDED REACH/.test(app), 'there is no ONE-HANDED REACH toggle in settings')
+  ok(/reach-\$\{st\.reach\[0\]\}/.test(app), 'the reach class never reaches the climb screen')
+  // it defaults off and is one of exactly three states
+  eq(E.freshRun(0, 0, 1).reach, 'off', 'one-handed reach is not off by default')
+  // it survives a save and carries into a new expedition — it is the player's
+  E.saveGame({ ...E.freshRun(0, 0, 7), slot: 1, reach: 'left' })
+  eq(E.loadGame(1).reach, 'left', 'the reach setting did not survive a save')
+  eq(E.carryOver({ ...E.freshRun(0, 0, 1), reach: 'right' }).reach, 'right',
+    'the reach setting was dropped starting a new expedition')
+  // layout only: the engine must never branch a turn on it. Resolve with each
+  // setting from an identical board lands on an identical board.
+  const rng = () => new E.RNG(7)
+  const base = { ...E.startBurn({ ...E.freshRun(4, 0, 5), inRun: true }, rng()), selected: null }
+  const off = E.resolve({ ...base, reach: 'off' }, rng())
+  const left = E.resolve({ ...base, reach: 'left' }, rng())
+  eq(left.pump, off.pump, 'the reach setting changed the pump — it is not layout only')
+  eq(left.cleared, off.cleared, 'the reach setting changed how many holds were worked')
+})
 test('the assist shows a hold exactly, and shows the real grip', () => {
   const h = { name: 'crux', grip: 8, bite: 3, crux: true, clean: false, wobble: 1 }
   const off = { ...E.freshRun(4, 0, 1), inRun: true, assist: false, beta: [] }
@@ -479,7 +500,7 @@ test('every consumable does something and says so', () => {
   ok(E.KIT_MAX >= 1, 'the kit holds nothing')
   for (const c of E.CONSUMABLES) {
     ok(c.name && c.text.length > 10, `${c.id} does not explain itself`)
-    ok((c.shed ?? 0) > 0 || (c.draw ?? 0) > 0 || (c.powerAll ?? 0) > 0, `${c.name} does nothing`)
+    ok((c.shed ?? 0) > 0 || (c.draw ?? 0) > 0 || (c.powerAll ?? 0) > 0 || (c.burn ?? 0) > 0, `${c.name} does nothing`)
   }
 })
 test('a consumable is spent on use, applies, and never leaks into the deck', () => {
@@ -505,6 +526,44 @@ test('the kit rides along in a saved run', () => {
     runDeck: E.DEFAULT_LOADOUT.map(E.spawn), gear: ['sticky'], kit: ['betanapkin'] }
   E.saveGame(s)
   eq(JSON.stringify(E.loadGame(1).kit), JSON.stringify(['betanapkin']), 'the kit did not survive a save')
+})
+
+group('the extra-burn consumable (CARD-9)')
+test('there is a burn consumable, and it is the only kind that grants one', () => {
+  const burns = E.CONSUMABLES.filter(c => (c.burn ?? 0) > 0)
+  ok(burns.length >= 1, 'no consumable grants a burn')
+  for (const c of burns) {
+    eq(c.shed ?? 0, 0, `${c.name} both grants a burn and does something mid-climb`)
+    eq(c.draw ?? 0, 0, `${c.name} both grants a burn and draws`)
+    eq(c.powerAll ?? 0, 0, `${c.name} both grants a burn and pushes power`)
+  }
+})
+test('a Second Wind is spent at the fall and buys exactly one more burn', () => {
+  const base = { ...E.freshRun(4, 0, 5), inRun: true, kit: ['secondwind'] }
+  const cap0 = E.attemptsFor(base)
+  const after = E.secondWindStep(base, 'secondwind')
+  eq(after.kit.length, 0, 'the Second Wind was not spent out of the kit')
+  eq(E.attemptsFor(after), cap0 + 1, 'a Second Wind did not raise the cap by exactly one')
+  // one you are not carrying is a no-op — it can never conjure a burn from nothing
+  eq(E.attemptsFor(E.secondWindStep({ ...base, kit: [] }, 'secondwind')), cap0,
+    'a Second Wind fired from an empty kit')
+})
+test('a Second Wind buys a go on THIS line only — a fresh boulder clears it', () => {
+  const rng = () => new E.RNG(3)
+  const wound = E.secondWindStep(
+    { ...E.freshRun(4, 0, 5), inRun: true, kit: ['secondwind'], burn: 2 }, 'secondwind')
+  eq(wound.bonusBurns, 1, 'the Second Wind did not light bonusBurns')
+  // a retry on the same line (burn >= 2) keeps it
+  eq(E.startBurn({ ...wound, burn: 3 }, rng()).bonusBurns, 1, 'a retry on the same line lost the Second Wind')
+  // a fresh boulder (burn 1) clears it — it never carries over
+  eq(E.startBurn({ ...wound, burn: 1 }, rng()).bonusBurns, 0, 'a Second Wind carried onto a fresh boulder')
+})
+test('a burn consumable does nothing mid-climb — useKitStep refuses it', () => {
+  const rng = new E.RNG(11)
+  const s = { ...startClimb(4, rng, { seed: 5 }), kit: ['secondwind'], pump: 8 }
+  const after = E.useKitStep(s, 'secondwind', rng)
+  eq(after.kit.length, 1, 'a Second Wind was wasted by a mid-climb tap')
+  eq(after.pump, s.pump, 'the Second Wind did something to the climb it should not have')
 })
 
 /* =======================================================================
@@ -1447,6 +1506,23 @@ if (SLOW) {
     ok(traverse <= guide + 3, `the traverse completes ${traverse}% against the guide's ${guide}% — a free win`)
     ok(direct >= guide - 8 && traverse >= guide - 8,
       `a line is a trap: guide ${guide}, direct ${direct}, traverse ${traverse}`)
+  })
+  test('CARD-9: a bought-and-spent Second Wind helps, but never buys the campaign', () => {
+    /* The carve-out was that this consumable can only be judged by a harness
+       that BUYS and SPENDS it — a shop line the drafter ignores tells you
+       nothing about a burn. So this runs the same campaign twice: the default
+       (KIT_BURN off, the drafter never touches kit — this is why the pinned
+       47% band above is unmoved) and a player who buys a Second Wind at every
+       post and spends it at the last fall. The lift proves the buy-and-spend
+       path is real; the ceiling proves an extra burn is a leg-up, not a skip. */
+    const full = env => {
+      const out = execSync(`${env} SHARP_AT=99 node sim/run.mjs campaign 200`, { encoding: 'utf8' })
+      const pcts = [...out.matchAll(/completion\s+([\d.]+)%/g)].map(m => Number(m[1]))
+      return pcts[pcts.length - 1]
+    }
+    const base = full(''), wind = full('KIT_BURN=1')
+    ok(wind > base + 0.5, `a bought-and-spent Second Wind moved completion ${(wind - base).toFixed(1)} pts — the harness is not really spending it`)
+    ok(wind < 58, `a Second Wind takes completion to ${wind}% — an extra burn is buying the campaign, not a leg-up`)
   })
 }
 

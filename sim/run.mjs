@@ -108,6 +108,10 @@ const DRAFT_ECON = process.env.ECON !== '0'
 const MUTS = (process.env.MUT ?? '').split(',').filter(Boolean)
 const VAN_UNTIL = Number(process.env.VAN ?? 4)
 const PROJECTS = process.env.PROJECTS !== '0'   // does the sim take projects?   // does the sim read the weather?   // rest below this skin, else sharpen
+// CARD-9: default OFF, so the drafter still ignores kit and the guarded band is
+// unmoved. On, the harness buys a Second Wind at every post and spends it at the
+// last fall — the buy-and-spend path the ticket needs to measure the feature.
+const KIT_BURN = process.env.KIT_BURN === '1'
 function runOnce(seed) {
     const rng = new E.RNG(seed)
     // balance is measured at the real difficulty — TOPROPE=1 to measure the
@@ -233,6 +237,10 @@ function runOnce(seed) {
           }
           if (s.cash >= E.PRICE.skin && s.skin <= E.RUN_SKIN - 2)
             s = { ...s, cash: s.cash - E.PRICE.skin, skin: s.skin + 2 }
+          // CARD-9: a player who values the safety net buys a Second Wind while
+          // there is room and cash for it — a real cash sink, weighed after cards.
+          if (KIT_BURN && s.kit.length < E.KIT_MAX && s.cash >= E.PRICE.kit)
+            s = { ...s, cash: s.cash - E.PRICE.kit, kit: [...s.kit, 'secondwind'] }
           shops++
           s = E.leaveShopStep(s)   // BAL-5: a post does not cost you the stage
           continue
@@ -290,6 +298,11 @@ function runOnce(seed) {
         if (s.result === 'send') { s = E.endSession({ ...s, beta }, rng); continue }
         const skin = s.skin - 1 - E.boonMods(s.boons).dFallSkin
         s = { ...s, psyche: Math.max(0, s.psyche - (E.exposed(s) ? E.EXPOSED_FALL_PSYCHE : 0)) }
+        // CARD-9: out of burns but carrying a Second Wind and still on your feet?
+        // Spend it — it raises the cap, so the check below lets the retry run.
+        if (KIT_BURN && s.burn >= E.attemptsFor(s) && skin > 0
+            && s.kit.some(id => E.consumableById(id)?.burn))
+          s = E.secondWindStep(s, s.kit.find(id => E.consumableById(id)?.burn))
         if (s.burn >= E.attemptsFor(s) || skin <= 0) { s = E.endSession({ ...s, beta, skin }, rng); continue }
         s = E.startBurn({ ...s, beta, skin, burn: s.burn + 1 }, rng); continue
       }

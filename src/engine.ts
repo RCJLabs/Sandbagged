@@ -213,6 +213,9 @@ export type MapNode = { type: NodeType; routeIdx: number }
 
 export type GameState = {
   seed: number; routeIdx: number; deckTier: number; burn: number; skin: number
+  /** CARD-9: extra burns bought on this boulder (a Second Wind). Added to the
+      attempt cap, reset by startBurn on a fresh line — it never carries over. */
+  bonusBurns?: number
   weather: number; rock: number
   beta: string[]; worked: string[]
   holdDeck: Hold[]; feetDeck: Hold[]
@@ -281,6 +284,10 @@ export type GameState = {
   cbSafe: boolean
   motion: boolean
   textScale: number
+  /** A11Y-5: one-handed reach. Off is the two-handed layout; left/right pin the
+      climb's primary controls into a thumb-reachable bottom bar and mirror them
+      to that hand. Layout only — it moves no number and gates no rule. */
+  reach: 'off' | 'left' | 'right'
   tutorialDone: boolean
   fxLane: string[]
   fxTick: number
@@ -389,6 +396,7 @@ export function styleMods(level: number): AscentStyle {
 export const attemptsFor = (s: GameState) =>
   Math.max(1, ATTEMPTS + (s.inRun
     ? styleMods(s.style).attempts + (archOf(s).dAttempts ?? 0) + mutMods(s.mutators).dAttempts : 0))
+  + (s.bonusBurns ?? 0)   // CARD-9: second winds spent on this boulder
 export const campSkinFor = (s: GameState) =>
   Math.max(1, CAMP_SKIN + styleMods(s.style).camp)
 
@@ -408,7 +416,7 @@ type SaveData = {
   mutators?: string[]
   runs?: number; falls?: number; ending?: string; topRope?: boolean; history?: RunRecord[]
   coaching?: boolean; sound?: boolean; haptics?: boolean; assist?: boolean; cbSafe?: boolean; tutorialDone?: boolean
-  motion?: boolean; textScale?: number
+  motion?: boolean; textScale?: number; reach?: 'off' | 'left' | 'right'
   run: { deck: string[]; tier: number; skin: number; seed: number; act: number
     gear: string[]; boons: string[]; kit?: string[]; cash: number; psyche: number; runSeed: number
     eventsSeen: string[] } | null
@@ -421,7 +429,7 @@ export function saveGame(s: GameState) {
       v: SAVE_FILE_VERSION, level: s.level, xp: s.xp, owned: s.owned,
       sends: s.sends, wins: s.wins, journal: s.journal, loadout: s.loadout,
       style: s.style, styleMax: s.styleMax, seen: s.seen, coaching: s.coaching, sound: s.sound, haptics: s.haptics, assist: s.assist, cbSafe: s.cbSafe,
-      tutorialDone: s.tutorialDone, motion: s.motion, textScale: s.textScale,
+      tutorialDone: s.tutorialDone, motion: s.motion, textScale: s.textScale, reach: s.reach,
       arch: s.arch, loadouts: s.loadouts, book: s.book, bestCircuit: s.bestCircuit, ticked: s.ticked, established: s.established, hints: s.hints, grades: s.grades, tweak: s.tweak,
       dailyDay: s.dailyDay, dailyScore: s.dailyScore, dailyBest: s.dailyBest, dailyStreak: s.dailyStreak,
       weekId: s.weekId, weekScore: s.weekScore, weekBest: s.weekBest,
@@ -484,7 +492,7 @@ export function loadGame(slot = 0): Partial<GameState> {
       style: d.style ?? 0, styleMax: d.styleMax ?? 0, seen: d.seen ?? [],
       coaching: d.coaching ?? true, sound: d.sound ?? true, haptics: d.haptics ?? true, assist: d.assist ?? false, cbSafe: d.cbSafe ?? false,
       tutorialDone: d.tutorialDone ?? false,
-      motion: d.motion ?? true, textScale: d.textScale ?? 0,
+      motion: d.motion ?? true, textScale: d.textScale ?? 0, reach: d.reach ?? 'off',
       arch: d.arch ?? 0,
       ...(d.loadouts && d.loadouts.length === ARCHETYPES.length ? { loadouts: d.loadouts } : {}),
       book: d.book ?? {}, bestCircuit: d.bestCircuit ?? 0, mutators: d.mutators ?? [],
@@ -1944,6 +1952,9 @@ export const gearById = (id: string) => GEAR.find(g => g.id === id)
 export type Consumable = {
   id: string; name: string; text: string
   shed?: number; draw?: number; powerAll?: number
+  /** CARD-9: extra burns. A `burn` consumable does nothing mid-climb — it is
+      spent at the fall, to buy another go on this boulder (`secondWindStep`). */
+  burn?: number
 }
 export const CONSUMABLES: Consumable[] = [
   { id: 'chalkshot', name: 'Chalk Shot', shed: 5,
@@ -1952,6 +1963,8 @@ export const CONSUMABLES: Consumable[] = [
     text: 'Somebody sketched the moves for you. Draw 2.' },
   { id: 'cruxpad', name: 'Crux Pad', powerAll: 2,
     text: 'Slid under the crux. +2 Power to every lane you have out, this turn.' },
+  { id: 'secondwind', name: 'Second Wind', burn: 1,
+    text: 'Chalk up, shake out, tie back in. One more burn on this line.' },
 ]
 export const consumableById = (id: string) => CONSUMABLES.find(k => k.id === id)
 export const KIT_MAX = 2
@@ -1963,6 +1976,9 @@ export function useKitStep(s: GameState, id: string, rng: RNG): GameState {
   const k = consumableById(id)
   const i = s.kit.indexOf(id)
   if (!k || i < 0) return s
+  // CARD-9: a burn consumable has no mid-climb effect — it is spent at the fall
+  // (secondWindStep). Refuse it here so a mis-tap during the climb cannot waste it.
+  if (k.burn && !k.shed && !k.draw && !k.powerAll) return s
   const kit = s.kit.slice(); kit.splice(i, 1)
   let pump = s.pump, piles = s.piles
   const boardP = s.boardP.slice(), log: string[] = []
@@ -1974,6 +1990,23 @@ export function useKitStep(s: GameState, id: string, rng: RNG): GameState {
   }
   return { ...s, kit, pump, piles, boardP,
     peakPump: Math.min(PUMP_MAX, Math.max(s.peakPump, pump)), log: [...s.log, ...log] }
+}
+
+/* CARD-9. Second wind — the extra-burn consumable. This is the ONE new rule:
+   spending it raises this boulder's attempt cap by lighting `bonusBurns`, which
+   `attemptsFor` reads. Everything else — the skin the fall costs, starting the
+   next burn — is the ordinary retry the caller already runs, so the moment the
+   cap goes up the existing "out of burns?" check simply says no. It is spent at
+   the fall (the screen and the harness both call this, then take their normal
+   retry path), and `bonusBurns` is per-boulder: startBurn clears it on a fresh
+   line, so a second wind buys a go on THIS route and never carries over. */
+export function secondWindStep(s: GameState, id: string): GameState {
+  const k = consumableById(id)
+  const i = s.kit.indexOf(id)
+  if (!k || !k.burn || i < 0) return s
+  const kit = s.kit.slice(); kit.splice(i, 1)
+  return { ...s, kit, bonusBurns: (s.bonusBurns ?? 0) + k.burn,
+    log: [...s.log, `${k.name}. One more burn — ${s.burn + 1} of ${attemptsFor(s) + k.burn}.`] }
 }
 
 /* ======================= THE FORECAST ==============================
@@ -2709,7 +2742,7 @@ export function carryOver(s: GameState): Partial<GameState> {
     loadouts: s.loadouts, styleMax: s.styleMax, tutorialDone: s.tutorialDone,
     slot: s.slot, ending: s.ending, tweak: s.tweak,
     // settings are the player's, not the run's
-    sound: s.sound, haptics: s.haptics, assist: s.assist, motion: s.motion, cbSafe: s.cbSafe, textScale: s.textScale,
+    sound: s.sound, haptics: s.haptics, assist: s.assist, motion: s.motion, cbSafe: s.cbSafe, textScale: s.textScale, reach: s.reach,
     coaching: s.coaching, hints: s.hints, topRope: s.topRope, grades: s.grades,
     dailyDay: s.dailyDay, dailyScore: s.dailyScore,
     dailyBest: s.dailyBest, dailyStreak: s.dailyStreak,
@@ -2736,7 +2769,7 @@ export function newRun(seed: number, loadout?: string[], style = 0, arch = 0,
 export function freshRun(routeIdx: number, deckTier: number, seed: number): GameState {
   const rng = new RNG(seed ^ 0x9e37)
   return {
-    seed, routeIdx, deckTier, burn: 1, skin: SKIN_MAX,
+    seed, routeIdx, deckTier, burn: 1, skin: SKIN_MAX, bonusBurns: 0,
     weather: rng.int(WEATHER.length), rock: rng.int(ROCK.length),
     beta: [], worked: [], holdDeck: [], feetDeck: [],
     boardH: [null, null, null], boardP: [null, null, null],
@@ -2751,7 +2784,7 @@ export function freshRun(routeIdx: number, deckTier: number, seed: number): Game
     runout: 0, lastPiece: -1, pitch: 0, cash: 0, psyche: PSYCHE_MAX,
     circuit: false, circuitScore: 0, bestCircuit: 0, slot: 0, runSeed: 0, ending: '', topRope: true, history: [], runs: 0, falls: 0,
     shopCards: [], shopGear: [], shopKit: [], kit: [], bought: [],
-    coaching: true, sound: true, haptics: true, assist: false, cbSafe: false, motion: true, textScale: 0,
+    coaching: true, sound: true, haptics: true, assist: false, cbSafe: false, motion: true, textScale: 0, reach: 'off',
     tutorialDone: false,
     fxLane: ['', '', ''], fxTick: 0, gear: [], boons: [], gearOffers: [], savedBlow: false, peakPump: 0, clipped: false, bonusUsed: false, line: 0, rerolls: 0, mutators: [], seq: null, readAhead: 0, order: [], routeMove: null, arch: 0,
     loadouts: ARCHETYPES.map(a => a.loadout.slice()), reroll: 0, book: {}, ticked: [], hints: true, grades: 'v',
@@ -2922,6 +2955,9 @@ export function startBurn(s: GameState, rng: RNG): GameState {
     // the belay is your first piece: on a rope you are never on nothing
     runout: 0, lastPiece: spec.roped ? 0 : -1, pitch: 0, savedBlow: false, peakPump: 0,
     clipped: false, seq: null, readAhead: 0,
+    // CARD-9: a second wind buys a go on THIS boulder only — clear it when a
+    // fresh line begins (burn 1), keep it across a retry on the same line.
+    bonusBurns: s.burn <= 1 ? 0 : (s.bonusBurns ?? 0),
     order: [],
     routeMove: null,
     beta: (styleMods(s.inRun ? s.style : 0).noBeta || (s.inRun && archOf(s).noBeta))

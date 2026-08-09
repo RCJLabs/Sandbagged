@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.53 — META-6: climbers earned by deeds
+// SANDBAGGED v9.55 — A11Y-5 one-handed reach · CARD-9 the extra-burn consumable
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -19,7 +19,7 @@ import {
   archUnlocked, attemptsFor, availableTalk, biteAgainst, boonById, boonMods,
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
   campStep, cardHints, carryOver, cashForSend, circuitRoute, claimCurse, claimVerdict,
-  consumableById, KIT_MAX, useKitStep,
+  consumableById, KIT_MAX, useKitStep, secondWindStep,
   coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyRoute, dailySeed, dailyShare, dayKey, DEEDS, deedsDone, desperationOf,
   endSession, endingFor, endingStep, establishedIn, exportSave, exposed, exposureOf,
   faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
@@ -264,6 +264,15 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
 @media (prefers-reduced-motion: reduce){
  .wrap *{animation:none !important;transition:none !important}}
 .nomo *{animation:none !important;transition:none !important}
+/* A11Y-5: one-handed reach. The climb's controls drop to a thumb-reachable
+   sticky bar at the bottom of the screen; left/right mirrors COMMIT onto the
+   working thumb and gives it a bigger target. Layout only. */
+.reach .climb-foot{position:sticky;bottom:6px;z-index:5;margin-top:8px;
+ padding:7px 9px 8px;border-radius:12px;background:var(--paper);
+ border:1.5px solid var(--ink);box-shadow:0 -3px 14px rgba(0,0,0,.22)}
+.reach-l .commit-bar{flex-direction:row-reverse}
+.reach-l .kit-bar{flex-direction:row-reverse}
+.reach .commit-bar .btn.go{padding:14px 18px;font-size:calc(15px * var(--fs))}
 `
 
 /* ============================ INK ==================================
@@ -501,6 +510,7 @@ export default function App() {
     || st.phase === 'line' || st.phase === 'sessionEnd'
   const skin = `wrap${st.cbSafe ? ' cb' : ''}${st.motion ? '' : ' nomo'}` +
     `${st.textScale ? ` fs${st.textScale}` : ''}` +
+    `${st.reach !== 'off' ? ` reach reach-${st.reach[0]}` : ''}` +
     `${onRock ? ` wx-${WEATHER[st.weather].name.replace(/ /g, '')}` : ''}`
   const [seedIn, setSeedIn] = useState('')
   // UX-14: fifteen slots out of up to 219 owned cards, and no way to find one
@@ -628,6 +638,20 @@ export default function App() {
       setSt({ ...endSession({ ...st, beta, skin, psyche }, rng), seed: rng.s }); return
     }
     setSt({ ...startBurn({ ...st, beta, skin, psyche, burn: st.burn + 1 }, rng), seed: rng.s })
+  }
+  /* CARD-9: spend a Second Wind at the fall for one more burn on this line.
+     It pays the same fall cost the ordinary retry does; the consumable only
+     raises the cap, so this is that same retry with the wind spent first. */
+  function secondWind(id: string) {
+    const rng = new RNG(st.seed)
+    const beta = Array.from(new Set([...st.beta, ...st.worked]))
+    const freeFall = st.onProject
+      || (st.inRun && gearMods(st.gear).skinSave > 0 && st.burn === 1)
+    const skin = st.skin - (freeFall ? 0 : 1 + boonMods(st.boons).dFallSkin)
+    const psyche = Math.max(0, st.psyche - (exposed(st) ? EXPOSED_FALL_PSYCHE : 0))
+    const spent = secondWindStep({ ...st, beta, skin, psyche, falls: st.falls + 1 }, id)
+    buzz([0, 25, 40, 25], st.haptics)
+    setSt({ ...startBurn({ ...spent, burn: st.burn + 1 }, rng), seed: rng.s })
   }
   function startClimb(routeIdx: number, nodeIdx = -1, line = 0) {
     const rng = new RNG(st.seed)
@@ -892,7 +916,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.53 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.55 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -1054,6 +1078,14 @@ function startTutorial() {
               onClick={() => setSt(x => ({ ...x, textScale: (x.textScale + 1) % 3 }))}>
               TEXT {['NORMAL', 'LARGE', 'LARGER'][st.textScale]}</button>
           </div>
+          {/* A11Y-5: one-handed reach — a thumb-side bottom bar on the climb screen */}
+          <button className={`btn${st.reach !== 'off' ? ' go' : ''}`} style={{ width: '100%', padding: 11, marginTop: 6 }}
+            onClick={() => setSt(x => ({ ...x, reach: x.reach === 'off' ? 'right' : x.reach === 'right' ? 'left' : 'off' }))}>
+            ONE-HANDED REACH {st.reach === 'off' ? 'OFF' : st.reach === 'right' ? 'RIGHT THUMB' : 'LEFT THUMB'}</button>
+          <div className="sub" style={{ marginTop: 3 }}>
+            {st.reach === 'off'
+              ? 'Two-handed layout. COMMIT sits where it always has.'
+              : `The climb's controls drop to a bottom bar in reach of your ${st.reach} thumb, COMMIT on that side.`}</div>
           <button className={`btn${st.hints ? ' go' : ''}`} style={{ width: '100%', padding: 11, marginTop: 6 }}
             onClick={() => setSt(x => ({ ...x, hints: !x.hints }))}>
             DRAFT HINTS {st.hints ? 'ON' : 'OFF'}</button>
@@ -2455,6 +2487,16 @@ function startTutorial() {
 
         <div className="lbl" style={{ marginTop: 6 }}>HOW IT WENT</div>
         <div className="log">{st.log.slice(-7).map((l, i) => <div key={i}>{l}</div>)}</div>
+        {/* CARD-9: out of burns, but a Second Wind buys one more go on this line */}
+        {(() => {
+          if (sent || st.burn < attemptsFor(st) || st.skin <= 1) return null
+          const windId = st.kit.find(id => consumableById(id)?.burn)
+          if (!windId) return null
+          return (
+            <button className="btn go" style={{ width: '100%', marginTop: 9 }}
+              {...tap(() => secondWind(windId), `Second Wind — one more burn on ${spec.name}`)}>
+              {consumableById(windId)!.name.toUpperCase()} ▸ ONE MORE BURN</button>)
+        })()}
         <button className="btn go" style={{ width: '100%', marginTop: 9 }} onClick={afterBurn}>
           {sent ? 'DOWN OFF THE TOP' : last ? 'THAT IS THE DAY' : 'PULL ON AGAIN'}</button>
         <style>{CSS}</style>
@@ -2670,7 +2712,11 @@ function startTutorial() {
         <div className="sub" style={{ marginTop: 2 }}>
           They go in the order you placed them — a hand that comes off stops holding
           for the other one.</div>) : null}
-      <div className="row" style={{ marginTop: 8, alignItems: 'center' }}>
+      {/* A11Y-5: the primary controls live in a foot that, in one-handed mode,
+          becomes a thumb-side sticky bottom bar. Two-handed, it is just the row
+          it always was. */}
+      <div className="climb-foot">
+      <div className="row commit-bar" style={{ marginTop: 8, alignItems: 'center' }}>
         <button className="btn" disabled={!undo.length}
           onClick={() => { if (!undo.length) return
             sfx('tap', st.sound)
@@ -2688,17 +2734,19 @@ function startTutorial() {
         })()}
         <button className="btn go" onClick={commit}>COMMIT ▸</button>
       </div>
-      {/* CARD-7: one-shot kit, spent when it counts */}
-      {st.kit.length ? (
-        <div className="row" style={{ marginTop: 4, gap: 6, flexWrap: 'wrap' }}>
+      {/* CARD-7: one-shot kit, spent when it counts. CARD-9: a Second Wind is
+          spent at the fall, not mid-climb, so it does not show here. */}
+      {st.kit.some(id => { const c = consumableById(id); return c && !c.burn }) ? (
+        <div className="row kit-bar" style={{ marginTop: 4, gap: 6, flexWrap: 'wrap' }}>
           {st.kit.map((id, k) => {
-            const c = consumableById(id); if (!c) return null
+            const c = consumableById(id); if (!c || c.burn) return null
             return (
               <button key={k} className="btn" style={{ flex: 1, padding: 9, fontSize: 12 }}
                 {...tap(() => useKit(id), `Use ${c.name}: ${c.text}`)}>
                 {c.name.toUpperCase()}</button>)
           })}
         </div>) : null}
+      </div>
       <div className="row" style={{ marginTop: 3 }}>
         <span className="sub tap" {...tap(bail)}>bail off this one</span>
         <span className="sub">burn {st.burn} of {attemptsFor(st)}</span>
