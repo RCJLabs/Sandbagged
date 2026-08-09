@@ -429,6 +429,21 @@ test('A11Y-5: one-handed reach is a setting, it persists, and it is layout only'
   eq(left.pump, off.pump, 'the reach setting changed the pump — it is not layout only')
   eq(left.cleared, off.cleared, 'the reach setting changed how many holds were worked')
 })
+test('UX-17: the tutorial step leads, and the marks key is one tap from a climb', () => {
+  const app = readFileSync('src/App.tsx', 'utf8')
+  // the tutorial step is a pinned top banner, gated on the tutorial route...
+  ok(/className="teach"/.test(app), 'the tutorial step has no pinned banner')
+  ok(/spec\.tutorial && tip/.test(app), 'the tutorial banner is not gated on the tutorial route')
+  ok(/\.teach\{/.test(app), 'the teach banner has no style')
+  // ...and the buried FROM THE GROUND box does not also fire during the tutorial
+  ok(/tip && !spec\.tutorial/.test(app), 'the buried tutorial box still fires — the step shows twice')
+  // the marks key opens from the climb, into a sheet, with the glyphs and family
+  ok(/setLegend\(true\)/.test(app), 'there is no way to open the marks key from a climb')
+  ok(/legend \?/.test(app) && /WHAT THE MARKS MEAN/.test(app), 'the marks-key sheet is missing')
+  // and the content the banner and key surface actually exists
+  ok(E.ROUTES.some(r => r.tutorial), 'there is no tutorial route for the banner to teach')
+  ok(E.TUTORIAL_STEPS.length > 0, 'the tutorial has no steps')
+})
 test('the assist shows a hold exactly, and shows the real grip', () => {
   const h = { name: 'crux', grip: 8, bite: 3, crux: true, clean: false, wobble: 1 }
   const off = { ...E.freshRun(4, 0, 1), inRun: true, assist: false, beta: [] }

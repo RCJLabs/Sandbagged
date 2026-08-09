@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.58 — ENG-23: flow you can feel
+// SANDBAGGED v9.59 — UX-17: the beginner's climb screen
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -240,6 +240,11 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
    rule, a touch more ground, and it sorts to the top of the advisory stack. */
 .spot.urgent{border-left-width:6px;padding-top:8px;padding-bottom:8px;background:rgba(53,91,114,.10)}
 .spot.urgent b{font-weight:800}
+/* UX-17: the tutorial step, pinned at the top and impossible to miss — an
+   ink-filled banner against a page of paper boxes. */
+.teach{margin:0 0 8px;padding:9px 11px;border:2px solid var(--ink);border-radius:6px;
+ background:var(--ink);color:var(--paper);font-size:calc(12px * var(--fs));line-height:1.5}
+.teach b{display:block;font-size:calc(9px * var(--fs));letter-spacing:1px;margin-bottom:3px;color:var(--tan)}
 .pv{position:absolute;left:5px;right:5px;bottom:30px;font-size:calc(8.5px * var(--fs));font-weight:700;
  letter-spacing:.3px;text-align:center;pointer-events:none;line-height:1.1}
 .pv.good{color:var(--green)}.pv.bad{color:var(--red)}.pv.mid{color:var(--fade)}
@@ -497,6 +502,7 @@ export default function App() {
   const [showPractice, setShowPractice] = useState(false)
   const [campMode, setCampMode] = useState<'rest' | 'sharpen' | 'cut'>('rest')
   const [sheet, setSheet] = useState(false)
+  const [legend, setLegend] = useState(false)   // UX-17: the glyph/family key, in reach of a climb
   const [shared, setShared] = useState(false)   // SOCIAL-1: copied-the-daily flash
   /* A11Y-3. Thirty-five things in this file were tappable divs: not focusable,
      not announced, and unreachable without a pointer. This gives one the
@@ -922,7 +928,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.58 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.59 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2512,9 +2518,20 @@ function startTutorial() {
 
   return (
     <div className={skin}>
+      {/* UX-17: during the tutorial the step is the most important thing on the
+          screen, so it leads — a pinned banner up top, not a spot box buried
+          under the board and the COMMIT bar. */}
+      {spec.tutorial && tip ? (
+        <div className="teach" role="status" aria-live="assertive">
+          <b>STEP {'▸'}</b>{tip}</div>) : null}
       <div className="row">
         <span className="h1"><Lettered t={spec.name.toUpperCase()} seed={st.routeIdx * 3 + 2} /></span>
         <span className="sub" style={{ color: 'var(--red)', fontWeight: 700 }}>burn {st.burn}/{attemptsFor(st)}</span>
+      </div>
+      {/* UX-17: the ink marks are the whole visual language — a key you can open
+          without leaving the climb (the glossary is two menus away). */}
+      <div className="row" style={{ marginTop: 1 }}>
+        <span className="sub tap" {...tap(() => setLegend(true), 'What the marks mean')}>✦ what the marks mean</span>
       </div>
       <div style={{ margin: '4px 0 2px' }}>
         <span className="cond">☁ {weather.name.toUpperCase()}</span>
@@ -2849,9 +2866,40 @@ function startTutorial() {
               return `${i ? ' · ' : ''}${holdLabel(h)} ${g.sure ? g.lo : `${g.lo}–${g.hi}`}`
             }).join('')}</div>)
       })() : null}
-      {tip ? <div className="spot" role="status" aria-live="polite">
+      {/* UX-17: on the tutorial route the step is the banner up top instead */}
+      {tip && !spec.tutorial ? <div className="spot" role="status" aria-live="polite">
         <b>FROM THE GROUND</b>{tip}</div> : null}
       <div className="log">{st.log.slice(-3).map((l, i) => <div key={i}>{l}</div>)}</div>
+      {/* UX-17: the marks key, opened from the climb header */}
+      {legend ? (
+        <div className="sheet" {...tap(() => setLegend(false), 'Close the key')}>
+          <div className="sheetin" onClick={e => e.stopPropagation()}>
+            <div className="row"><span className="h1" style={{ fontSize: 17 }}>WHAT THE MARKS MEAN</span>
+              <button className="btn" style={{ padding: '5px 10px', fontSize: 11 }}
+                onClick={() => setLegend(false)}>CLOSE</button></div>
+            <div className="lbl" style={{ marginTop: 6 }}>THE ROCK</div>
+            {Object.entries(HOLD_STATS).map(([name, d]) => (
+              <div key={name} className="deckrow">
+                <Glyph name={name} size={24} />
+                <div className="nmx">
+                  <div className="t1">{name} — <span style={{ color: 'var(--red)' }}>{d.ability}</span></div>
+                  <div className="t2">{d.text}</div>
+                </div>
+                <span className="cnt" style={{ color: 'var(--red)' }}>{d.bite}</span>
+                <span className="cnt" style={{ color: 'var(--green)' }}>{d.grip}</span>
+              </div>))}
+            <div className="lbl" style={{ marginTop: 10 }}>THE MARK ON A CARD</div>
+            {Object.entries(FAMILY).map(([k, f]) => (
+              <div key={k} className="deckrow">
+                <svg width="24" height="24" viewBox="0 0 24 24" style={{ flex: '0 0 auto' }} aria-hidden="true">
+                  <path d={f.d} fill="none" stroke="var(--ink)" strokeWidth="1.8"
+                    strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <div className="nmx"><div className="t1">{f.label}</div></div>
+              </div>))}
+            <div className="sub" style={{ marginTop: 8 }}>Red is Bite, green is Grip. The fuller key is in the Books.</div>
+          </div>
+        </div>) : null}
       <style>{CSS}</style>
     </div>
   )
