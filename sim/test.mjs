@@ -361,6 +361,20 @@ test('haptics ride their own switch, not the sound one', () => {
   ok(/HAPTICS \{st\.haptics/.test(app), 'there is no HAPTICS toggle in settings')
   ok(/ASSIST \{st\.assist/.test(app), 'there is no ASSIST toggle in settings')
 })
+test('VIS-5: the weather-window colour is defined, in both palettes, and used', () => {
+  const app = readFileSync('src/App.tsx', 'utf8')
+  // the whole weather channel paints with --blue: the shut/near window boxes,
+  // the map note, the menu forecast. It was used in five places and defined in
+  // none, so it fell back to ink and read like every other advisory.
+  ok(/var\(--blue\)/.test(app), 'nothing uses --blue — the weather channel lost its colour')
+  ok(/:root\{[^}]*--blue:/.test(app), '--blue is used but never defined in :root')
+  // colour-safe mode remaps the palette; the weather channel needs its own
+  // value there or it collides with the teal-blue that green becomes.
+  ok(/\.cb\{[^}]*--blue:/.test(app), '--blue has no colour-safe value — it breaks in cbSafe mode')
+  // and a hazard you must answer this turn carries more weight than a flavour note
+  ok(/spot urgent/.test(app), 'no urgency weighting on the climb advisories')
+  ok(/\.spot\.urgent\{/.test(app), 'the urgent advisory style is not defined')
+})
 test('A11Y-5: one-handed reach is a setting, it persists, and it is layout only', () => {
   const app = readFileSync('src/App.tsx', 'utf8')
   // the toggle exists and cycles all three states

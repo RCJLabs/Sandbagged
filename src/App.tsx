@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.55 — A11Y-5 one-handed reach · CARD-9 the extra-burn consumable
+// SANDBAGGED v9.56 — VIS-5: the weather channel gets its colour, and urgency
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -114,7 +114,7 @@ export const buzz = (ms: number | number[], on: boolean) => {
 
 
 const CSS = `
-:root{--paper:#e8e1d0;--ink:#26221e;--red:#8c3124;--green:#3f5438;--tan:#b8873f;--fade:#5f584a}
+:root{--paper:#e8e1d0;--ink:#26221e;--red:#8c3124;--green:#3f5438;--tan:#b8873f;--fade:#5f584a;--blue:#355b72}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{overflow-x:hidden}
 body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',serif;color:var(--ink)}
@@ -167,7 +167,9 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
 .pip.o{width:20px;color:var(--red);border-color:var(--red);border-radius:3px;transform:rotate(45deg)}
 .pip.o span{display:block;transform:rotate(-45deg)}
 .pip.d{color:var(--green);border-color:var(--green);border-radius:10px;padding:0 4px}
-.cb{--red:#a8442c;--green:#26557a;--tan:#7a6a4a}
+/* colour-safe: green is already a teal-blue here, so the weather channel takes
+   a violet to stay distinct from it (VIS-5) */
+.cb{--red:#a8442c;--green:#26557a;--tan:#7a6a4a;--blue:#6a4fa3}
 .lanes{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:4px 0 3px;text-align:center}
 .bar{height:18px;border:1.5px solid var(--ink);border-radius:2px;display:flex;overflow:hidden}
 /* VIS-3: what the conditions do to the page. Deliberately under the text
@@ -234,6 +236,10 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
 .spot{font-size:calc(11px * var(--fs));line-height:1.45;margin-top:8px;padding:7px 9px;border-left:3px solid var(--red);
  background:rgba(158,58,44,.07)}
 .spot b{font-size:calc(9px * var(--fs));letter-spacing:1px;color:var(--red);display:block;margin-bottom:2px}
+/* VIS-5: a hazard you must answer this turn outranks a flavour note — heavier
+   rule, a touch more ground, and it sorts to the top of the advisory stack. */
+.spot.urgent{border-left-width:6px;padding-top:8px;padding-bottom:8px;background:rgba(53,91,114,.10)}
+.spot.urgent b{font-weight:800}
 .pv{position:absolute;left:5px;right:5px;bottom:30px;font-size:calc(8.5px * var(--fs));font-weight:700;
  letter-spacing:.3px;text-align:center;pointer-events:none;line-height:1.1}
 .pv.good{color:var(--green)}.pv.bad{color:var(--red)}.pv.mid{color:var(--fade)}
@@ -916,7 +922,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.55 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.56 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2789,11 +2795,29 @@ function startTutorial() {
             })}
           </div>
         </div>) : null}
+      {/* VIS-5: the advisories are ordered by urgency now, not by source order —
+          a hazard you must answer this turn (the route's next move, a shut
+          weather window) sits at the top and carries the `urgent` weight; the
+          plan, the phase note and the read-ahead follow. */}
       {st.routeMove ? (
-        <div className="spot" role="status" aria-live="polite"
+        <div className={`spot${st.routeMove.kind !== 'dry' ? ' urgent' : ''}`} role="status" aria-live="polite"
           style={{ borderLeftColor: st.routeMove.kind === 'dry' ? 'var(--green)' : 'var(--red)' }}>
           <b style={{ color: st.routeMove.kind === 'dry' ? 'var(--green)' : 'var(--red)' }}>
             NEXT TURN</b>{st.routeMove.text}</div>) : null}
+      {/* ROUTE-6: the weather window — telegraphed a hold ahead, then live. */}
+      {st.phase === 'climb' ? (windowOf(st) ? (
+        <div className="spot urgent" role="status" aria-live="polite"
+          style={{ borderLeftColor: 'var(--blue)' }}>
+          <b style={{ color: 'var(--blue)' }}>THE WINDOW HAS SHUT</b>{windowOf(st)!.text}</div>
+      ) : (() => {
+        const wn = windowNear(st)
+        if (!wn || wn.away > 2) return null
+        return (
+          <div className="spot" role="status" aria-live="polite"
+            style={{ borderLeftColor: 'var(--blue)' }}>
+            <b style={{ color: 'var(--blue)' }}>
+              WEATHER · {wn.away} HOLD{wn.away === 1 ? '' : 'S'} OFF</b>{wn.w.warn}</div>)
+      })()) : null}
       {st.seq && seqById(st.seq.id) ? (
         <div className="spot" style={{ borderLeftColor: 'var(--green)' }}>
           <b style={{ color: 'var(--green)' }}>
@@ -2810,20 +2834,6 @@ function startTutorial() {
               {nx.away} HOLD{nx.away === 1 ? '' : 'S'} TO {nx.p.name.toUpperCase()}</b>
             {nx.p.text}</div>)
       })()}
-      {/* ROUTE-6: the weather window — telegraphed a hold ahead, then live. */}
-      {st.phase === 'climb' ? (windowOf(st) ? (
-        <div className="spot" role="status" aria-live="polite"
-          style={{ borderLeftColor: 'var(--blue)' }}>
-          <b style={{ color: 'var(--blue)' }}>THE WINDOW HAS SHUT</b>{windowOf(st)!.text}</div>
-      ) : (() => {
-        const wn = windowNear(st)
-        if (!wn || wn.away > 2) return null
-        return (
-          <div className="spot" role="status" aria-live="polite"
-            style={{ borderLeftColor: 'var(--blue)' }}>
-            <b style={{ color: 'var(--blue)' }}>
-              WEATHER · {wn.away} HOLD{wn.away === 1 ? '' : 'S'} OFF</b>{wn.w.warn}</div>)
-      })()) : null}
       {/* RUN-9: what you have read off the wall — the next holds, nearest first,
           each as a range until you have been on it. Information you paid for. */}
       {st.phase === 'climb' && st.readAhead > 0 ? (() => {
