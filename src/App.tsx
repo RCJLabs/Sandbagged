@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.59 — UX-17: the beginner's climb screen
+// SANDBAGGED v9.60 — NARR-12: the climber shows up in the story
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -26,7 +26,7 @@ import {
   gearMods, gradeLabel, gradeText, gripShown, holdLabel, honestyOf, importSave,
   jit, leaveEventStep, leaveShopStep, lineCanVary, loadGame, loadoutDeck, mapCliff,
   mapContours, mapPoints, mutMods, newRun, nextPhase, phaseOf, phaseSummary,
-  pickGearStep, pileFromHand, playBonusStep, postOpen, postTalk, powerAgainst,
+  pickGearStep, pileFromHand, playBonusStep, postOpen, postTalk, powerAgainst, repliesFor,
   previewLane, previewPump, priceOf, recordRun, rerollCost, rerollStep, resolve,
   rollEvent, roughPath, saveGame, seedCode, seqById, seqNeedText, sigById, skirmishRoute,
   slotSummary, slotsUsed, spawn, specFromEstablished, specOf, startBurn, stockShop, windowNear, windowOf,
@@ -928,7 +928,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.59 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.60 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2124,7 +2124,7 @@ function startTutorial() {
           </>
         ) : (
           <div>
-            {talk.replies.map((r, i) => (
+            {repliesFor(talk, st).map((r, i) => (
               <div key={i} className="menu-item" {...tap(() => {
                 const rng = new RNG(st.seed)
                 const next = r.outcome ? applyOutcome(st, r.outcome, rng) : st

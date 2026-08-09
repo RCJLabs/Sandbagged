@@ -2127,7 +2127,10 @@ export const isBoon = (id: string) => !!boonById(id)
 export type Talk = {
   id: string; who: string; act: number; after?: string; needsPage?: number
   text: string
-  replies: { label: string; text: string; outcome?: EventOutcome }[]
+  /* NARR-12: a reply with `arch` set is that climber's line — it shows only to
+     them. Flavour only (never an `outcome`), so who you are changes the
+     conversation, never the reward or the balance. */
+  replies: { label: string; text: string; outcome?: EventOutcome; arch?: string }[]
 }
 export const TALKS: Talk[] = [
   { id: 'marge1', who: 'Marge', act: 0,
@@ -2147,6 +2150,7 @@ export const TALKS: Talk[] = [
     replies: [
       { label: 'You stopped.', text: '"I stopped. That is allowed." She feeds the fire.', outcome: { skin: 1 } },
       { label: 'I could bring something back.', text: '"Bring yourself back. Start there."', outcome: { skin: 2 } },
+      { label: 'You do not stop. You come down and go back up.', text: 'She looks at your frostbitten kit and goes very still. "That is exactly what he used to say. It was not a compliment then either."', arch: 'alpine' },
     ] },
   { id: 'marge4', who: 'Marge', act: 1, after: 'marge3', needsPage: 4,
     text: 'That is his hand. I would know it upside down in the rain. Where.',
@@ -2175,12 +2179,15 @@ export const TALKS: Talk[] = [
     replies: [
       { label: 'Was he strong?', text: '"Strongest I ever saw. That is the boring part of it."' },
       { label: 'Did you like him?', text: 'Long pause. "I did, actually. That is the annoying part of it."', outcome: { journal: 0 } },
+      { label: 'Gym strong, or rock strong?', text: '"Ha." He studies your downturned shoes. "Both, and he would have hated that you asked. A gym rat who could actually climb. Like someone else I am looking at."', arch: 'comp' },
     ] },
   { id: 'dale2', who: 'Dale', act: 1, after: 'dale1',
     text: 'He used to say a grade is just a rumour that got organised. Drove the guidebook people mad.',
     replies: [
       { label: 'He was not wrong.', text: '"He was not wrong. He was insufferable about it."', outcome: { xp: 8 } },
       { label: 'Sounds like an excuse.', text: '"It was. He was also the only one who could back it up."', outcome: { journal: 0 } },
+      { label: 'A grade is a conversation, not a number.', text: 'He looks at your rack of tat and old cams. "Now you sound like him. That is not a warning, exactly. But watch yourself."', arch: 'trad' },
+      { label: 'You only really know a grade first try.', text: '"He said that too." Dale almost winces. "Right before he sandbagged half the valley. Careful whose habits you pick up."', arch: 'onsight' },
     ] },
   { id: 'dale3', who: 'Dale', act: 2, after: 'dale2',
     text: 'If you find it and it is not as hard as he said, you keep that to yourself. Let him have the one thing.',
@@ -2192,12 +2199,15 @@ export const TALKS: Talk[] = [
     replies: [
       { label: 'I believe the survey photo.', text: '"A photo of a shadow." She shrugs. "Fine. It is a nice walk."' },
       { label: 'It is a nice long walk.', text: 'She laughs, properly. "Okay. Now I like you."', outcome: { xp: 6 } },
+      { label: 'The walk is the point. So is the rack.', text: 'She eyes the nuts and slings hanging off you. "Oh, you are one of the old ones. He would have talked your ear off at this fire and enjoyed every minute."', arch: 'trad' },
     ] },
   { id: 'nita2', who: 'Nita', act: 1, after: 'nita1',
     text: 'I climb harder than he did. On plastic. I know exactly what that sentence is worth, before you say it.',
     replies: [
       { label: 'It is worth something.', text: '"It is worth something on plastic." She is quiet a moment. "Show me the pages."', outcome: { cardRarity: 'uncommon' } },
       { label: 'Say it out loud again.', text: 'She does. It sounds smaller the second time and she knows it.', outcome: { journal: 0 } },
+      { label: 'I climb harder than him too. On plastic.', text: 'She looks at you properly for the first time. "Then we already understand each other." A pause. "It still does not count up here. But show me the pages."', arch: 'comp' },
+      { label: 'I would not know. I do not rehearse.', text: '"An onsighter." She shakes her head. "On his rock, first try? That is not confidence, that is a comedy. Good luck."', arch: 'onsight' },
     ] },
   { id: 'nita3', who: 'Nita', act: 2, after: 'nita2',
     text: 'I found this wedged in a crack on the approach. I nearly used it for kindling before I read it.',
@@ -2209,6 +2219,7 @@ export const TALKS: Talk[] = [
     replies: [
       { label: 'Understood.', text: 'He writes your plate down anyway. Fair enough.' },
       { label: 'What is up the third drainage?', text: '"Rock. Weather. A lot of both." He is already walking away.', outcome: { xp: 6 } },
+      { label: 'The weather up there does not read your calendar.', text: 'Ellis stops. Looks at your rimed-up rack. "No. But I do, and the road still closes on the fifteenth. People like you are exactly who I write down."', arch: 'alpine' },
     ] },
   { id: 'ellis2', who: 'Ranger Ellis', act: 2, after: 'ellis1',
     text: 'We pulled a pack out of the moraine field in ninety-eight. No name in it. It is in a box in the office if you want to look at it.',
@@ -2251,6 +2262,16 @@ export const TALKS: Talk[] = [
         text: '"No." A long pause. "I have had twenty-two years to decide whether that was love or laziness. I still do not know."', outcome: { xp: 20 } },
     ] },
 ]
+
+/* NARR-12: the replies this climber can actually give. An `arch` reply is that
+   climber's own line and shows only to them; every player still sees the base
+   replies. Flavour only — arch replies carry no `outcome` — so the specialist
+   climbers (Comp Kid, Trad Dad, Alpinist, Onsighter) show up in the story
+   without moving a single number. The Boulderer, the default and the sim's
+   climber, is the everyclimber and gets no gated line, so the guarded runs are
+   untouched. */
+export const repliesFor = (t: Talk, s: GameState) =>
+  t.replies.filter(r => !r.arch || (s.inRun && archOf(s).id === r.arch))
 
 /* FA-1c. You name a line and grade it, and until now nobody said a word about
    it. Grading is a social act — undergrading and overgrading are both claims

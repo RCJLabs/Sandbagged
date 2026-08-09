@@ -628,6 +628,35 @@ test('a burn consumable does nothing mid-climb — useKitStep refuses it', () =>
   eq(after.pump, s.pump, 'the Second Wind did something to the climb it should not have')
 })
 
+group('the climber in the story (NARR-12)')
+test('every specialist climber shows up, and never on the balance', () => {
+  const gated = E.TALKS.flatMap(t => t.replies.filter(r => r.arch))
+  ok(gated.length >= 5, `only ${gated.length} archetype lines in the whole cast`)
+  // each specialist climber gets at least one line; the boulderer (the default
+  // and the sim's climber) gets none, so the guarded runs never see one
+  for (const id of ['comp', 'trad', 'alpine', 'onsight'])
+    ok(gated.some(r => r.arch === id), `the ${id} never shows up in a conversation`)
+  ok(!gated.some(r => r.arch === 'boulderer'), 'the default climber has gated lines — the sim would see them')
+  // flavour only: an archetype line carries no outcome, so who you are can never
+  // move the completion band or the climber spread
+  for (const r of gated)
+    ok(!r.outcome, `an archetype line ("${r.label}") carries an outcome — it can move balance`)
+})
+test('repliesFor shows a climber their own line and hides the rest', () => {
+  const talk = E.TALKS.find(t => t.replies.some(r => r.arch))
+  const archId = talk.replies.find(r => r.arch).arch
+  const at = E.ARCHETYPES.findIndex(a => a.id === archId)
+  const bould = E.ARCHETYPES.findIndex(a => a.id === 'boulderer')
+  const base = talk.replies.filter(r => !r.arch).length
+  const forArch = a => E.repliesFor(talk, { ...E.freshRun(0, 0, 1), inRun: true, arch: a })
+  eq(forArch(bould).length, base, 'the boulderer was shown a gated line')
+  ok(forArch(at).length > base, `the ${archId} was not shown their own line`)
+  // base replies always show; gated ones never leak outside a run
+  ok(forArch(at).some(r => !r.arch), 'the base replies vanished for a specialist climber')
+  eq(E.repliesFor(talk, { ...E.freshRun(0, 0, 1), inRun: false, arch: at }).length, base,
+    'gated lines leak outside a run')
+})
+
 /* =======================================================================
    4. SEEDS  (v4.3 — a run must be reproducible from its code)
    ======================================================================= */

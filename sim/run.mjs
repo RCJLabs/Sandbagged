@@ -152,7 +152,7 @@ function runOnce(seed) {
           // talk first if anyone is there — it is free and sometimes pays
           const talk = E.availableTalk(s)
           if (talk) {
-            const r = talk.replies.reduce((a, b) =>
+            const r = E.repliesFor(talk, s).reduce((a, b) =>
               ((b.outcome?.skin ?? 0) + (b.outcome?.journal ? 3 : 0)
                > (a.outcome?.skin ?? 0) + (a.outcome?.journal ? 3 : 0) ? b : a))
             if (r.outcome) s = E.applyOutcome(s, r.outcome, rng)
