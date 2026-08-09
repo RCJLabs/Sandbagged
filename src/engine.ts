@@ -318,6 +318,10 @@ export type GameState = {
   dailyScore: number
   dailyBest: number
   dailyStreak: number
+  /** SKIRM-3: the weekly ladder — a running total of this week's dailies. */
+  weekId: string
+  weekScore: number
+  weekBest: number
   /* BAL-5. A post used to cost you the stage, and a stage of climbing is worth
      more than anything on the shelf — so a rational player skipped every one,
      which the harness did, which is why posts measured 0.4 a run. Forcing the
@@ -400,6 +404,7 @@ type SaveData = {
   ticked?: string[]; established?: Established[]; hints?: boolean; grades?: GradeScale
   tweak?: Tweak | null
   dailyDay?: string; dailyScore?: number; dailyBest?: number; dailyStreak?: number
+  weekId?: string; weekScore?: number; weekBest?: number
   mutators?: string[]
   runs?: number; falls?: number; ending?: string; topRope?: boolean; history?: RunRecord[]
   coaching?: boolean; sound?: boolean; haptics?: boolean; assist?: boolean; cbSafe?: boolean; tutorialDone?: boolean
@@ -419,6 +424,7 @@ export function saveGame(s: GameState) {
       tutorialDone: s.tutorialDone, motion: s.motion, textScale: s.textScale,
       arch: s.arch, loadouts: s.loadouts, book: s.book, bestCircuit: s.bestCircuit, ticked: s.ticked, established: s.established, hints: s.hints, grades: s.grades, tweak: s.tweak,
       dailyDay: s.dailyDay, dailyScore: s.dailyScore, dailyBest: s.dailyBest, dailyStreak: s.dailyStreak,
+      weekId: s.weekId, weekScore: s.weekScore, weekBest: s.weekBest,
       mutators: s.mutators,
       runs: s.runs, falls: s.falls, ending: s.ending, topRope: s.topRope,
       history: s.history.slice(0, HISTORY_MAX),
@@ -486,6 +492,7 @@ export function loadGame(slot = 0): Partial<GameState> {
       grades: d.grades ?? 'v', tweak: d.tweak ?? null,
       dailyDay: d.dailyDay ?? '', dailyScore: d.dailyScore ?? 0,
       dailyBest: d.dailyBest ?? 0, dailyStreak: d.dailyStreak ?? 0,
+      weekId: d.weekId ?? '', weekScore: d.weekScore ?? 0, weekBest: d.weekBest ?? 0,
       runs: d.runs ?? 0, falls: d.falls ?? 0, ending: d.ending ?? '',
       topRope: d.topRope ?? true, history: d.history ?? [],
       ...(d.run ? { inRun: true,
@@ -2385,6 +2392,25 @@ export function dailyScore(s: GameState): number {
     + Math.max(0, PUMP_MAX - s.peakPump) * 3)
 }
 
+/* SKIRM-3. The conditions of the day. The daily already rolls its weather and
+   rock off the date — that is how everyone lands on the same problem — but it
+   never told you what they were before you tied in. This is that reading, and
+   because conditions are the biggest lever in the game (ENG-20), it is a real
+   shared modifier, not decoration. It reproduces startDaily's derivation
+   exactly (same seed, same first two draws), pinned by a test, so the reading
+   is the same conditions you actually climb in. */
+export function dailyForecast(key = dayKey()): { weather: number; rock: number } {
+  const r = new RNG(dailySeed(key))
+  return { weather: r.int(WEATHER.length), rock: r.int(ROCK.length) }
+}
+/* SKIRM-3. The week as a number, for the ladder that adds up your dailies. A
+   plain seven-day block off the epoch — deterministic, and all that a running
+   weekly total needs. Takes a date so a test is not at the mercy of the clock. */
+export function weekKey(d = new Date()): string {
+  const day = Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 86400000)
+  return `w${Math.floor(day / 7)}`
+}
+
 export function skirmishRoute(level: number, rng: RNG): RouteSpec {
   const grade = Math.min(5, Math.floor((level - 1) / 2))
   const styles: StyleKey[] = ['mixed', 'slab', 'crimp ladder', 'compression', 'power', 'jug haul']
@@ -2655,6 +2681,7 @@ export function carryOver(s: GameState): Partial<GameState> {
     coaching: s.coaching, hints: s.hints, topRope: s.topRope, grades: s.grades,
     dailyDay: s.dailyDay, dailyScore: s.dailyScore,
     dailyBest: s.dailyBest, dailyStreak: s.dailyStreak,
+    weekId: s.weekId, weekScore: s.weekScore, weekBest: s.weekBest,
   }
 }
 
@@ -2696,7 +2723,7 @@ export function freshRun(routeIdx: number, deckTier: number, seed: number): Game
     tutorialDone: false,
     fxLane: ['', '', ''], fxTick: 0, gear: [], boons: [], gearOffers: [], savedBlow: false, peakPump: 0, clipped: false, bonusUsed: false, line: 0, rerolls: 0, mutators: [], seq: null, readAhead: 0, order: [], routeMove: null, arch: 0,
     loadouts: ARCHETYPES.map(a => a.loadout.slice()), reroll: 0, book: {}, ticked: [], hints: true, grades: 'v',
-    dailyDay: '', dailyScore: 0, dailyBest: 0, dailyStreak: 0, daily: false, trail: [],
+    dailyDay: '', dailyScore: 0, dailyBest: 0, dailyStreak: 0, weekId: '', weekScore: 0, weekBest: 0, daily: false, trail: [],
     shoppedAt: [], tweak: null, eventChose: [], vanRaided: [], established: [],
   }
 }
@@ -2710,8 +2737,13 @@ export function bankDaily(s: GameState): GameState {
   // a streak is consecutive days, so yesterday must have been the last one
   const y = new Date(); y.setUTCDate(y.getUTCDate() - 1)
   const kept = s.dailyDay === dayKey(y) ? s.dailyStreak : 0
+  // SKIRM-3: add today onto this week's ladder, or start the week fresh. Runs
+  // exactly once per day — the `!s.daily` guard above makes bankDaily idempotent.
+  const wk = weekKey()
+  const weekScore = s.weekId === wk ? s.weekScore + score : score
   return { ...s, daily: false, dailyDay: key, dailyScore: score,
-    dailyBest: Math.max(s.dailyBest, score), dailyStreak: kept + 1 }
+    dailyBest: Math.max(s.dailyBest, score), dailyStreak: kept + 1,
+    weekId: wk, weekScore, weekBest: Math.max(s.weekBest, weekScore) }
 }
 
 export function endSession(s0: GameState, rng: RNG): GameState {

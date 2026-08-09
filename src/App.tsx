@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.50 — META-8: deeds
+// SANDBAGGED v9.51 — SKIRM-3: conditions of the day + a weekly ladder
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -20,7 +20,7 @@ import {
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
   campStep, cardHints, carryOver, cashForSend, circuitRoute, claimCurse, claimVerdict,
   consumableById, KIT_MAX, useKitStep,
-  coach, codeSeed, copyLimit, cropStep, dailyRoute, dailySeed, dayKey, DEEDS, deedsDone, desperationOf,
+  coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyRoute, dailySeed, dayKey, DEEDS, deedsDone, desperationOf,
   endSession, endingFor, endingStep, establishedIn, exportSave, exposed, exposureOf,
   faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
   gearMods, gradeLabel, gradeText, gripShown, holdLabel, honestyOf, importSave,
@@ -30,7 +30,7 @@ import {
   previewLane, previewPump, priceOf, recordRun, rerollCost, rerollStep, resolve,
   rollEvent, roughPath, saveGame, seedCode, seqById, seqNeedText, sigById, skirmishRoute,
   slotSummary, slotsUsed, spawn, specFromEstablished, specOf, startBurn, stockShop, windowNear, windowOf,
-  styleMods, tagCounts, tagOf, takeOfferStep, takeTwoStep, vanOpen, walkAwayStep,
+  styleMods, tagCounts, tagOf, takeOfferStep, takeTwoStep, vanOpen, walkAwayStep, weekKey,
   wipeSlot, xpForSend, xpMult, xpToNext,
 } from './engine'
 
@@ -853,18 +853,22 @@ function startTutorial() {
         {(() => {
           const done = st.dailyDay === dayKey()
           const r = dailyRoute()
+          const fc = dailyForecast()   // SKIRM-3: the conditions everyone shares today
+          const wk = st.weekId === weekKey() ? st.weekScore : 0   // this week's ladder
           return (
             <>
               <button className={`btn${done ? '' : ' go'}`} style={{ width: '100%', padding: 13 }}
                 disabled={done} onClick={startDaily}>
                 {done ? `TODAY'S PROBLEM — DONE · ${st.dailyScore}` : "TODAY'S PROBLEM ▸"}</button>
               <div className="sub" style={{ marginTop: 2, marginBottom: 9 }}>
-                {r.name} · {gradeText(r.grade, st.grades)} · {r.clear} holds.
+                {r.name} · {gradeText(r.grade, st.grades)} · {r.clear} holds ·{' '}
+                <span style={{ color: 'var(--blue)' }}>{WEATHER[fc.weather].name} on {ROCK[fc.rock].name}</span>.
                 {done
                   ? ` You scored ${st.dailyScore}. Back tomorrow.`
-                  : ' One go. Everybody in the world is on this one today.'}
+                  : ' One go. Everybody in the world is on this one, in these conditions, today.'}
                 {st.dailyStreak > 1 ? ` ${st.dailyStreak} days running.` : ''}
-                {st.dailyBest > 0 ? ` Best ${st.dailyBest}.` : ''}</div>
+                {st.dailyBest > 0 ? ` Best ${st.dailyBest}.` : ''}
+                {wk > 0 ? ` This week: ${wk}${st.weekBest > wk ? ` (best ${st.weekBest})` : ''}.` : ''}</div>
             </>)
         })()}
 
@@ -887,7 +891,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.50 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.51 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

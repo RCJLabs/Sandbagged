@@ -779,6 +779,36 @@ test('a daily attempt is banked once and only once', () => {
   ok(E.bankDaily({ ...base, result: 'fall', cleared: 6 }).dailyScore < first.dailyScore,
     'coming off scored the same as topping out')
 })
+test('the daily surfaces its conditions and stacks a weekly ladder (SKIRM-3)', () => {
+  // conditions of the day: deterministic, and the reading is the conditions
+  // the daily actually rolls (same seed, same first two draws as startDaily)
+  const key = '2026-07-29'
+  eq(JSON.stringify(E.dailyForecast(key)), JSON.stringify(E.dailyForecast(key)),
+    'the same day gave two different forecasts')
+  const r = new E.RNG(E.dailySeed(key))
+  eq(JSON.stringify(E.dailyForecast(key)),
+    JSON.stringify({ weather: r.int(E.WEATHER.length), rock: r.int(E.ROCK.length) }),
+    'the forecast is not the conditions the daily actually climbs in')
+  // the week id is stable within a week and moves across one
+  const d0 = new Date(Date.UTC(2026, 6, 20))
+  eq(E.weekKey(d0), E.weekKey(new Date(Date.UTC(2026, 6, 20))), 'the same day gave two week ids')
+  ok(E.weekKey(d0) !== E.weekKey(new Date(Date.UTC(2026, 6, 27))), 'seven days on is still the same week')
+  // the ladder adds today onto this week, resets on a new week, banks once
+  const base = { ...E.freshRun(0, 0, 1), daily: true, result: 'send', cleared: 10,
+    turn: 20, peakPump: 5, skirmish: E.dailyRoute(), dailyDay: '', dailyBest: 0, dailyStreak: 0,
+    weekId: '', weekScore: 0, weekBest: 0 }
+  const score = E.dailyScore(base)
+  const sameWeek = E.bankDaily({ ...base, weekId: E.weekKey(), weekScore: 500 })
+  eq(sameWeek.weekScore, 500 + score, "the daily did not stack onto this week's ladder")
+  eq(sameWeek.weekBest, 500 + score, 'the weekly best did not follow the running total')
+  eq(E.bankDaily({ ...base, weekId: 'w0', weekScore: 999 }).weekScore, score,
+    'a new week did not reset the ladder')
+  eq(JSON.stringify(E.bankDaily(sameWeek)), JSON.stringify(sameWeek),
+    'a second bank moved the weekly ladder')
+  // and it survives a save
+  E.saveGame({ ...base, slot: 1, weekId: 'w123', weekScore: 700, weekBest: 900 })
+  eq(E.loadGame(1).weekScore, 700, 'the weekly ladder did not survive a save')
+})
 
 test('grades read correctly in both scales', () => {
   // DES-4. Everything read in V-scale. Font is the other scale people use,
