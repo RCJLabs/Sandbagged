@@ -176,6 +176,39 @@ test('being pumped is what makes a dyno a gamble', () => {
   }
 })
 
+test('ENG-23: flow is a track with two breakpoints, and it never buys the clock', () => {
+  // the track is real now: two breakpoints and a higher ceiling
+  ok(E.FLOW_AT < E.FLOW_HIGH, 'the dialed tier is not above the flow tier')
+  ok(E.FLOW_MAX >= E.FLOW_HIGH, 'flow cannot even reach the dialed tier')
+  ok(E.FLOW_MAX > 3, 'the flow cap was not raised past the old 3')
+  // the dyno odds graduate across BOTH breakpoints — not one on/off switch
+  const base = { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null, boardP: [null, null, null], pump: 4 }
+  const none = E.stickChance({ ...base, flow: 0 })
+  const inflow = E.stickChance({ ...base, flow: E.FLOW_AT })
+  const dialed = E.stickChance({ ...base, flow: E.FLOW_HIGH })
+  ok(inflow > none, `flow does not help the dyno: ${none.toFixed(2)} vs ${inflow.toFixed(2)}`)
+  ok(dialed > inflow + 0.05, `dialing in barely helps the dyno: ${inflow.toFixed(2)} vs ${dialed.toFixed(2)}`)
+  // flow must NEVER touch the clock — a per-turn pump relief compounds (it was
+  // measured at +7 to +13 points of completion and cut). The end-of-turn pump
+  // is identical at every flow level for an identical board.
+  const rng = new E.RNG(4)
+  const s0 = startClimb(4, rng, { seed: 5 })
+  const hold = { ...s0.holdDeck[0], clean: true, crux: false }
+  const b = { ...s0, pump: 0, boardH: [hold, null, null], boardP: [null, null, null], line: 0, mutators: [], boons: [] }
+  const lanes = [
+    { clears: true, biteToPump: 0, hold: true, card: true, blows: false },
+    { clears: false, biteToPump: 0, hold: false, card: false, blows: false },
+    { clears: false, biteToPump: 0, hold: false, card: false, blows: false },
+  ]
+  const clock = f => E.previewPump({ ...b, flow: f }, lanes)
+  eq(clock(E.FLOW_HIGH - 1), clock(E.FLOW_HIGH - 2), 'dialing in changed the clock — flow is buying pump again')
+  eq(clock(E.FLOW_MAX), clock(0), 'flow is buying pump')
+  // and the raised cap must not have buffed the explosive stat through momentum
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  ok(/momentum'\)\s*p \+= Math\.min\(3, s\.flow\)/.test(eng),
+    'momentum Power is no longer capped at the old ceiling — the raised flow cap is buffing Power')
+})
+
 test('the preview is exact for every shape of deck on every kind of route', () => {
   /* The sweep. Seven deck shapes against four kinds of route — 28 combinations
      — so a rule that only misbehaves for one of them fails here rather than

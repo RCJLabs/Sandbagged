@@ -16,6 +16,19 @@ export const SUPPORT = 1
 export const CAMPUS_BITE = 1
 export const FLOW_AT = 2
 export const FLOW_TAX = 1
+/* ENG-23: flow you can feel. It used to cap at 3 and read as a single on/off
+   switch at FLOW_AT (unanswered lanes stop costing tax) — flow 1 vs flow 3 was
+   invisible. Now it climbs to FLOW_MAX as a visible track, and there is a
+   second, earned breakpoint at FLOW_HIGH: dialed in, you are moving so well the
+   dyno lands far more often (stickChance below), a real reward for a
+   flow-and-throw line without touching the clock — a per-turn pump relief was
+   measured at +7 to +13 points of completion (the "per-turn costs compound"
+   lesson, in reverse) and cut. You reach the tier only by clearing a hold every
+   turn without resting, so it is never a turtle's reward, and momentum cards
+   still cap their Power at the old ceiling (below), so the raised cap feeds the
+   dyno and the track, never the explosive stat. */
+export const FLOW_HIGH = 4
+export const FLOW_MAX = 5
 export const BETA_GRIP = 1
 export const ATTEMPTS = 3        // v0.7: 4 → 3. Sessions must fit ~5 minutes.
 export const SKIN_MAX = 4
@@ -3027,7 +3040,7 @@ export const STICK_FEET = 0.15     // and what having your feet on is worth
 export function stickChance(s: GameState): number {
   const fresh = 1 - Math.min(1, s.pump / PUMP_MAX)
   const feet = s.boardP[2] ? STICK_FEET : 0
-  const flow = s.flow >= FLOW_AT ? 0.05 : 0
+  const flow = s.flow >= FLOW_HIGH ? 0.15 : s.flow >= FLOW_AT ? 0.05 : 0   // ENG-23: dialed in, you throw for it
   return Math.max(0.15, Math.min(0.97,
     STICK_BASE - STICK_PUMP * (1 - fresh) + feet + flow))
 }
@@ -3199,7 +3212,7 @@ export function powerAgainst(s: GameState, card: Card, hold: Hold, lane: number,
   // above a piece you have just placed, you commit
   if (s.clipped && specOf(s).roped) p += CLIPPED_POWER
   if (card.fx === 'greedy') p += desperationOf(s)
-  if (card.fx === 'momentum') p += s.flow
+  if (card.fx === 'momentum') p += Math.min(3, s.flow)   // ENG-23: keep Power at the old ceiling; the raised flow cap feeds tempo
   if (s.inRun && s.turn === 1) p += archOf(s).firstTurnPower ?? 0
   if (s.inRun) p += archOf(s).dPower ?? 0
   if (card.fx === 'weight') p += s.boardP.filter((c, k) => c && k !== lane).length
@@ -3438,7 +3451,7 @@ export function resolve(s: GameState, rng: RNG): GameState {
     }
   }
 
-  const flow = clearedThis > 0 && (!restedThis || bm.keepFlow) ? Math.min(3, s.flow + 1) : 0
+  const flow = clearedThis > 0 && (!restedThis || bm.keepFlow) ? Math.min(FLOW_MAX, s.flow + 1) : 0
   const tax = Math.max(0, HANG_TAX - (flow >= FLOW_AT ? FLOW_TAX : 0))
   const unanswered = [0, 1, 2].filter(i => boardH[i] && !boardP[i]).length
   const hooked = boardP[2]?.fx === 'hooked'
@@ -3784,7 +3797,7 @@ export function previewPump(s0: GameState, lanes?: LanePreview[]): number {
     }
   }
   const restedThis = s.boardP.some(c => c && c.shed > 0)
-  const flow = cleared > 0 && !restedThis ? Math.min(3, s.flow + 1) : 0
+  const flow = cleared > 0 && !restedThis ? Math.min(FLOW_MAX, s.flow + 1) : 0
   const tax = Math.max(0, HANG_TAX - (flow >= FLOW_AT ? FLOW_TAX : 0))
   // the clock is charged AFTER resolution, so a card that blows leaves its
   // lane unanswered too — this was the whole gap between preview and reality
@@ -4332,8 +4345,10 @@ export function coach(s: GameState): string | null {
     return 'An unanswered hold bites straight into your pump, and costs an extra tax at end of turn.'
   if (mine.some(c => (c?.settled ?? 0) > 0))
     return 'A card that survives settles in — it gains Power every turn it stays on.'
+  if (s.flow >= FLOW_HIGH)
+    return 'Dialed in. Unanswered lanes cost no tax and the dyno is landing — throw for it while it holds.'
   if (s.flow >= FLOW_AT)
-    return 'Flow is up, so the hang tax is cheaper. Resting now would break it.'
+    return 'Flow is up, so an unanswered lane costs no tax. Keep clearing to dial in; resting now would break it.'
   if (!mine[2] && !handHolds.length) return null
   return null
 }

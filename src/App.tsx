@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.57 — ROUTE-9: each act gets its own weather
+// SANDBAGGED v9.58 — ENG-23: flow you can feel
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -10,7 +10,7 @@ import {
   ACTS, ACT_NAMES, ACT_OF_ROUTE, ACT_TERRAIN, ACT_XP, ARCHETYPES, ASCENT, BOOK_BETA_MAX,
   BY_RARITY, CAMPUS_BITE, CARDS, CROP_COST, CampAction, Card, DECKS, DECK_SIZE,
   DEFAULT_LOADOUT, DOUBT_AT, EVENTS, EXPOSED_FALL_PSYCHE, EXPOSED_PSYCHE, Established,
-  FA_NAMES_A, FA_NAMES_B, FEET_STATS, FLOW_AT, GameState, HISTORY_MAX, HOLD_STATS,
+  FA_NAMES_A, FA_NAMES_B, FEET_STATS, FLOW_AT, FLOW_HIGH, GameState, HISTORY_MAX, HOLD_STATS,
   JOURNAL, KEYWORDS, LANE_NAMES, LINES, MAP_BOT, MAP_H, MAP_TOP, MAP_W, MUTATORS,
   MapNode, OPPOSE_ALONE, OPPOSE_PAIR, PRICE, PROJECT_SKIN, PSYCHE_BAIL, PSYCHE_MAX,
   PUMP_MAX, Phase, RARE_SLOTS, RNG, ROCK, ROUTES, RUN_SKIN, Rarity, SKIN_MAX,
@@ -922,7 +922,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.57 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.58 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2688,7 +2688,8 @@ function startTutorial() {
           ▲ EXPOSED · {Math.round(exposureOf(st) * 100)}% up — backing off now costs an extra psyche</div>) : null}
       <div className="row" style={{ marginTop: 2 }}>
         <span className="sub">turn {st.turn} · {st.line ? `${LINES[st.line].name.toLowerCase()} · ` : ''}
-          flow {st.flow >= FLOW_AT ? '▸▸ −1 tax' : '—'}</span>
+          {/* ENG-23: flow is a track you can watch climb, with two breakpoints */}
+          flow {st.flow}{st.flow >= FLOW_HIGH ? ' ▸▸ dialed' : st.flow >= FLOW_AT ? ' ▸ in flow' : ''}</span>
         <span className="sub tap" {...tap(() => setSheet(true))}>
           deck {st.piles.draw.length} · discard {st.piles.discard.length} · gone {st.piles.exhaust.length}</span>
       </div>
