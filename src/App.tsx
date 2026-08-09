@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.51 — SKIRM-3: conditions of the day + a weekly ladder
+// SANDBAGGED v9.52 — SOCIAL-1: the share string
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -20,7 +20,7 @@ import {
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
   campStep, cardHints, carryOver, cashForSend, circuitRoute, claimCurse, claimVerdict,
   consumableById, KIT_MAX, useKitStep,
-  coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyRoute, dailySeed, dayKey, DEEDS, deedsDone, desperationOf,
+  coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyRoute, dailySeed, dailyShare, dayKey, DEEDS, deedsDone, desperationOf,
   endSession, endingFor, endingStep, establishedIn, exportSave, exposed, exposureOf,
   faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
   gearMods, gradeLabel, gradeText, gripShown, holdLabel, honestyOf, importSave,
@@ -482,6 +482,7 @@ export default function App() {
   const [showPractice, setShowPractice] = useState(false)
   const [campMode, setCampMode] = useState<'rest' | 'sharpen' | 'cut'>('rest')
   const [sheet, setSheet] = useState(false)
+  const [shared, setShared] = useState(false)   // SOCIAL-1: copied-the-daily flash
   /* A11Y-3. Thirty-five things in this file were tappable divs: not focusable,
      not announced, and unreachable without a pointer. This gives one the
      behaviour of a button without restructuring the markup around it. */
@@ -891,7 +892,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.51 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.52 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2366,7 +2367,13 @@ function startTutorial() {
           <div className="spot" style={{ borderLeftColor: 'var(--tan)' }}>
             <b style={{ color: 'var(--tan)' }}>TODAY'S PROBLEM · {st.dailyScore}</b>
             {st.dailyScore >= st.dailyBest ? 'Your best on a daily yet. ' : `Your best is ${st.dailyBest}. `}
-            {st.dailyStreak > 1 ? `${st.dailyStreak} days running.` : 'Come back tomorrow and keep it going.'}
+            {st.dailyStreak > 1 ? `${st.dailyStreak} days running. ` : 'Come back tomorrow and keep it going. '}
+            {st.weekScore > 0 ? `This week: ${st.weekScore}.` : ''}
+            {/* SOCIAL-1: paste your result anywhere, no server */}
+            <button className="btn" style={{ width: '100%', marginTop: 8, padding: 10 }}
+              {...tap(() => { try { void navigator.clipboard?.writeText(dailyShare(st)) } catch { /* blocked */ } setShared(true) },
+                'Copy your result to share')}>
+              {shared ? 'COPIED ✓' : 'SHARE RESULT ▸'}</button>
           </div>) : null}
         <hr className="rule" />
         <div style={{ fontSize: 13, lineHeight: 1.6, margin: '9px 0' }}>

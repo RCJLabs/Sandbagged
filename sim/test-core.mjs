@@ -809,6 +809,28 @@ test('the daily surfaces its conditions and stacks a weekly ladder (SKIRM-3)', (
   E.saveGame({ ...base, slot: 1, weekId: 'w123', weekScore: 700, weekBest: 900 })
   eq(E.loadGame(1).weekScore, 700, 'the weekly ladder did not survive a save')
 })
+test('the daily share is a deterministic, spoiler-shaped line (SOCIAL-1)', () => {
+  const spec = E.dailyRoute('2026-07-29')
+  const base = { ...E.freshRun(0, 0, 1), skirmish: spec, daily: false,
+    dailyDay: '2026-07-29', dailyScore: 340, dailyStreak: 6, weekScore: 1240,
+    weather: 3, rock: 0, result: 'send', cleared: spec.clear, grades: 'v' }
+  const out = E.dailyShare(base)
+  eq(out, E.dailyShare({ ...base }), 'two identical attempts wrote different shares')
+  ok(out.includes('2026-07-29'), 'the share does not carry the date')
+  ok(out.includes('340'), 'the share does not carry the score')
+  ok(/flashed it/.test(out), 'a topped daily did not read as flashed')
+  ok(out.includes('6-day streak') && out.includes('week 1240'), 'the streak or the week is missing')
+  // the grid is one mark per hold, filled for what you worked
+  const gridLine = out.split('\n')[1]
+  const filled = (gridLine.match(/▪/g) || []).length
+  const empty = (gridLine.match(/▫/g) || []).length
+  eq(filled + empty, spec.clear, 'the grid is not one mark per hold')
+  eq(filled, spec.clear, 'a flash did not fill the grid')
+  // coming off reads differently and fills fewer
+  const off = E.dailyShare({ ...base, result: 'fall', cleared: 3, dailyScore: 90 })
+  ok(!/flashed it/.test(off), 'coming off still read as flashed')
+  eq((off.split('\n')[1].match(/▪/g) || []).length, 3, 'the grid did not show what you worked')
+})
 
 test('grades read correctly in both scales', () => {
   // DES-4. Everything read in V-scale. Font is the other scale people use,

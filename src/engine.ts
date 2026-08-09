@@ -2410,6 +2410,28 @@ export function weekKey(d = new Date()): string {
   const day = Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 86400000)
   return `w${Math.floor(day / 7)}`
 }
+/* SOCIAL-1. The share string — the whole feature, and it needs no server. A
+   daily result you can paste anywhere, the way people post a Wordle grid: the
+   date, a row of squares for the holds you worked, the grade and the conditions
+   everyone shared today, the score, and the streak and week behind it. It reads
+   straight off the attempt, so two people who did the same thing write the same
+   line — which is the point of a daily. */
+export function dailyShare(s: GameState): string {
+  const spec = specOf(s)
+  const holds = Math.max(0, Math.min(s.cleared, spec.clear))
+  const grid = '▪'.repeat(holds) + '▫'.repeat(Math.max(0, spec.clear - holds))
+  const wx = WEATHER[s.weather]?.name ?? ''
+  const lines = [
+    `Sandbagged · ${s.dailyDay}`,
+    `${grid} ${holds}/${spec.clear} · ${gradeText(spec.grade, s.grades)}${wx ? ` · ${wx}` : ''}`,
+    `${s.dailyScore} pts${s.result === 'send' ? ' · flashed it' : ''}`,
+  ]
+  const tail: string[] = []
+  if (s.dailyStreak > 1) tail.push(`${s.dailyStreak}-day streak`)
+  if (s.weekScore > 0) tail.push(`week ${s.weekScore}`)
+  if (tail.length) lines.push(tail.join(' · '))
+  return lines.join('\n')
+}
 
 export function skirmishRoute(level: number, rng: RNG): RouteSpec {
   const grade = Math.min(5, Math.floor((level - 1) / 2))
