@@ -93,7 +93,7 @@ export type NodeType = 'climb' | 'camp' | 'boss' | 'event' | 'project' | 'shop' 
   | 'established'
 // Skin is worth ~16 points of completion — far too coarse for a small
 // decision. Cash is the currency you can spend a little of.
-export const PRICE = { common: 30, uncommon: 55, rare: 90, gear: 70, boon: 110, cut: 40, skin: 45 }
+export const PRICE = { common: 30, uncommon: 55, rare: 90, gear: 70, boon: 110, cut: 40, skin: 45, kit: 35 }
 // A reward used to be three cards, take one. These make it a decision with a
 // price on it — cash, or the health of your deck.
 export const REROLL_BASE = 25
@@ -259,6 +259,9 @@ export type GameState = {
   falls: number
   shopCards: Card[]
   shopGear: string[]
+  /** CARD-7: consumables on offer at a post, and the ones you are carrying. */
+  shopKit: string[]
+  kit: string[]
   bought: string[]
   loadout: string[]
   act: number
@@ -402,7 +405,7 @@ type SaveData = {
   coaching?: boolean; sound?: boolean; haptics?: boolean; assist?: boolean; cbSafe?: boolean; tutorialDone?: boolean
   motion?: boolean; textScale?: number
   run: { deck: string[]; tier: number; skin: number; seed: number; act: number
-    gear: string[]; boons: string[]; cash: number; psyche: number; runSeed: number
+    gear: string[]; boons: string[]; kit?: string[]; cash: number; psyche: number; runSeed: number
     eventsSeen: string[] } | null
 }
 const slotKey = (n: number) => `${SAVE_KEY}.${n}`
@@ -421,7 +424,7 @@ export function saveGame(s: GameState) {
       history: s.history.slice(0, HISTORY_MAX),
       run: s.inRun && s.tier < ACTS[s.act].length
         ? { deck: s.runDeck.map(c => c.upgraded ? c.name : c.name), tier: s.tier, skin: s.skin, seed: s.seed,
-            act: s.act, gear: s.gear, boons: s.boons, cash: s.cash, psyche: s.psyche,
+            act: s.act, gear: s.gear, boons: s.boons, kit: s.kit, cash: s.cash, psyche: s.psyche,
             runSeed: s.runSeed, eventsSeen: s.eventsSeen }
         : null,
     }
@@ -490,7 +493,7 @@ export function loadGame(slot = 0): Partial<GameState> {
           ? upgrade(spawn(n.slice(0, -1))) : spawn(n)),
         tier: d.run.tier,
         skin: d.run.skin, seed: d.run.seed, act: d.run.act ?? 0, gear: d.run.gear ?? [],
-        cash: d.run.cash ?? 0, boons: d.run.boons ?? [], psyche: d.run.psyche ?? PSYCHE_MAX,
+        cash: d.run.cash ?? 0, boons: d.run.boons ?? [], kit: d.run.kit ?? [], psyche: d.run.psyche ?? PSYCHE_MAX,
         runSeed: d.run.runSeed ?? 0, eventsSeen: d.run.eventsSeen ?? [] } : {}),
     }
   } catch { return {} }
@@ -1877,6 +1880,48 @@ export const GEAR: Gear[] = [
 ]
 export const gearById = (id: string) => GEAR.find(g => g.id === id)
 
+/* CARD-7. One-shot kit. Gear is a rule you carry for the whole run; a
+   consumable is a single use you spend when it counts — bought at a post,
+   capped, and gone once used. It rides its own shop line and its own
+   inventory, so it never displaces a card offer, and the drafting harness
+   (which values cards) never touches it: a cash sink for the player, not a
+   lever on the balance band. Effects are deliberately mild and one-shot; the
+   post is once a stage, so it cannot be farmed. */
+export type Consumable = {
+  id: string; name: string; text: string
+  shed?: number; draw?: number; powerAll?: number
+}
+export const CONSUMABLES: Consumable[] = [
+  { id: 'chalkshot', name: 'Chalk Shot', shed: 5,
+    text: 'A big scoop when you need it. Shed 5 pump.' },
+  { id: 'betanapkin', name: 'Beta Napkin', draw: 2,
+    text: 'Somebody sketched the moves for you. Draw 2.' },
+  { id: 'cruxpad', name: 'Crux Pad', powerAll: 2,
+    text: 'Slid under the crux. +2 Power to every lane you have out, this turn.' },
+]
+export const consumableById = (id: string) => CONSUMABLES.find(k => k.id === id)
+export const KIT_MAX = 2
+
+/** Spend a consumable: apply it and take it out of the kit. The one shared
+    path for the screen (and any policy), the SIM-5 rule — nothing that plays a
+    consumable reimplements what it does. */
+export function useKitStep(s: GameState, id: string, rng: RNG): GameState {
+  const k = consumableById(id)
+  const i = s.kit.indexOf(id)
+  if (!k || i < 0) return s
+  const kit = s.kit.slice(); kit.splice(i, 1)
+  let pump = s.pump, piles = s.piles
+  const boardP = s.boardP.slice(), log: string[] = []
+  if (k.shed) { pump = Math.max(0, pump - k.shed); log.push(`${k.name}. −${k.shed} pump.`) }
+  if (k.draw) { piles = pileDraw(piles, k.draw, rng); log.push(`${k.name}. Draw ${k.draw}.`) }
+  if (k.powerAll) {
+    for (let j = 0; j < 3; j++) if (boardP[j]) boardP[j] = { ...boardP[j]!, power: boardP[j]!.power + k.powerAll }
+    log.push(`${k.name}. +${k.powerAll} Power everywhere.`)
+  }
+  return { ...s, kit, pump, piles, boardP,
+    peakPump: Math.min(PUMP_MAX, Math.max(s.peakPump, pump)), log: [...s.log, ...log] }
+}
+
 /* ======================= THE FORECAST ==============================
    Conditions used to be rolled the moment you committed, which made a
    57-96% swing invisible. Derived instead as a pure function of the run
@@ -1919,7 +1964,14 @@ export function stockShop(s: GameState, rng: RNG): GameState {
   const stock: string[] = []
   if (gp.length) stock.push(gp[rng.int(gp.length)].id)
   if (bp.length && rng.next() < 0.5) stock.push(bp[rng.int(bp.length)].id)
-  return { ...s, shopCards: cards, shopGear: stock, bought: [], phase: 'shop' }
+  // CARD-7: one consumable on the shelf, on its own line. The screen greys it
+  // out and blocks the buy once your kit is full (KIT_MAX), so the shelf can
+  // always show one without letting you overfill. Which one is picked from the
+  // stage rather than the run RNG ON PURPOSE — drawing from the shared stream
+  // here would shift every downstream roll and move the balance guards for no
+  // real reason (the harness never buys kit). Deterministic, zero perturbation.
+  const kitId = CONSUMABLES[(s.act * 3 + s.tier) % CONSUMABLES.length].id
+  return { ...s, shopCards: cards, shopGear: stock, shopKit: [kitId], bought: [], phase: 'shop' }
 }
 export const priceOf = (c: Card) =>
   c.rarity === 'rare' ? PRICE.rare : c.rarity === 'uncommon' ? PRICE.uncommon : PRICE.common
@@ -2602,7 +2654,7 @@ export function freshRun(routeIdx: number, deckTier: number, seed: number): Game
     seen: [], eventsSeen: [], talkId: null, talkReply: null, phaseSeen: '', onProject: false,
     runout: 0, lastPiece: -1, pitch: 0, cash: 0, psyche: PSYCHE_MAX,
     circuit: false, circuitScore: 0, bestCircuit: 0, slot: 0, runSeed: 0, ending: '', topRope: true, history: [], runs: 0, falls: 0,
-    shopCards: [], shopGear: [], bought: [],
+    shopCards: [], shopGear: [], shopKit: [], kit: [], bought: [],
     coaching: true, sound: true, haptics: true, assist: false, cbSafe: false, motion: true, textScale: 0,
     tutorialDone: false,
     fxLane: ['', '', ''], fxTick: 0, gear: [], boons: [], gearOffers: [], savedBlow: false, peakPump: 0, clipped: false, bonusUsed: false, line: 0, rerolls: 0, mutators: [], seq: null, readAhead: 0, order: [], routeMove: null, arch: 0,
@@ -3978,7 +4030,7 @@ export function walkAwayStep(s: GameState): GameState {
 
 /** Leave the post. You are back where you were, not a stage further on. */
 export function leaveShopStep(s: GameState): GameState {
-  return { ...s, shopCards: [], shopGear: [], phase: 'map',
+  return { ...s, shopCards: [], shopGear: [], shopKit: [], phase: 'map',
     shoppedAt: [...s.shoppedAt, s.act * 100 + s.tier] }
 }
 

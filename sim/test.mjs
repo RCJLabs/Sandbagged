@@ -473,6 +473,40 @@ test('export and import move a save between slots', () => {
   eq(E.importSave('not-a-save', 2), false, 'garbage must be rejected')
 })
 
+group('one-shot kit (CARD-7)')
+test('every consumable does something and says so', () => {
+  ok(E.CONSUMABLES.length >= 3, `only ${E.CONSUMABLES.length} consumables`)
+  ok(E.KIT_MAX >= 1, 'the kit holds nothing')
+  for (const c of E.CONSUMABLES) {
+    ok(c.name && c.text.length > 10, `${c.id} does not explain itself`)
+    ok((c.shed ?? 0) > 0 || (c.draw ?? 0) > 0 || (c.powerAll ?? 0) > 0, `${c.name} does nothing`)
+  }
+})
+test('a consumable is spent on use, applies, and never leaks into the deck', () => {
+  const rng = new E.RNG(11)
+  const s = { ...startClimb(4, rng, { seed: 5 }), kit: ['chalkshot'], pump: 8 }
+  const after = E.useKitStep(s, 'chalkshot', rng)
+  eq(after.kit.length, 0, 'the consumable was not spent')
+  eq(after.pump, 3, 'Chalk Shot did not shed its 5 pump')
+  // a consumable is not a card: it must never enter any pile
+  eq(after.piles.discard.length, s.piles.discard.length, 'a consumable leaked into the discard')
+  eq(after.piles.exhaust.length, s.piles.exhaust.length, 'a consumable leaked into the exhaust')
+  eq(after.piles.draw.length, s.piles.draw.length, 'Chalk Shot drew from the deck')
+  // and one you are not carrying does nothing
+  eq(E.useKitStep({ ...s, kit: [] }, 'chalkshot', rng).kit.length, 0, 'used a consumable from an empty kit')
+})
+test('the post offers one consumable, on its own line', () => {
+  const shopped = E.stockShop({ ...startClimb(4, new E.RNG(2), { seed: 5 }), kit: [] }, new E.RNG(2))
+  eq(shopped.shopKit.length, 1, 'the post did not stock exactly one consumable')
+  ok(E.consumableById(shopped.shopKit[0]), 'the post stocked something that is not a consumable')
+})
+test('the kit rides along in a saved run', () => {
+  const s = { ...E.freshRun(0, 0, 7), slot: 1, inRun: true, act: 0, tier: 1,
+    runDeck: E.DEFAULT_LOADOUT.map(E.spawn), gear: ['sticky'], kit: ['betanapkin'] }
+  E.saveGame(s)
+  eq(JSON.stringify(E.loadGame(1).kit), JSON.stringify(['betanapkin']), 'the kit did not survive a save')
+})
+
 /* =======================================================================
    4. SEEDS  (v4.3 — a run must be reproducible from its code)
    ======================================================================= */

@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.48 — ENG-22 + CARD-8: two audit cleanups
+// SANDBAGGED v9.49 — CARD-7: one-shot kit
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -19,6 +19,7 @@ import {
   archUnlocked, attemptsFor, availableTalk, biteAgainst, boonById, boonMods,
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
   campStep, cardHints, carryOver, cashForSend, circuitRoute, claimCurse, claimVerdict,
+  consumableById, KIT_MAX, useKitStep,
   coach, codeSeed, copyLimit, cropStep, dailyRoute, dailySeed, dayKey, desperationOf,
   endSession, endingFor, endingStep, establishedIn, exportSave, exposed, exposureOf,
   faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
@@ -545,6 +546,13 @@ export default function App() {
     setUndo([])   // a technique card can draw, and you cannot un-see a card
     setSt(s => ({ ...playBonusStep(s, c, lane, rng), seed: rng.s }))
   }
+  function useKit(id: string) {
+    // CARD-7: same shape as playBonus — the engine owns the rules (useKitStep),
+    // the screen owns the undo stack and the seed.
+    const rng = new RNG(st.seed)
+    setUndo([])
+    setSt(s => ({ ...useKitStep(s, id, rng), seed: rng.s }))
+  }
 
   function tapLane(i: number) {
     if (st.phase !== 'climb') return
@@ -879,7 +887,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.48 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.49 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -1810,6 +1818,22 @@ function startTutorial() {
                   {b ? 'changes a rule' : g!.slot} · {(b ?? g)!.text}</div>
               </div>)
           })}
+          {/* CARD-7: one-shot kit — its own line, bought into your kit up to the cap */}
+          {st.shopKit.map((id, k) => {
+            const c = consumableById(id); if (!c) return null
+            const key = 'k' + k, full = st.kit.length >= KIT_MAX
+            const blocked = sold(key) || full || st.cash < PRICE.kit
+            return (
+              <div key={id} className="menu-item"
+                style={{ opacity: sold(key) ? 0.3 : blocked ? 0.55 : 1 }}
+                {...tap(() => { if (!full) buy(key, PRICE.kit, x => ({ ...x, kit: [...x.kit, id] })) },
+                  `Buy ${c.name}`)}>
+                <div className="row"><span className="big">{c.name}</span>
+                  <span className="big" style={{ color: 'var(--tan)' }}>
+                    {sold(key) ? 'used' : full ? 'kit full' : '$' + PRICE.kit}</span></div>
+                <div className="sub">one-shot · {c.text}</div>
+              </div>)
+          })}
           <div className="menu-item" style={{ opacity: sold('skin') ? 0.3 : st.cash < PRICE.skin ? 0.55 : 1 }}
             {...tap(() => buy('skin', PRICE.skin, s => ({ ...s,
               skin: Math.min(RUN_SKIN + styleMods(s.style).skin, s.skin + 2) })))}>
@@ -2622,6 +2646,17 @@ function startTutorial() {
         })()}
         <button className="btn go" onClick={commit}>COMMIT ▸</button>
       </div>
+      {/* CARD-7: one-shot kit, spent when it counts */}
+      {st.kit.length ? (
+        <div className="row" style={{ marginTop: 4, gap: 6, flexWrap: 'wrap' }}>
+          {st.kit.map((id, k) => {
+            const c = consumableById(id); if (!c) return null
+            return (
+              <button key={k} className="btn" style={{ flex: 1, padding: 9, fontSize: 12 }}
+                {...tap(() => useKit(id), `Use ${c.name}: ${c.text}`)}>
+                {c.name.toUpperCase()}</button>)
+          })}
+        </div>) : null}
       <div className="row" style={{ marginTop: 3 }}>
         <span className="sub tap" {...tap(bail)}>bail off this one</span>
         <span className="sub">burn {st.burn} of {attemptsFor(st)}</span>
