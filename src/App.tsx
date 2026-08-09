@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.47 — A11Y-4: haptics on their own switch, and an assist
+// SANDBAGGED v9.48 — ENG-22 + CARD-8: two audit cleanups
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -879,7 +879,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.47 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.48 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

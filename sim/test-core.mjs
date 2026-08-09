@@ -279,6 +279,37 @@ test('a curse is the price of something you did', () => {
     ok(c.why.length > 20, `${cause} does not say why`)
   }
 })
+test('CARD-8: bargain is the events curse, not one earned from the fall', () => {
+  /* The bargain entry sits in EARNED_CURSES for reference, but curseEarned
+     reads how a burn ended and must never hand it out — Sandbagged Beta is a
+     choice you make in an event, applied through the `curse` outcome. If a
+     future edit wires bargain into curseEarned, it would double up with the
+     events, so this pins it shut. */
+  const base = { ...E.freshRun(6, 0, 1), inRun: true, skirmish: null,
+    runDeck: E.DEFAULT_LOADOUT.map(E.spawn) }
+  const clear = E.specOf(base).clear
+  for (const st of [
+    { ...base, result: 'fall', skin: 0 },
+    { ...base, result: 'fall', skin: 7, cleared: clear },
+    { ...base, result: 'fall', skin: 7, cleared: 1 },
+    { ...base, result: 'send', skin: 1 },
+  ]) ok(E.curseEarned(st) !== 'bargain', 'curseEarned handed out the bargain curse from the fall')
+  // and the bargain card must stay reachable — an event has to offer it
+  const card = E.EARNED_CURSES.bargain.card
+  ok(E.EVENTS.some(e => e.choices.some(ch => ch.outcome.curse === card)),
+    `${card} is not reachable from any event`)
+})
+test('ENG-22: Cycle draws as the turn resolves, and says so', () => {
+  /* The card and the glossary both used to say "when you place it", but the
+     draw fires in resolve, once per turn the move is on the board — the exact
+     doc/behaviour drift SIM-5 exists to catch, here in prose. */
+  ok(!/place it/i.test(E.CARDS['Read And React'].text),
+    'the Cycle card still says it draws "when you place it"')
+  const kw = E.KEYWORDS.find(k => k.name === 'Cycle')
+  ok(kw && !/place it/i.test(kw.text), 'the Cycle glossary still says "when you place it"')
+  ok(kw && /resolve|holds on|each turn/i.test(kw.text),
+    'the Cycle glossary does not say when it actually draws')
+})
 
 test('walking away from the circuit banks what you did', () => {
   /* TEST-4. Four screens appeared in neither suite — circuitNext, prepare,

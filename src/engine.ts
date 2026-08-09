@@ -1049,7 +1049,7 @@ for (const c of [
   mv('Bomber Jam', 4, 9, 'rare', { fx: 'tough', anchor: true, text: 'Tough · Anchor.' }),
   mv('Muscle Memory', 4, 7, 'rare', { fx: 'echo', text: 'Echo · returns to hand when it clears.' }),
   mv('Ripcord', 3, 6, 'rare', { fx: 'peel', text: 'Peel · draw a card when it blows.' }),
-  mv('Read And React', 3, 7, 'rare', { fx: 'cycle', text: 'Cycle · draw when you place it.' }),
+  mv('Read And React', 3, 7, 'rare', { fx: 'cycle', text: 'Cycle · draws a card each turn it holds on.' }),
   rest('The Rest', 12, 5, 'rare', { text: 'Rest · shed 5. Anchor.' }),
   ft('Perfect Heel', 2, 10, 'rare', { support: 2, anchor: true, text: 'Support 2. Anchor.' }),
   ft('No-Hands Rest', 0, 11, 'rare', { support: 2, shed: 5, anchor: true, text: 'Support 2 · shed 5.' }),
@@ -3944,6 +3944,12 @@ export const EARNED_CURSES: Record<CurseCause, { card: string; why: string }> = 
   rawskin: { card: 'Flapper', why: 'You went again on tips that were already gone.' },
   exposed: { card: 'Doubt', why: 'You came off with the top in reach. That stays with you.' },
   sprayed: { card: 'Ego', why: 'You told everyone the grade before anybody repeated it.' },
+  // CARD-8: the odd one out, kept here for the full picture but NOT earned from
+  // how a burn ended. rawskin/exposed come from curseEarned reading the fall,
+  // sprayed from claimCurse reading your grades; bargain is a choice you make in
+  // an event, applied through the `curse` outcome (spawn by name), so
+  // curseEarned deliberately never returns it — a test pins that so nobody
+  // wires it into the fall and double-applies Sandbagged Beta with the events.
   bargain: { card: 'Sandbagged Beta', why: 'Cheap topo, cheap for a reason.' },
 }
 export const RAW_SKIN_AT = 2
@@ -4149,7 +4155,7 @@ export const KEYWORDS: { name: string; text: string }[] = [
   { name: 'Weight', text: '+1 Power for every other card you have on the board.' },
   { name: 'Echo', text: 'Returns to your hand when it clears a hold.' },
   { name: 'Peel', text: 'Draw a card when it blows.' },
-  { name: 'Cycle', text: 'Draw a card when you place it.' },
+  { name: 'Cycle', text: 'Draws a card each turn it holds on, as the turn resolves.' },
   { name: 'Chip', text: 'Also damages the Grip of every other hold on the board.' },
   { name: 'Greedy', text: 'Stronger the closer you are to coming off: +1 Power for every 2 pump you are carrying.' },
 ]
