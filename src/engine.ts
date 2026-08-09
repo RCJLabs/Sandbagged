@@ -1635,6 +1635,9 @@ export type Archetype = {
   dHand?: number
   dContact?: number; settleMax?: number; ignoreWeather?: boolean; dSkin?: number
   dAttempts?: number
+  /** META-6: a deed that earns this climber early. The `unlock` level stays as
+      a backstop, so the deed is a faster, earned path — never the only one. */
+  deed?: string
 }
 export const L = (...pairs: [string, number][]) => {
   const out: string[] = []
@@ -1651,20 +1654,20 @@ export const ARCHETYPES: Archetype[] = [
   { id: 'comp', name: 'The Comp Kid', unlock: 4, gear: 'downturn',
     text: 'Trained on plastic. Enormously strong, no patience at all.',
     sig: 'Plastic', sigText: '+2 Power on every move, and one less burn a day. All engine, no patience.',
-    dPower: 2, dAttempts: -1,
+    dPower: 2, dAttempts: -1, deed: 'strong',   // META-6: earned by sending V5+
     loadout: L(['Deadpoint', 2], ['Lunge', 2], ['Bump', 1], ['Mantle', 1], ['Crimp Grip', 1],
       ['Smear', 2], ['High Step', 1], ['Shake Out', 2], ['Deep Breath', 1],
       ['Breathe', 1], ['Chalk Up', 1]) },
   { id: 'trad', name: 'The Trad Dad', unlock: 8, gear: 'tape',
     text: 'Slow, bomber, and will tell you about the rack.',
     sig: 'Bomber', sigText: '+1 Contact on every move, and nothing you place ever settles.',
-    dContact: 1, settleMax: 0,
+    dContact: 1, settleMax: 0, deed: 'fa',       // META-6: earned by putting up a line
     loadout: L(['Hand Jam', 2], ['Arm Bar', 2], ['Undercling', 2], ['Slow Pull', 1],
       ['Heel Hook', 2], ['Smear', 1], ['Kneebar', 1], ['Breathe', 2], ['Brush', 2]) },
   { id: 'alpine', name: 'The Alpinist', unlock: 12, gear: 'liquid',
     text: 'Used to being cold, tired and a long way from the road.',
     sig: 'Endurance', sigText: 'Moves settle all the way to +3, but everything has 2 less Contact.',
-    settleMax: 3, dContact: -2,
+    settleMax: 3, dContact: -2, deed: 'enduro',  // META-6: earned by an eight-line Circuit
     loadout: L(['Open Hand', 3], ['Jug Haul', 2], ['Flag', 2], ['Heel Hook', 2],
       ['Gaston', 2], ['Shake Out', 1], ['Breathe', 2], ['Brush', 1]) },
   /* META-7. The one climber built out of the hooks the engine already had and
@@ -1682,12 +1685,19 @@ export const ARCHETYPES: Archetype[] = [
     text: 'Walks up, ties in, and climbs it. Strong, unfussy, no tick marks.',
     sig: 'Onsight', sigText: 'No beta ever — every hold stays a guess — but nothing the weather does touches you, your hand runs a card deeper, and you commit hard off the first move.',
     noBeta: true, ignoreWeather: true, dHand: 1, dContact: 1, dSkin: 1, firstTurnPower: 2,
+    deed: 'flash',   // META-6: earned by a flash — a first-try send, which is the whole idea
     loadout: L(['Crimp Grip', 2], ['Open Hand', 2], ['Lock Off', 2], ['Mantle', 1],
       ['Smear', 2], ['Flag', 1], ['Shake Out', 2], ['Breathe', 1],
       ['Sight the Line', 1], ['Chalk Up', 1]) },
 ]
 export const archOf = (s: GameState) => ARCHETYPES[Math.min(s.arch, ARCHETYPES.length - 1)]
-export const archUnlocked = (a: Archetype, level: number) => level >= a.unlock
+/* META-6. A climber is earned by its deed OR by reaching its level. The level
+   is a backstop, not the intended path — do the deed and you have it early,
+   which is what "unlock by waiting" was the complaint about — and because the
+   backstop is always there, a climber can never become unreachable however the
+   deeds change. A guard checks exactly that. */
+export const archUnlocked = (a: Archetype, s: GameState) =>
+  s.level >= a.unlock || (!!a.deed && deedsDone(s).includes(a.deed))
 
 /* META-8. Deeds — a tick-list of things worth doing, read straight off the
    record the game already keeps (the logbook, the lines you put up, the pages

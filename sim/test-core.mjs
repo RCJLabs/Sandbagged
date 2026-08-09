@@ -1818,12 +1818,35 @@ test('leaving an event always moves you on', () => {
   eq(out.phase, 'map', 'an event left you somewhere other than the map')
 })
 test('climbers unlock in order and the first is always available', () => {
-  ok(E.archUnlocked(E.ARCHETYPES[0], 1), 'the starting climber is locked')
+  const at = level => ({ ...E.freshRun(0, 0, 1), level })   // a fresh save with no deeds done
+  ok(E.archUnlocked(E.ARCHETYPES[0], at(1)), 'the starting climber is locked')
   for (let i = 1; i < E.ARCHETYPES.length; i++)
     ok(E.ARCHETYPES[i].unlock > E.ARCHETYPES[i - 1].unlock,
       `${E.ARCHETYPES[i].name} unlocks no later than the one before`)
-  ok(!E.archUnlocked(E.ARCHETYPES[E.ARCHETYPES.length - 1], 1),
-    'the last climber is available at level 1')
+  ok(!E.archUnlocked(E.ARCHETYPES[E.ARCHETYPES.length - 1], at(1)),
+    'the last climber is available at level 1 with nothing done')
+})
+test('META-6: every climber is earnable, by a deed or by the level backstop', () => {
+  const fresh = E.freshRun(0, 0, 1)
+  // the starter is always in
+  ok(E.archUnlocked(E.ARCHETYPES[0], { ...fresh, level: 1 }), 'the starter climber is not available')
+  // a lived-in save that has earned every deed (the META-8 fixture) unlocks
+  // every deed-gated climber at level 1 — the earned path works
+  const lived = { ...fresh, level: 1, sends: 5, wins: 1, dailyStreak: 3, bestCircuit: 9, styleMax: 5,
+    journal: [1, 2, 3, 4, 5, 6, 8, 9, 10, 11],
+    book: { 'The Priest': { sends: 1, bestBurn: 1, bestStyle: 0, flashed: true, weather: 5, rock: 0 } },
+    established: [{ name: 'Soft Touch', claimed: 4, real: 7, act: 0, burns: 2 }] }
+  for (const a of E.ARCHETYPES) {
+    // the backstop guarantees earnability no matter what: max level unlocks all
+    ok(E.archUnlocked(a, { ...fresh, level: 999 }), `${a.name} cannot be unlocked even at max level`)
+    if (a.deed) {
+      ok(E.DEEDS.some(d => d.id === a.deed), `${a.name}'s unlock deed "${a.deed}" is not a real deed`)
+      ok(E.archUnlocked(a, lived), `${a.name}'s deed did not earn it at level 1`)
+      // and without the deed and below its level, it stays locked (the deed matters)
+      ok(!E.archUnlocked(a, { ...fresh, level: a.unlock - 1 }),
+        `${a.name} unlocked with neither the deed nor the level`)
+    }
+  }
 })
 test('deeds are earnable, pure, and pay nothing (META-8)', () => {
   ok(E.DEEDS.length >= 8, `only ${E.DEEDS.length} deeds`)

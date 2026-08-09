@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.52 — SOCIAL-1: the share string
+// SANDBAGGED v9.53 — META-6: climbers earned by deeds
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -643,7 +643,7 @@ export default function App() {
   }
   function startLostLine() {
     if (st.inRun && st.runDeck.length) { setSt(s => ({ ...s, phase: 'map' })); return }
-    if (!archUnlocked(ARCHETYPES[st.arch], st.level)) return
+    if (!archUnlocked(ARCHETYPES[st.arch], st)) return
     const r = newRun(pickSeed(), st.loadouts[st.arch], st.style, st.arch, st.mutators)
     setSt({ ...r, ...carryOver(st), runs: st.runs + 1 })
   }
@@ -835,7 +835,7 @@ function startTutorial() {
 
         <div className="lbl" style={{ marginTop: 14 }}>CLIMB</div>
         <button className="btn go" style={{ width: '100%', padding: 14, marginTop: 5 }}
-          disabled={!archUnlocked(ARCHETYPES[st.arch], st.level)} onClick={startLostLine}>
+          disabled={!archUnlocked(ARCHETYPES[st.arch], st)} onClick={startLostLine}>
           {resume ? 'CONTINUE THE LOST LINE ▸' : 'THE LOST LINE ▸'}</button>
         <div className="sub" style={{ marginTop: 2, marginBottom: 9 }}>
           {resume
@@ -892,7 +892,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.52 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.53 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -913,9 +913,14 @@ function startTutorial() {
           <div style={{ flex: 1, textAlign: 'center' }}>
             <div className="big">{ARCHETYPES[st.arch].name}</div>
             <div className="sub" style={{ color: 'var(--red)' }}>
-              {archUnlocked(ARCHETYPES[st.arch], st.level)
-                ? `${ARCHETYPES[st.arch].sig} · ${ARCHETYPES[st.arch].sigText}`
-                : `Locked — reach level ${ARCHETYPES[st.arch].unlock}.`}</div>
+              {(() => {
+                const a = ARCHETYPES[st.arch]
+                if (archUnlocked(a, st)) return `${a.sig} · ${a.sigText}`
+                // META-6: name the deed that earns it, with the level as the backstop
+                const d = a.deed ? DEEDS.find(x => x.id === a.deed) : null
+                return d ? `Locked — ${d.text.replace(/\.$/, '')}, or reach level ${a.unlock}.`
+                  : `Locked — reach level ${a.unlock}.`
+              })()}</div>
           </div>
           <button className="btn" style={{ padding: '7px 12px' }}
             disabled={st.arch >= ARCHETYPES.length - 1}
@@ -1705,7 +1710,7 @@ function startTutorial() {
           <Row k="common" v={byR('common')} />
           <Row k="uncommon" v={byR('uncommon')} />
           <Row k="rare" v={byR('rare')} />
-          <Row k="climbers" v={`${ARCHETYPES.filter(a => archUnlocked(a, st.level)).length}/${ARCHETYPES.length}`} />
+          <Row k="climbers" v={`${ARCHETYPES.filter(a => archUnlocked(a, st)).length}/${ARCHETYPES.length}`} />
 
           <div className="lbl" style={{ marginTop: 10 }}>THE STORY</div>
           <Row k="journal pages" v={`${st.journal.length}/${JOURNAL.length}`} />
