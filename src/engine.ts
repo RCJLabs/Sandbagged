@@ -2014,13 +2014,38 @@ export function secondWindStep(s: GameState, id: string): GameState {
    57-96% swing invisible. Derived instead as a pure function of the run
    seed, act, tier and node — so it can be shown on the map, and stays
    stable across re-renders without consuming the run RNG.            */
+/* ROUTE-9: each act climbs in its own weather. Conditions used to be rolled
+   uniformly and act-agnostic, so the desert could come up freezing-drizzle and
+   the alpine hot-sun — the forest/desert/alpine identity was just a background.
+   These palettes (indices into WEATHER / ROCK, weighted by repetition) give
+   each act a climate: a mild forest, a hot dry desert, a cold wet alpine.
+   Every weather and rock is still reachable somewhere across the campaign.
+   The forecast is derived from an ISOLATED per-node RNG (never the run stream),
+   so keying the palette to the act shifts no guard by stream drift — only the
+   completion band, via difficulty, tuned to stay put: a kinder forest offsets
+   the harsher desert, and the alpine being hardest reinforces the
+   acts-get-deadlier guard rather than fighting it. */
+const ACT_WEATHER: number[][] = [
+  [0, 0, 1, 1, 1, 2, 2, 5],       // forest: crisp & still, some humid, a little seep
+  [3, 3, 3, 1, 1, 0, 0, 2],       // desert: hot sun, dry stillness, cold mornings
+  [4, 4, 4, 5, 5, 5, 0, 0, 1],    // alpine: freezing & drizzle, the odd crisp day
+]
+const ACT_ROCK: number[][] = [
+  [1, 0, 3],                      // forest: sandstone, granite, gneiss
+  [1, 1, 2, 4],                   // desert: sandstone, limestone, basalt
+  [0, 3, 4],                      // alpine: granite, gneiss, basalt
+]
 export function forecastFor(s: GameState): { weather: number; rock: number }[] {
   const nodes = ACTS[s.act]?.[s.tier] ?? []
+  const wp = ACT_WEATHER[s.act], rp = ACT_ROCK[s.act]
   return nodes.map((_, i) => {
     const h = ((s.seed ^ (s.act * 7919) ^ (s.tier * 104729)
       ^ (i * 1299709) ^ (s.reroll * 2654435761)) >>> 0)
     const r = new RNG(h)
-    return { weather: r.int(WEATHER.length), rock: r.int(ROCK.length) }
+    return {
+      weather: wp ? wp[r.int(wp.length)] : r.int(WEATHER.length),
+      rock: rp ? rp[r.int(rp.length)] : r.int(ROCK.length),
+    }
   })
 }
 /** Rough read on whether a forecast is kind, for the map's colour. */

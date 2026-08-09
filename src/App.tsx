@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.56 — VIS-5: the weather channel gets its colour, and urgency
+// SANDBAGGED v9.57 — ROUTE-9: each act gets its own weather
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -922,7 +922,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.56 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.57 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

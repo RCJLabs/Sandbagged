@@ -1217,16 +1217,40 @@ test('the forecast is deterministic, varied and bounded', () => {
   eq(JSON.stringify(E.forecastFor(s)), JSON.stringify(E.forecastFor(s)), 'not deterministic')
   ok(JSON.stringify(E.forecastFor(s)) !== JSON.stringify(E.forecastFor({ ...s, reroll: 1 })),
     'waiting a day changes nothing')
+  // ROUTE-9: the palette is per-act now, so coverage is a CAMPAIGN property —
+  // every weather is reachable somewhere across the three acts, not in any one.
   const seen = new Set()
-  for (let i = 0; i < 500; i++)
-    for (const f of E.forecastFor({ ...s, seed: i })) {
-      ok(f.weather >= 0 && f.weather < E.WEATHER.length, 'weather out of range')
-      ok(f.rock >= 0 && f.rock < E.ROCK.length, 'rock out of range')
-      seen.add(f.weather)
-    }
-  eq(seen.size, E.WEATHER.length, 'some weather never appears')
+  for (let act = 0; act < E.ACTS.length; act++)
+    for (let i = 0; i < 500; i++)
+      for (const f of E.forecastFor({ ...s, act, tier: 0, seed: i })) {
+        ok(f.weather >= 0 && f.weather < E.WEATHER.length, 'weather out of range')
+        ok(f.rock >= 0 && f.rock < E.ROCK.length, 'rock out of range')
+        seen.add(f.weather)
+      }
+  eq(seen.size, E.WEATHER.length, 'some weather never appears anywhere in the campaign')
   const scores = E.WEATHER.map((_, i) => E.forecastScore({ weather: i, rock: 0 }))
   ok(Math.max(...scores) > Math.min(...scores), 'every forecast scores the same')
+})
+test('ROUTE-9: each act has its own weather', () => {
+  // sample a lot of stages per act and read off what each act can throw at you
+  const wof = act => {
+    const w = new Set()
+    for (let seed = 0; seed < 400; seed++)
+      for (let tier = 0; tier < E.ACTS[act].length; tier++)
+        for (const f of E.forecastFor({ ...E.freshRun(0, 0, seed), act, tier, reroll: 0 }))
+          w.add(E.WEATHER[f.weather].name)
+    return w
+  }
+  const [forest, desert, alpine] = [wof(0), wof(1), wof(2)]
+  // the acts are not the same weather bag with a different background
+  ok(desert.has('hot sun') && !forest.has('hot sun') && !alpine.has('hot sun'),
+    'hot sun is not the desert\'s alone')
+  ok(alpine.has('freezing') && !forest.has('freezing') && !desert.has('freezing'),
+    'the freeze is not the alpine\'s alone')
+  ok(!desert.has('drizzle'), 'it is drizzling in the desert')
+  // and none of them is a one-note climate
+  for (const [name, w] of [['forest', forest], ['desert', desert], ['alpine', alpine]])
+    ok(w.size >= 3, `the ${name} has only ${w.size} kind${w.size === 1 ? '' : 's'} of weather`)
 })
 test('an event can remember what you did', () => {
   /* EVT-4. Thirty-two events, all self-contained: you caused an access closure,
