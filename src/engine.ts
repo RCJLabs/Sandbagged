@@ -2435,6 +2435,18 @@ const SK_NOTE = [
    Endless. One deck, no map, escalating grades until the skin or the head
    goes. Every fourth line is roped, which is the only place outside Act 3
    that the rope machinery gets used.                                    */
+/* SKIRM-4: the Circuit is not a flat treadmill any more — it climbs through
+   named zones as your line count rises, so the endless mode has a sense of
+   place and of how deep you are. Pure function of the count (no RNG, no new
+   state), and it changes nothing about difficulty — the grade curve and the
+   `enduro` deed (8 lines, in The Grind) are exactly as they were. */
+export function circuitZone(n: number): { name: string; text: string; floor: number } {
+  if (n >= 14) return { name: 'Into the Dark', text: 'No rack lasts forever. See how far it goes.', floor: 14 }
+  if (n >= 10) return { name: 'The Business', text: 'Every line is a project from here.', floor: 10 }
+  if (n >= 6) return { name: 'The Grind', text: 'This is where a circuit is won or lost.', floor: 6 }
+  if (n >= 3) return { name: 'Getting Steep', text: 'It tilts back now. No more freebies.', floor: 3 }
+  return { name: 'The Warm-Up', text: 'Gentle angles. Save something for later.', floor: 0 }
+}
 export function circuitRoute(n: number, rng: RNG): RouteSpec {
   const grade = Math.min(10, Math.floor(n * 0.7))
   const styles: StyleKey[] = ['mixed', 'slab', 'crimp ladder', 'compression', 'power', 'jug haul']

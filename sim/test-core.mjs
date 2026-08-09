@@ -1212,6 +1212,25 @@ test('procedural routes are always climbable', () => {
   }
   ok(E.circuitRoute(20, rng).grade > E.circuitRoute(0, rng).grade, 'the circuit does not escalate')
 })
+test('SKIRM-4: the Circuit climbs through named zones', () => {
+  // every depth lands in a named zone, and the zones only get deeper — a floor
+  // never goes backwards as the line count rises
+  let lastFloor = -1, names = new Set()
+  for (let n = 0; n <= 30; n++) {
+    const z = E.circuitZone(n)
+    ok(z.name.length > 2 && z.text.length > 5, `line ${n} has no zone`)
+    ok(z.floor <= n, `line ${n} sits in a zone that starts at ${z.floor}`)
+    ok(z.floor >= lastFloor, `the zone floor went backwards at line ${n}`)
+    lastFloor = z.floor
+    names.add(z.name)
+  }
+  ok(names.size >= 4, `only ${names.size} zones across a deep circuit`)
+  // the Warm-Up is where you start, and it does not last forever
+  eq(E.circuitZone(0).floor, 0, 'the circuit does not start in the first zone')
+  ok(E.circuitZone(30).name !== E.circuitZone(0).name, 'a deep circuit is still the warm-up')
+  // the enduro deed (8 lines) lands in a real, named zone past the warm-up
+  ok(E.circuitZone(8).floor > 0, 'the endurance deed still sits in the opening zone')
+})
 test('the forecast is deterministic, varied and bounded', () => {
   const s = { ...E.freshRun(0, 0, 999), act: 0, tier: 2, reroll: 0 }
   eq(JSON.stringify(E.forecastFor(s)), JSON.stringify(E.forecastFor(s)), 'not deterministic')

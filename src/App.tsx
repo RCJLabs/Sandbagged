@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.60 — NARR-12: the climber shows up in the story
+// SANDBAGGED v9.61 — SKIRM-4: the Circuit becomes a real mode
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -18,7 +18,7 @@ import {
   UNCOMMON_SLOTS, WEATHER, abilityOf, activeSlot, aheadSummary, applyOutcome,
   archUnlocked, attemptsFor, availableTalk, biteAgainst, boonById, boonMods,
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
-  campStep, cardHints, carryOver, cashForSend, circuitRoute, claimCurse, claimVerdict,
+  campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitZone, claimCurse, claimVerdict,
   consumableById, KIT_MAX, useKitStep, secondWindStep,
   coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyRoute, dailySeed, dailyShare, dayKey, DEEDS, deedsDone, desperationOf,
   endSession, endingFor, endingStep, establishedIn, exportSave, exposed, exposureOf,
@@ -928,7 +928,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.60 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.61 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -1821,12 +1821,23 @@ function startTutorial() {
 
   if (st.phase === 'circuitNext') {
     const nxt = st.skirmish
+    // SKIRM-4: which zone you are in, and whether this line just crossed into it
+    const zone = circuitZone(st.circuitScore)
+    const justEntered = zone.floor === st.circuitScore && st.circuitScore > 0
+    const ahead = circuitZone(st.circuitScore + 1)
+    const nextZone = ahead.name !== zone.name ? ahead : null
+    const beatsBest = st.circuitScore >= st.bestCircuit && st.bestCircuit > 0
     return (
       <div className={skin}>
         <div className="row"><span className="h1"><Lettered t="THE CIRCUIT" seed={71} /></span>
           <span className="big" style={{ color: 'var(--green)' }}>{st.circuitScore} sent</span></div>
         <InkRule seed={23} color="var(--ink)" />
-        <div className="sub">skin {st.skin} · psyche {st.psyche} · deck {st.runDeck.length}</div>
+        {/* SKIRM-4: the zone you have climbed into gives the endless mode a place */}
+        <div className="spot" style={{ borderLeftColor: 'var(--tan)' }}>
+          <b style={{ color: 'var(--tan)' }}>{zone.name.toUpperCase()}{justEntered ? ' — YOU JUST ARRIVED' : ''}</b>
+          {zone.text}{nextZone ? ` ${nextZone.name} is one line up.` : ''}</div>
+        <div className="sub" style={{ marginTop: 4 }}>skin {st.skin} · psyche {st.psyche} · deck {st.runDeck.length}
+          {beatsBest ? ' · past your best now — all of this is new ground' : st.bestCircuit ? ` · best ${st.bestCircuit}` : ''}</div>
         {nxt ? (
           <div className="menu-item" style={{ borderWidth: 2, marginTop: 10 }}>
             <div className="row"><span className="big">{nxt.name}</span>
@@ -1839,7 +1850,7 @@ function startTutorial() {
           PULL ON ▸</button>
         <button className="btn" style={{ width: '100%', marginTop: 6 }}
           onClick={() => setSt(walkAwayStep)}>
-          WALK AWAY WITH {st.circuitScore}</button>
+          WALK AWAY WITH {st.circuitScore}{beatsBest ? ' — A NEW BEST' : ''}</button>
         <style>{CSS}</style>
       </div>
     )
@@ -2355,7 +2366,7 @@ function startTutorial() {
         {/* UX-11. The run-end screen said you won or died and nothing else,
             while the trail, the logbook, the lines you named and the pages you
             found were all being tracked. This is the account of the trip. */}
-        {(() => {
+        {!st.circuit ? (() => {
           const ticked = ROUTES.filter(r => st.book[r.name])
           const hardest = ticked.reduce((a, r) => (r.grade > (a?.grade ?? -1) ? r : a),
             null as (typeof ROUTES)[number] | null)
@@ -2380,7 +2391,28 @@ function startTutorial() {
                   {st.trail.join(' · ')}</div>
               </>) : null}
           </>)
-        })()}
+        })() : null}
+        {/* SKIRM-4: the Circuit gets its own account — how deep, how hard, and
+            whether it was a new best — instead of the campaign trip readout. */}
+        {st.circuit ? (() => {
+          const n = st.circuitScore
+          const reached = Math.min(10, Math.floor(n * 0.7))
+          const roped = Array.from({ length: n }, (_, i) => i + 1).filter(k => k % 4 === 3).length
+          const zone = circuitZone(n)
+          const best = n >= st.bestCircuit
+          const Line = ({ k, v }: { k: string; v: string }) => (
+            <div className="row" style={{ padding: '2px 0' }}>
+              <span className="sub">{k}</span>
+              <span style={{ fontSize: 12, fontWeight: 700 }}>{v}</span></div>)
+          return (<>
+            <div className="lbl" style={{ marginTop: 4 }}>THE CIRCUIT</div>
+            <Line k="lines sent" v={`${n}`} />
+            <Line k="how deep you got" v={zone.name} />
+            {n > 0 ? <Line k="hardest line worked" v={gradeText(reached, st.grades)} /> : null}
+            {roped ? <Line k="roped pitches led" v={`${roped}`} /> : null}
+            <Line k="your best" v={best && n > 0 ? `${n} — set just now` : `${st.bestCircuit} lines`} />
+          </>)
+        })() : null}
                 <button className="btn go" style={{ width: '100%' }}
           onClick={() => { setSt(x => ({ ...x, inRun: false, circuit: false, skirmish: null,
             runDeck: [], tier: 0 })); toMenu() }}>
