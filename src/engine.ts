@@ -1895,6 +1895,7 @@ export type Boon = {
   dyno?: boolean          // every move: double Power, half Contact
   dTurnCap?: number       // more daylight
   dFallSkin?: number      // and a fall costs this much more skin
+  dContactAll?: number    // CARD-10: Contact on every move (a gain — moves stick)
 }
 export const BOONS: Boon[] = [
   { id: 'secondwind', name: 'Second Wind', shedEvery: 2,
@@ -1927,6 +1928,11 @@ export const BOONS: Boon[] = [
     text: 'Every move is a dyno: twice the Power, half the Contact.' },
   { id: 'longgame', name: 'The Long Game', wild: true, dTurnCap: 20, dFallSkin: 1,
     text: 'Twenty more turns of daylight on every burn. Every fall costs an extra skin.' },
+  // CARD-10: two more wild boons — a gain paired with a rule you live with.
+  { id: 'redpoint', name: 'Redpoint', wild: true, dPowerAll: 2, noRests: true,
+    text: '+2 Power on every move — you go for the send. But there is no shaking out; rests do nothing.' },
+  { id: 'static', name: 'Static', wild: true, dContactAll: 2, dFallSkin: 1,
+    text: '+2 Contact on every move; nothing spits you off. But when you do come off, it costs an extra skin.' },
 ]
 export const boonById = (id: string) => BOONS.find(b => b.id === id)
 export function boonMods(ids: string[]) {
@@ -1934,7 +1940,7 @@ export function boonMods(ids: string[]) {
     wideSupport: false, keepFlow: false, settle: 0, saveBlow: false,
     noCampus: false, sendBeta: 0,
     dPowerAll: 0, noRests: false, dDraw: 0, dumpHand: false, dyno: false,
-    dTurnCap: 0, dFallSkin: 0 }
+    dTurnCap: 0, dFallSkin: 0, dContactAll: 0 }
   for (const id of ids) {
     const b = boonById(id); if (!b) continue
     if (b.shedEvery) m.shedEvery = b.shedEvery
@@ -1947,6 +1953,7 @@ export function boonMods(ids: string[]) {
     m.dPowerAll += b.dPowerAll ?? 0; m.noRests ||= !!b.noRests
     m.dDraw += b.dDraw ?? 0; m.dumpHand ||= !!b.dumpHand; m.dyno ||= !!b.dyno
     m.dTurnCap += b.dTurnCap ?? 0; m.dFallSkin += b.dFallSkin ?? 0
+    m.dContactAll += b.dContactAll ?? 0
   }
   return m
 }
@@ -3051,7 +3058,7 @@ export function startBurn(s: GameState, rng: RNG): GameState {
   const deck = rng.shuffle(withBeta.map((c): Card => c.kind !== 'move' ? c : {
     ...c,
     contact: Math.max(1, Math.round((c.contact + dc + gm.dContact
-      + (s.inRun ? (archOf(s).dContact ?? 0) + mutMods(s.mutators).dContact : 0))
+      + (s.inRun ? (archOf(s).dContact ?? 0) + mutMods(s.mutators).dContact + boonMods(s.boons).dContactAll : 0))
       * (boonMods(s.boons).dyno ? 0.5 : 1))),
     power: Math.max(0, c.power + (c.lane === 'feet' ? gm.dPowerFeet : gm.dPowerHand)
       + (c.synergy ? Math.floor((tags[c.synergy] ?? 0) / SYNERGY_PER) : 0)),

@@ -1278,6 +1278,7 @@ test('a wild boon is a trade, not a gift', () => {
     const m = E.mutMods ? null : null
     const mods = E.boonMods([b.id])
     const gains = (mods.dPowerAll > 0) || (mods.dDraw > 0) || mods.dyno || (mods.dTurnCap > 0)
+      || (mods.dContactAll > 0)   // CARD-10: Contact on every move is a gain
     const costs = mods.noRests || mods.dumpHand || (mods.dFallSkin > 0)
       || (mods.dyno && true)   // halved Contact is the cost of doubled Power
     ok(gains, `${b.id} gives nothing`)
@@ -1295,6 +1296,22 @@ test('Deadpointing doubles Power and halves Contact', () => {
   const p0 = E.powerAgainst(base, card, hold, 0)
   const p1 = E.powerAgainst(dyno, card, hold, 0)
   ok(p1 > p0, `Deadpointing did not raise Power: ${p0} → ${p1}`)
+})
+test('CARD-10: Redpoint and Static are wild trades that reach the rules', () => {
+  const base = { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null, weather: 1, rock: 0, boons: [] }
+  // Redpoint: +2 Power on every move, paid for with no shaking out
+  const card = E.spawn('Lock Off')
+  const hold = { uid: 1, name: 'crimp', bite: 3, grip: 9, crux: false, clean: false }
+  const red = { ...base, boons: ['redpoint'] }
+  ok(E.powerAgainst(red, card, hold, 0) >= E.powerAgainst(base, card, hold, 0) + 2, 'Redpoint did not raise Power by 2')
+  ok(E.boonMods(['redpoint']).noRests, 'Redpoint still lets you rest — it has no cost')
+  // Static: +2 Contact on the deck's moves, and a costlier fall
+  eq(E.boonMods(['static']).dContactAll, 2, 'Static gives no Contact')
+  eq(E.boonMods(['static']).dFallSkin, 1, 'Static costs nothing on a fall')
+  const move = p => p.piles.draw.concat(p.piles.hand).find(c => c.kind === 'move')
+  const plain = move(E.startBurn(base, new E.RNG(3)))
+  const stat = move(E.startBurn({ ...base, boons: ['static'] }, new E.RNG(3)))
+  ok(stat.contact > plain.contact, `Static did not stick the moves: ${plain.contact} vs ${stat.contact}`)
 })
 test('carrying no boons leaves the rules exactly as they were', () => {
   // the Big Hands mistake: a boon was implemented by weakening the default
