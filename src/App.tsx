@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.66 — META-9: mastery deeds · a new app icon
+// SANDBAGGED v9.67 — A11Y-7: the text-size setting now reaches the story
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -928,7 +928,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.66 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.67 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -1398,11 +1398,11 @@ function startTutorial() {
       <div className={skin}>
         <div className="h1">{ev.title.toUpperCase()}</div>
         <hr className="rule" />
-        <div style={{ fontSize: 13, lineHeight: 1.65, margin: '10px 0 14px' }}>{ev.text}</div>
+        <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.65, margin: '10px 0 14px' }}>{ev.text}</div>
         {st.eventResult ? (
           <>
             <div className="menu-item" style={{ borderWidth: 2 }}>
-              <div style={{ fontSize: 13, lineHeight: 1.6 }}>{st.eventResult}</div>
+              <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.6 }}>{st.eventResult}</div>
             </div>
             <button className="btn go" style={{ width: '100%', marginTop: 8 }} onClick={leaveEvent}>
               ON UP THE TRAIL ▸</button>
@@ -2138,11 +2138,11 @@ function startTutorial() {
       <div className={skin}>
         <div className="h1">{talk.who.toUpperCase()}</div>
         <hr className="rule" />
-        <div style={{ fontSize: 13, lineHeight: 1.7, margin: '10px 0 14px' }}>{talk.text}</div>
+        <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.7, margin: '10px 0 14px' }}>{talk.text}</div>
         {st.talkReply ? (
           <>
             <div className="menu-item" style={{ borderWidth: 2 }}>
-              <div style={{ fontSize: 13, lineHeight: 1.65 }}>{st.talkReply}</div>
+              <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.65 }}>{st.talkReply}</div>
             </div>
             <button className="btn go" style={{ width: '100%', marginTop: 8 }}
               onClick={() => setSt(s => s.packCards.length
@@ -2232,7 +2232,7 @@ function startTutorial() {
       <div className={skin}>
         <div className="h1"><Lettered t="A FIRST ASCENT" seed={113} /></div>
         <InkRule seed={77} color="var(--ink)" />
-        <div style={{ fontSize: 13, lineHeight: 1.7, marginTop: 8 }}>
+        <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.7, marginTop: 8 }}>
           <p style={{ margin: '0 0 8px' }}>
             You are the first person to stand on top of this. There is nothing to compare it
             to and nobody to ask.</p>
@@ -2335,7 +2335,7 @@ function startTutorial() {
         <div className="h1"><Lettered t="THE TOP" seed={101} /></div>
         <div className="sub">{pages} of {JOURNAL.length} pages · {gradeLabel(spec, st.grades)}</div>
         <InkRule seed={71} color="var(--ink)" />
-        <div style={{ fontSize: 13, lineHeight: 1.7, marginTop: 10 }}>{body}</div>
+        <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.7, marginTop: 10 }}>{body}</div>
         {honest !== 'none' && honest !== 'fair' ? (
           <div className="spot" style={{ borderLeftColor: 'var(--tan)' }}>
             <b style={{ color: 'var(--tan)' }}>AND ONE OTHER THING</b>
@@ -2367,7 +2367,7 @@ function startTutorial() {
         {/* UX-11: this said "Act 1" whatever act you actually died in */}
         <div className="sub">{ACT_NAMES[st.act]} · stage {st.tier + 1} · deck {st.runDeck.length}</div>
         <hr className="rule" />
-        <div style={{ fontSize: 13, lineHeight: 1.6, margin: '10px 0' }}>
+        <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.6, margin: '10px 0' }}>
           {st.circuit
             ? `${st.circuitScore} lines sent${st.circuitScore >= st.bestCircuit ? ' — a new best.' : `. Best is ${st.bestCircuit}.`}`
             : won
@@ -2474,7 +2474,7 @@ function startTutorial() {
               {shared ? 'COPIED ✓' : 'SHARE RESULT ▸'}</button>
           </div>) : null}
         <hr className="rule" />
-        <div style={{ fontSize: 13, lineHeight: 1.6, margin: '9px 0' }}>
+        <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.6, margin: '9px 0' }}>
           {sent ? `Topped out on burn ${st.burn}.`
             : `Burns used ${st.burn}/${attemptsFor(st)}. Got ${st.cleared} of ${spec.clear}.`}
         </div>
@@ -2519,7 +2519,7 @@ function startTutorial() {
         <div className="sub">{spec.name} · burn {st.burn} of {attemptsFor(st)}
           {st.line ? ` · ${LINES[st.line].name.toLowerCase()}` : ''}</div>
         <InkRule seed={sent ? 63 : 64} color="var(--ink)" />
-        <div style={{ fontSize: 13, lineHeight: 1.6, margin: '9px 0' }}>{line}</div>
+        <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.6, margin: '9px 0' }}>{line}</div>
 
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
           <Stat k="HOLDS" v={`${Math.min(st.cleared, spec.clear)}/${spec.clear}`} />

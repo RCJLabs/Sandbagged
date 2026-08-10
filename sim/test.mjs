@@ -1474,10 +1474,19 @@ test('no unicode escapes in JSX text', () => {
   const bad = /className=[^>]*>[^<]*\\u[0-9a-fA-F]{4}/.test(CODE)
   ok(!bad, 'use a real glyph in JSX, never an escape')
 })
-test('every CSS font size scales with --fs', () => {
-  const css = SRC.slice(SRC.indexOf('const CSS = `'), SRC.indexOf('/* ==='))
-  const fixed = css.match(/font-size:\d/g) ?? []
-  eq(fixed.length, 0, `${fixed.length} font sizes bypass the text-size setting`)
+test('every font size scales with --fs', () => {
+  // the CSS and the prose both live in App.tsx, not engine.ts — the old guard
+  // sliced engine.ts and quietly matched nothing (which is how the narrative
+  // blocks' hardcoded 13px slipped the text-size setting for good)
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const cssStart = app.indexOf('const CSS = `')
+  const css = app.slice(cssStart, app.indexOf('`', cssStart + 13))
+  const cssFixed = css.match(/font-size:\d/g) ?? []
+  eq(cssFixed.length, 0, `${cssFixed.length} CSS font sizes bypass the text-size setting`)
+  // 13px was the reading size for every narrative block (event, talk, claim,
+  // endings, run/session/burn recaps); it must scale, so no bare 13 survives
+  const prose = app.match(/fontSize:\s*13\b/g) ?? []
+  eq(prose.length, 0, `${prose.length} inline narrative font sizes bypass the text-size setting`)
 })
 test('save version is a number the loader can migrate from', () => {
   ok(Number.isInteger(E.SAVE_FILE_VERSION), 'SAVE_FILE_VERSION must be an integer')
