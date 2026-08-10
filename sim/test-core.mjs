@@ -2107,7 +2107,7 @@ test('deeds are earnable, pure, and pay nothing (META-8)', () => {
   // ...and the META-9 mastery tier: five finale wins, one on a mutator, one per
   // climber, the stone put back, every page found.
   const lived = { ...fresh, sends: 5, wins: 5, dailyStreak: 3, bestCircuit: 9, styleMax: 5,
-    ending: 'kept',
+    ending: 'stranger-kept',   // META-10: the real ending shape, not the bare 'kept' that never occurs
     journal: [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15],
     book: { 'The Priest': { sends: 1, bestBurn: 1, bestStyle: 0, flashed: true, weather: 5, rock: 0 } },
     established: [{ name: 'Soft Touch', claimed: 4, real: 7, act: 0, burns: 2 }],
@@ -2135,11 +2135,37 @@ test('META-9: the mastery deeds read the record, and only a real record earns th
   ok(!has({ history: [{ won: false, circuit: false, arch: 0, mutators: ['greasy'] }] }, 'hardway'), 'a mutated loss earned the hard way')
   ok(!has({ history: [{ won: true, circuit: false, arch: 0, mutators: [] }] }, 'hardway'), 'a clean win earned the hard way')
   ok(has({ history: [{ won: true, circuit: false, arch: 0, mutators: ['greasy'] }] }, 'hardway'), 'a mutated win did not earn the hard way')
-  // Left No Trace reads the honest ending
-  ok(has({ ending: 'kept' }, 'purist') && !has({ ending: 'told' }, 'purist'), 'the purist deed misreads the ending')
+  // Left No Trace reads the honest ending — the REAL shape, `${endingFor}-${kind}`
+  ok(has({ ending: 'stranger-kept' }, 'purist') && has({ ending: 'known-kept' }, 'purist'),
+    'the purist deed does not read the real ending format')
+  ok(!has({ ending: 'known-told' }, 'purist') && !has({ ending: '' }, 'purist'),
+    'the purist deed fires on a told ending or a fresh save')
   // and recordRun now stamps the trip's mutators onto the record the deed reads
   const rec = E.recordRun({ ...base, inRun: true, mutators: ['greasy'], runSeed: 3, runDeck: [] }, true).history[0]
   eq(JSON.stringify(rec.mutators), JSON.stringify(['greasy']), 'recordRun did not stamp the mutators onto the record')
+})
+test('META-10: the mastery deeds are honest — no dead predicate, no eviction', () => {
+  const base = E.freshRun(0, 0, 1)
+  const has = (over, id) => E.deedsDone({ ...base, ...over }).includes(id)
+  // 1. the bug: `s.ending === 'kept'` could NEVER be true, because the ending is
+  // written as `${endingFor}-${kind}` — a fresh save shipped an unearnable deed
+  ok(base.ending !== 'kept', 'a fresh ending is the literal the old predicate wanted')
+  ok(has({ ending: 'stranger-kept' }, 'purist'), 'putting the stone back still earns nothing')
+  // 2. the eviction: quiver/hardway must read the DURABLE record, so a deed
+  // earned long ago survives history rolling over (HISTORY_MAX evicts oldest)
+  ok(has({ archWins: [0, 1, 2, 3, 4], history: [] }, 'quiver'),
+    'the quiver un-earned itself once its wins fell off the 20-deep history')
+  ok(has({ mutatorWin: true, history: [] }, 'hardway'),
+    'the hard way un-earned itself once its win fell off the history')
+  // 3. but the durable record only comes from a real finale win — a fresh save
+  // (no archWins, no mutatorWin, no history) earns neither
+  ok(!has({}, 'quiver') && !has({}, 'hardway'), 'a fresh save earned a mastery deed')
+  // 4. and the record persists across a save round-trip
+  const saved = { ...base, slot: 0, archWins: [0, 2, 4], mutatorWin: true }
+  E.saveGame(saved)
+  const back = E.loadGame(0)
+  eq(JSON.stringify(back.archWins), JSON.stringify([0, 2, 4]), 'archWins did not survive save/load')
+  eq(back.mutatorWin, true, 'mutatorWin did not survive save/load')
 })
 test('a phase summary describes every phase a boss has', () => {
   for (const r of E.ROUTES.filter(r => r.phases?.length)) {

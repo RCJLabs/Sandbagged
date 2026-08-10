@@ -312,6 +312,14 @@ export type GameState = {
   ending: string
   topRope: boolean
   history: RunRecord[]
+  /* META-10: the mastery deeds (quiver, hardway) used to read `history`, which
+     is capped at 20 and evicts oldest-first — so a deed could tick and later
+     un-tick. These are the durable, monotonic records they read instead: the
+     set of archetypes that have ever topped the finale, and whether any finale
+     win carried a mutator. Optional so old saves migrate (they fall back to
+     whatever `history` still holds). */
+  archWins?: number[]
+  mutatorWin?: boolean
   runs: number
   falls: number
   shopCards: Card[]
@@ -469,6 +477,7 @@ type SaveData = {
   weekId?: string; weekScore?: number; weekBest?: number
   mutators?: string[]
   runs?: number; falls?: number; ending?: string; topRope?: boolean; history?: RunRecord[]
+  archWins?: number[]; mutatorWin?: boolean
   coaching?: boolean; sound?: boolean; haptics?: boolean; assist?: boolean; cbSafe?: boolean; tutorialDone?: boolean
   motion?: boolean; textScale?: number; reach?: 'off' | 'left' | 'right'
   run: { deck: string[]; tier: number; skin: number; seed: number; act: number
@@ -489,7 +498,7 @@ export function saveGame(s: GameState) {
       weekId: s.weekId, weekScore: s.weekScore, weekBest: s.weekBest,
       mutators: s.mutators,
       runs: s.runs, falls: s.falls, ending: s.ending, topRope: s.topRope,
-      history: s.history.slice(0, HISTORY_MAX),
+      history: s.history.slice(0, HISTORY_MAX), archWins: s.archWins, mutatorWin: s.mutatorWin,
       run: s.inRun && s.tier < ACTS[s.act].length
         ? { deck: s.runDeck.map(c => c.upgraded ? c.name : c.name), tier: s.tier, skin: s.skin, seed: s.seed,
             act: s.act, gear: s.gear, boons: s.boons, kit: s.kit, cash: s.cash, psyche: s.psyche,
@@ -557,6 +566,7 @@ export function loadGame(slot = 0): Partial<GameState> {
       weekId: d.weekId ?? '', weekScore: d.weekScore ?? 0, weekBest: d.weekBest ?? 0,
       runs: d.runs ?? 0, falls: d.falls ?? 0, ending: d.ending ?? '',
       topRope: d.topRope ?? true, history: d.history ?? [],
+      archWins: d.archWins ?? [], mutatorWin: d.mutatorWin ?? false,
       ...(d.run ? { inRun: true,
         runDeck: d.run.deck.map(n => n.endsWith('+')
           ? upgrade(spawn(n.slice(0, -1))) : spawn(n)),
@@ -1854,13 +1864,19 @@ export const DEEDS: Deed[] = [
     done: s => s.wins >= 5 },
   { id: 'quiver', name: 'The Whole Quiver', text: 'Top the finale as each of the five climbers.',
     done: s => {
-      const won = new Set(s.history.filter(r => r.won && !r.circuit).map(r => r.arch))
+      // the durable record, unioned with whatever history still remembers, so a
+      // deed earned before META-10 (or on a pre-META-10 save) is never lost
+      const won = new Set([...(s.archWins ?? []),
+        ...s.history.filter(r => r.won && !r.circuit).map(r => r.arch)])
       return ARCHETYPES.every((_, i) => won.has(i))
     } },
   { id: 'hardway', name: 'The Hard Way', text: 'Win a trip with a mutator switched on.',
-    done: s => s.history.some(r => r.won && !r.circuit && (r.mutators?.length ?? 0) > 0) },
+    done: s => (s.mutatorWin ?? false)
+      || s.history.some(r => r.won && !r.circuit && (r.mutators?.length ?? 0) > 0) },
   { id: 'purist', name: 'Left No Trace', text: 'Top the Lost Line and put the stone back — tell no one.',
-    done: s => s.ending === 'kept' },
+    // the ending is written as `${endingFor}-${kind}` (e.g. stranger-kept), never
+    // the bare 'kept' this used to compare against — so it could never be earned
+    done: s => s.ending.endsWith('kept') },
   { id: 'everypage', name: 'Every Last Page', text: 'Find every page of his journal, not just the ten.',
     done: s => JOURNAL.every(p => p.id === 7 || s.journal.includes(p.id)) },
 ]
@@ -3044,6 +3060,7 @@ export function carryOver(s: GameState): Partial<GameState> {
     level: s.level, xp: s.xp, owned: s.owned, sends: s.sends, wins: s.wins,
     runs: s.runs, falls: s.falls, seen: s.seen, book: s.book, ticked: s.ticked,
     established: s.established, history: s.history, bestCircuit: s.bestCircuit,
+    archWins: s.archWins, mutatorWin: s.mutatorWin,
     loadouts: s.loadouts, styleMax: s.styleMax, tutorialDone: s.tutorialDone,
     slot: s.slot, ending: s.ending, tweak: s.tweak,
     // settings are the player's, not the run's
@@ -3087,7 +3104,7 @@ export function freshRun(routeIdx: number, deckTier: number, seed: number): Game
     loadout: DEFAULT_LOADOUT.slice(), style: 0, styleMax: 0, act: 0,
     seen: [], eventsSeen: [], talkId: null, talkReply: null, phaseSeen: '', onProject: false,
     runout: 0, lastPiece: -1, pitch: 0, cash: 0, psyche: PSYCHE_MAX,
-    circuit: false, circuitScore: 0, bestCircuit: 0, slot: 0, runSeed: 0, ending: '', topRope: true, history: [], runs: 0, falls: 0,
+    circuit: false, circuitScore: 0, bestCircuit: 0, slot: 0, runSeed: 0, ending: '', topRope: true, history: [], archWins: [], mutatorWin: false, runs: 0, falls: 0,
     shopCards: [], shopGear: [], shopKit: [], kit: [], bought: [],
     coaching: true, sound: true, haptics: true, assist: false, cbSafe: false, motion: true, textScale: 0, reach: 'off',
     tutorialDone: false,
@@ -3192,7 +3209,11 @@ export function endSession(s0: GameState, rng: RNG): GameState {
           skin: Math.min(RUN_SKIN + styleMods(s.style).skin, s.skin + ACT_SKIN) })
       }
       // a topropoed ascent counts for everything except the ladder
+      // META-10: stamp the durable deed records the moment the finale goes, so
+      // quiver/hardway never depend on the 20-deep rolling history again
       s = gainXp({ ...s, wins: s.wins + 1, psyche: PSYCHE_MAX,
+        archWins: Array.from(new Set([...(s.archWins ?? []), s.arch])),
+        mutatorWin: (s.mutatorWin ?? false) || s.mutators.length > 0,
         journal: Array.from(new Set([...s.journal, 7])),
         styleMax: s.topRope ? s.styleMax
           : Math.min(ASCENT.length - 1, Math.max(s.styleMax, s.style + 1)) }, 100, rng)
