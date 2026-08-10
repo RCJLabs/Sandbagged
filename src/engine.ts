@@ -706,6 +706,12 @@ export type RouteSpec = {
   name: string; grade: number; style: StyleKey
   clear: number; crux: number; feet: FeetKey; note: string; finale?: boolean
   phases?: BossPhase[]
+  /** SKIRM-5: a flat Bite on every hold of this line. The Circuit's grade caps
+      at 10 by line ~15, so past the cap "Into the Dark" was mechanically frozen
+      — pure skin attrition with no new teeth. This is the lever that keeps
+      escalating past the cap, as a deterministic function of the line count.
+      Only the Circuit sets it; every scripted route leaves it undefined. */
+  dBite?: number
   /** ROUTE-6: the conditions turn partway up. */
   window?: WeatherWindow
   roped?: boolean; pitches?: number
@@ -2542,7 +2548,7 @@ const SK_NOTE = [
    state), and it changes nothing about difficulty — the grade curve and the
    `enduro` deed (8 lines, in The Grind) are exactly as they were. */
 export function circuitZone(n: number): { name: string; text: string; floor: number } {
-  if (n >= 14) return { name: 'Into the Dark', text: 'No rack lasts forever. See how far it goes.', floor: 14 }
+  if (n >= 14) return { name: 'Into the Dark', text: 'No rack lasts forever, and now the rock bites harder the deeper you go. See how far it goes.', floor: 14 }
   if (n >= 10) return { name: 'The Business', text: 'Every line is a project from here.', floor: 10 }
   if (n >= 6) return { name: 'The Grind', text: 'This is where a circuit is won or lost.', floor: 6 }
   if (n >= 3) return { name: 'Getting Steep', text: 'It tilts back now. No more freebies.', floor: 3 }
@@ -2553,6 +2559,12 @@ export function circuitRoute(n: number, rng: RNG): RouteSpec {
   const styles: StyleKey[] = ['mixed', 'slab', 'crimp ladder', 'compression', 'power', 'jug haul']
   const feet: FeetKey[] = ['easy', 'normal', 'hard']
   const roped = n > 0 && n % 4 === 3
+  // SKIRM-5: the grade pins at 10 by ~line 15, and past that the line was
+  // identical forever — pure skin attrition. Into the Dark now grows a Bite: +1
+  // as the grade caps, then +1 every three lines deeper. A pure function of n
+  // that only rises above line 15, so nothing at or below the enduro deed (line
+  // 8) moves, and the RNG draw order is unchanged — lower lines are identical.
+  const dBite = Math.ceil(Math.max(0, n - 15) / 3)
   return {
     name: `${SK_A[rng.int(SK_A.length)]} ${SK_B[rng.int(SK_B.length)]}`,
     grade, style: styles[rng.int(styles.length)],
@@ -2560,6 +2572,7 @@ export function circuitRoute(n: number, rng: RNG): RouteSpec {
     crux: Math.floor(grade / 3),
     feet: feet[rng.int(feet.length)],
     roped, pitches: roped ? 2 : undefined,
+    dBite: dBite || undefined,
     note: roped ? 'Two pitches. Rack up.' : SK_NOTE[rng.int(SK_NOTE.length)],
   }
 }
@@ -3406,6 +3419,7 @@ export function biteAgainst(s: GameState, card: Card | null, hold: Hold, lane: n
   if (lane < 2 && s.boardP[1 - lane]?.fx === 'guard') b -= 1
   const ph = phaseOf(s)
   if (ph) b += ph.dBite ?? 0
+  b += specOf(s).dBite ?? 0                // SKIRM-5: the Circuit's deep-zone teeth
   const win = windowOf(s)                  // ROUTE-6: the window closes
   if (win) b += win.dBite ?? 0
   if (s.inRun && s.topRope) b -= 1        // the rope is doing some of the work

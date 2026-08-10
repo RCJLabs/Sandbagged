@@ -1260,6 +1260,33 @@ test('SKIRM-4: the Circuit climbs through named zones', () => {
   // the enduro deed (8 lines) lands in a real, named zone past the warm-up
   ok(E.circuitZone(8).floor > 0, 'the endurance deed still sits in the opening zone')
 })
+test('SKIRM-5: past the grade cap, Into the Dark keeps biting harder', () => {
+  const rng = new E.RNG(1)
+  // the premise: the grade pins at 10 and never moves again
+  eq(E.circuitRoute(15, rng).grade, 10, 'the circuit grade never reaches its cap')
+  for (const n of [16, 20, 30, 50]) eq(E.circuitRoute(n, new E.RNG(n)).grade, 10,
+    `the grade is still climbing at line ${n} — the premise is wrong`)
+  // the new lever is zero at and below the cap (so the enduro deed at line 8 and
+  // the whole lower curve are untouched) and grows, monotonically, past it
+  let prev = 0
+  for (let n = 0; n <= 50; n++) {
+    const d = E.circuitRoute(n, new E.RNG(n)).dBite ?? 0
+    if (n <= 15) eq(d, 0, `line ${n} grew teeth below the cap`)
+    ok(d >= prev, `the dark stopped escalating at line ${n}`)
+    prev = d
+  }
+  ok((E.circuitRoute(16, new E.RNG(16)).dBite ?? 0) >= 1, 'the dark has no teeth the moment the grade caps')
+  ok((E.circuitRoute(30, new E.RNG(30)).dBite ?? 0) > (E.circuitRoute(16, new E.RNG(16)).dBite ?? 0),
+    'a deeper line in the dark bites no harder than a shallow one')
+  // and the teeth are real: the same hold bites harder deep in the dark than in
+  // the shallows, by exactly the route's dBite (lane 2 sidesteps the campus bite)
+  const hold = { uid: 1, name: 'crimp', bite: 3, grip: 9, crux: false, clean: false }
+  const at = n => E.biteAgainst({ ...E.freshRun(0, 0, 1), inRun: true, gear: [], boons: [],
+    mutators: [], boardP: [null, null, null], boardH: [null, null, null],
+    skirmish: E.circuitRoute(n, new E.RNG(n)) }, null, hold, 2)
+  ok(at(30) > at(10), 'a hold deep in the dark bites no harder than one in the shallows')
+  eq(at(30) - at(10), E.circuitRoute(30, new E.RNG(30)).dBite, 'the deep-zone bite is not what the route says')
+})
 test('RUN-10: an act\'s two projects are different boulders at the same grade', () => {
   for (let act = 0; act < E.ACTS.length; act++) {
     const projs = E.ACTS[act].flat().filter(n => n.type === 'project').map(n => n.routeIdx)
