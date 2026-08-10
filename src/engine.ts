@@ -248,6 +248,9 @@ export const LINES: Line[] = [
 export type RunRecord = {
   seed: number; arch: number; style: number; rope: boolean; circuit: boolean
   act: number; tier: number; won: boolean; cause: string; sends: number; deck: number
+  /** META-9: which mutators the trip carried, so a mastery deed can read
+      "won with a mutator on" off the record. Optional — old saves lack it. */
+  mutators?: string[]
 }
 export const PROJECT_SKIN = 0     // the price is the node, not your skin
 export const RUNOUT_SKIN = 2      // holds of runout per skin lost in a fall
@@ -1814,6 +1817,23 @@ export const DEEDS: Deed[] = [
     done: s => s.bestCircuit >= 8 },
   { id: 'onsight', name: 'No Rehearsal', text: 'Unlock the Onsight style.',
     done: s => s.styleMax >= 5 },
+  /* META-9: the mastery tier — read off the record the game already keeps, and
+     earned over many trips rather than on day one. Like every deed (INJ-1) they
+     pay nothing and gate nothing; they are a map of the game's depth for a
+     player who has already seen its breadth. */
+  { id: 'veteran', name: 'Seasoned', text: 'Top out the Lost Line five times over.',
+    done: s => s.wins >= 5 },
+  { id: 'quiver', name: 'The Whole Quiver', text: 'Top the finale as each of the five climbers.',
+    done: s => {
+      const won = new Set(s.history.filter(r => r.won && !r.circuit).map(r => r.arch))
+      return ARCHETYPES.every((_, i) => won.has(i))
+    } },
+  { id: 'hardway', name: 'The Hard Way', text: 'Win a trip with a mutator switched on.',
+    done: s => s.history.some(r => r.won && !r.circuit && (r.mutators?.length ?? 0) > 0) },
+  { id: 'purist', name: 'Left No Trace', text: 'Top the Lost Line and put the stone back — tell no one.',
+    done: s => s.ending === 'kept' },
+  { id: 'everypage', name: 'Every Last Page', text: 'Find every page of his journal, not just the ten.',
+    done: s => JOURNAL.every(p => p.id === 7 || s.journal.includes(p.id)) },
 ]
 export const deedsDone = (s: GameState) => DEEDS.filter(d => d.done(s)).map(d => d.id)
 
@@ -4359,6 +4379,7 @@ export function recordRun(s: GameState, won: boolean): GameState {
   const rec: RunRecord = {
     seed: s.runSeed, arch: s.arch, style: s.style, rope: s.topRope, circuit: s.circuit,
     act: s.act, tier: s.tier, won, cause, sends: s.sends, deck: s.runDeck.length,
+    mutators: s.mutators,   // META-9
   }
   return { ...s, history: [rec, ...s.history].slice(0, HISTORY_MAX) }
 }

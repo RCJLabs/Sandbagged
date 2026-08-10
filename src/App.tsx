@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.65 — ROUTE-10: the crux gets a character
+// SANDBAGGED v9.66 — META-9: mastery deeds · a new app icon
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -928,7 +928,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.65 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.66 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

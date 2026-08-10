@@ -1956,14 +1956,42 @@ test('deeds are earnable, pure, and pay nothing (META-8)', () => {
   eq(E.deedsDone(fresh).length, 0, 'a fresh save has already earned a deed')
   // a lived-in record earns the deeds it should — The Priest is V5 and drizzle,
   // the line is graded soft, the journal is ten pages in, the streak is up
-  const lived = { ...fresh, sends: 5, wins: 1, dailyStreak: 3, bestCircuit: 9, styleMax: 5,
-    journal: [1, 2, 3, 4, 5, 6, 8, 9, 10, 11],
+  // ...and the META-9 mastery tier: five finale wins, one on a mutator, one per
+  // climber, the stone put back, every page found.
+  const lived = { ...fresh, sends: 5, wins: 5, dailyStreak: 3, bestCircuit: 9, styleMax: 5,
+    ending: 'kept',
+    journal: [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15],
     book: { 'The Priest': { sends: 1, bestBurn: 1, bestStyle: 0, flashed: true, weather: 5, rock: 0 } },
-    established: [{ name: 'Soft Touch', claimed: 4, real: 7, act: 0, burns: 2 }] }
+    established: [{ name: 'Soft Touch', claimed: 4, real: 7, act: 0, burns: 2 }],
+    history: [0, 1, 2, 3, 4].map(a => ({ won: true, circuit: false, arch: a, mutators: a === 0 ? ['greasy'] : [] })) }
   const got = new Set(E.deedsDone(lived))
-  for (const id of ['send', 'flash', 'strong', 'wet', 'pages', 'lostline', 'fa', 'sandbagger', 'streak', 'enduro', 'onsight'])
+  for (const id of ['send', 'flash', 'strong', 'wet', 'pages', 'lostline', 'fa', 'sandbagger', 'streak', 'enduro', 'onsight',
+    'veteran', 'quiver', 'hardway', 'purist', 'everypage'])
     ok(got.has(id), `a lived-in save did not earn ${id}`)
   eq(got.size, E.DEEDS.length, 'that record should have earned every deed')
+})
+test('META-9: the mastery deeds read the record, and only a real record earns them', () => {
+  const base = E.freshRun(0, 0, 1)
+  const has = (over, id) => E.deedsDone({ ...base, ...over }).includes(id)
+  const wins = arches => ({ history: arches.map(a => ({ won: true, circuit: false, arch: a })) })
+  ok(E.DEEDS.length >= 16, `the mastery tier did not land: only ${E.DEEDS.length} deeds`)
+  // Seasoned is five finale wins, not the first
+  ok(!has({ wins: 4 }, 'veteran'), 'four wins earned Seasoned')
+  ok(has({ wins: 5 }, 'veteran'), 'five wins did not earn Seasoned')
+  // the whole quiver is all five climbers, not four
+  ok(!has(wins([0, 1, 2, 3]), 'quiver'), 'four climbers earned the whole quiver')
+  ok(has(wins([0, 1, 2, 3, 4]), 'quiver'), 'all five climbers did not earn the whole quiver')
+  ok(!has({ history: [0, 1, 2, 3, 4].map(a => ({ won: true, circuit: true, arch: a })) }, 'quiver'),
+    'circuit wins counted toward the campaign quiver')
+  // the hard way needs a WON trip with a mutator — a mutated loss or a clean win is not it
+  ok(!has({ history: [{ won: false, circuit: false, arch: 0, mutators: ['greasy'] }] }, 'hardway'), 'a mutated loss earned the hard way')
+  ok(!has({ history: [{ won: true, circuit: false, arch: 0, mutators: [] }] }, 'hardway'), 'a clean win earned the hard way')
+  ok(has({ history: [{ won: true, circuit: false, arch: 0, mutators: ['greasy'] }] }, 'hardway'), 'a mutated win did not earn the hard way')
+  // Left No Trace reads the honest ending
+  ok(has({ ending: 'kept' }, 'purist') && !has({ ending: 'told' }, 'purist'), 'the purist deed misreads the ending')
+  // and recordRun now stamps the trip's mutators onto the record the deed reads
+  const rec = E.recordRun({ ...base, inRun: true, mutators: ['greasy'], runSeed: 3, runDeck: [] }, true).history[0]
+  eq(JSON.stringify(rec.mutators), JSON.stringify(['greasy']), 'recordRun did not stamp the mutators onto the record')
 })
 test('a phase summary describes every phase a boss has', () => {
   for (const r of E.ROUTES.filter(r => r.phases?.length)) {
