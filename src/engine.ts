@@ -3256,6 +3256,30 @@ export type RouteMove = { kind: 'grease' | 'dry' | 'gust' | 'crumble'; lane: num
 export const MOVE_EVERY = 3        // roughly one telegraph every this many turns
 export const MOVE_GRIP = 2
 export const MOVE_BITE = 1
+/* ROUTE-11. How hard the live condition leans on which move comes. A trade
+   inside an opposed pair (grease↔dry for the air, crumble↔gust for the stone),
+   so the four still sum to a fixed 100 and the roll still draws exactly one
+   number — stream-neutral, no guard moves on drift. Tuned so the campaign band
+   holds: the act climates are not evenly wet/dry, so a big lean would drag the
+   number; these are the largest tilts that still net flat across the acts. */
+export const MOVE_WET = 14         // seeping air greases; crisp air dries
+export const MOVE_FRIABLE = 12     // soft stone flakes instead of gusting
+
+/** How the four moves are weighted for the condition you are actually in.
+    grease/dry/gust/crumble, out of a fixed total. */
+export function moveWeights(s: GameState): [number, number, number, number] {
+  let grease = 34, dry = 24, gust = 22, crumble = 20
+  const wx = WEATHER[s.weather], rk = ROCK[s.rock]
+  // humid and drizzle seep (sloper friction up, feet going); crisp and freezing
+  // come into nick — the two conditions the player already sees on the paper
+  const wet = !!wx && (wx.sloperGrip >= 2 || (wx.dSupport ?? 0) < 0)
+  const dryAir = !!wx && wx.dBite < 0
+  if (wet) { grease += MOVE_WET; dry -= MOVE_WET }
+  else if (dryAir) { grease -= MOVE_WET; dry += MOVE_WET }
+  // sandstone is the friable one — it is what flakes; the harder rock gusts
+  if (rk && rk.name === 'sandstone') { crumble += MOVE_FRIABLE; gust -= MOVE_FRIABLE }
+  return [grease, dry, gust, crumble]
+}
 
 /** What the route is about to do. Rolled from the run RNG at the end of a turn. */
 export function rollRouteMove(s: GameState, rng: RNG): RouteMove | null {
@@ -3263,12 +3287,14 @@ export function rollRouteMove(s: GameState, rng: RNG): RouteMove | null {
   if (!lanes.length) return null
   const lane = lanes[rng.int(lanes.length)]
   const where = LANE_NAMES[lane].toLowerCase()
-  const r = rng.next()
-  if (r < 0.34) return { kind: 'grease', lane,
+  const [wg, wd, wgu] = moveWeights(s)
+  const total = 100
+  const r = rng.next() * total
+  if (r < wg) return { kind: 'grease', lane,
     text: `The ${where} hold is greasing up.` }
-  if (r < 0.58) return { kind: 'dry', lane,
+  if (r < wg + wd) return { kind: 'dry', lane,
     text: `A breeze on the ${where} hold. It is coming into condition.` }
-  if (r < 0.80) return { kind: 'gust', lane,
+  if (r < wg + wd + wgu) return { kind: 'gust', lane,
     text: 'Wind coming up the face. All of it is about to bite.' }
   return { kind: 'crumble', lane, text: `Something is flaking off the ${where} hold.` }
 }

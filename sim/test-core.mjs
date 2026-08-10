@@ -1553,6 +1553,34 @@ test('a telegraph is information, so the preview must use it', () => {
   }
 })
 
+test('ROUTE-11: the route move reads the weather and rock you are in', () => {
+  // rock was inert after build time; now the live condition biases which move
+  // comes, so a drizzle-on-sandstone climb and a crisp-on-granite one no longer
+  // throw the identical stream. The bias is a trade inside a fixed total, so it
+  // stays stream-neutral — that invariant is what keeps the guards off drift.
+  const wIdx = n => E.WEATHER.findIndex(w => w.name === n)
+  const rIdx = n => E.ROCK.findIndex(r => r.name === n)
+  const sum = t => t.reduce((a, b) => a + b, 0)
+  // every combination still totals exactly 100 — one draw, like before
+  for (let w = 0; w < E.WEATHER.length; w++)
+    for (let r = 0; r < E.ROCK.length; r++)
+      eq(sum(E.moveWeights({ weather: w, rock: r })), 100,
+        `${E.WEATHER[w].name}/${E.ROCK[r].name} weights do not sum to 100`)
+  const [g0, d0] = E.moveWeights({ weather: wIdx('still'), rock: rIdx('granite') })
+  // seeping air greases: grease climbs, drying dries: dry climbs
+  const [gw, dw] = E.moveWeights({ weather: wIdx('drizzle'), rock: rIdx('granite') })
+  ok(gw > g0 && dw < d0, 'a seeping day did not lean the move toward greasing')
+  const [gc, dc] = E.moveWeights({ weather: wIdx('crisp'), rock: rIdx('granite') })
+  ok(gc < g0 && dc > d0, 'a crisp day did not lean the move toward drying out')
+  // friable stone flakes; hard stone does not
+  const soft = E.moveWeights({ weather: wIdx('still'), rock: rIdx('sandstone') })
+  const hard = E.moveWeights({ weather: wIdx('still'), rock: rIdx('granite') })
+  ok(soft[3] > hard[3], 'sandstone did not flake more than granite')
+  // and it genuinely differs by condition — not a decorative parameter
+  ok(JSON.stringify(gw ? [gw, dw] : []) !== JSON.stringify([gc, dc]),
+    'wet and crisp produced the same weighting')
+})
+
 test('a hold you have not been on does not read exactly', () => {
   // ENG-10. UX-4 made the preview 100% accurate, which quietly cost a stated
   // pillar: a turn you can read exactly is arithmetic, not a gamble. The
