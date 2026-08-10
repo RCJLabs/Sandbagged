@@ -444,6 +444,24 @@ test('UX-17: the tutorial step leads, and the marks key is one tap from a climb'
   ok(E.ROUTES.some(r => r.tutorial), 'there is no tutorial route for the banner to teach')
   ok(E.TUTORIAL_STEPS.length > 0, 'the tutorial has no steps')
 })
+test('A11Y-6: the settings are switches, consistent, and reachable first', () => {
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const more = app.slice(app.indexOf("st.phase === 'more'"))
+  // settings lead the screen now; the book archives follow
+  const settingsAt = more.indexOf('>SETTINGS<')
+  const booksAt = more.indexOf('>THE BOOKS<')
+  const collAt = more.indexOf('t="Collection"')
+  ok(settingsAt > 0 && collAt > 0, 'the more screen lost its settings or its archives')
+  ok(settingsAt < collAt, 'the accessibility settings are still buried below the archives')
+  ok(booksAt > settingsAt && booksAt < collAt, 'the archives are not grouped below settings')
+  // the on/off toggles announce themselves as switches to assistive tech
+  const switches = (more.match(/role="switch"/g) || []).length
+  ok(switches >= 6, `only ${switches} settings expose switch semantics`)
+  ok(/aria-checked=\{st\.motion\}/.test(more), 'MOTION does not report its state')
+  // MOTION fills when ON, like every other toggle — the inverted styling is gone
+  ok(/btn\$\{st\.motion \? ' go' : ''\}/.test(more), 'MOTION does not fill when it is ON')
+  ok(!/st\.motion \? '' : ' go'/.test(more), 'the inverted MOTION styling is still there')
+})
 test('the assist shows a hold exactly, and shows the real grip', () => {
   const h = { name: 'crux', grip: 8, bite: 3, crux: true, clean: false, wobble: 1 }
   const off = { ...E.freshRun(4, 0, 1), inRun: true, assist: false, beta: [] }

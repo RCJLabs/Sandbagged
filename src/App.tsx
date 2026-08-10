@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.62 — RUN-10: the stages you see every run stop repeating
+// SANDBAGGED v9.63 — A11Y-6: settings assistive tech can use
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -928,7 +928,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.62 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.63 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -1051,47 +1051,49 @@ function startTutorial() {
           <button className="btn" style={{ padding: '5px 10px', fontSize: 11 }} onClick={goBack}>◂ BACK</button></div>
         <InkRule seed={53} color="var(--ink)" />
         <div style={{ maxHeight: 620, overflowY: 'auto', marginTop: 6 }}>
-          <Item t="Collection" sub={`${st.owned.length}/${total}`} on={go('collection')} />
-          <Item t="Logbook" sub={`${inAct.filter(r => st.book[r.name]).length}/${inAct.length} ticked`}
-            on={go('logbook')} />
-          <Item t="The Journal" sub={`${st.journal.length}/${JOURNAL.length} pages`} on={go('journal')} />
-          <Item t="The Numbers" sub="everything recorded" on={go('stats')} />
-          <Item t="Deeds" sub={`${deedsDone(st).length}/${DEEDS.length} done`} on={go('deeds')} />
-          <Item t="Every Trip" sub={st.history.length ? `last ${Math.min(st.history.length, HISTORY_MAX)} runs` : 'nothing yet'}
-            on={go('history')} />
-          <Item t="How It Works" sub="holds, keywords, marks" on={go('glossary')} />
-          <Item t="Saves" sub={`slot ${st.slot + 1}`} on={() => { setIo({ code: '', msg: '' }); setSt(x => ({ ...x, phase: 'saves' })) }} />
-
-          <div className="lbl" style={{ marginTop: 12 }}>SETTINGS</div>
+          {/* A11Y-6: settings lead now, so the accessibility toggles (text size,
+              colour-safe, motion, reach) are the first thing reachable, not the
+              last after eight archive menus. Every on/off is a real switch to a
+              screen reader (role/aria-checked), and MOTION fills when ON like
+              the rest, not inverted. */}
+          <div className="lbl">SETTINGS</div>
           <div style={{ display: 'flex', gap: 6, marginTop: 5 }}>
             <button className={`btn${st.coaching ? ' go' : ''}`} style={{ flex: 1, padding: 11 }}
+              role="switch" aria-checked={st.coaching} aria-label="Spotter"
               onClick={() => setSt(x => ({ ...x, coaching: !x.coaching }))}>
               SPOTTER {st.coaching ? 'ON' : 'OFF'}</button>
             <button className={`btn${st.sound ? ' go' : ''}`} style={{ flex: 1, padding: 11 }}
+              role="switch" aria-checked={st.sound} aria-label="Sound"
               onClick={() => { const on = !st.sound; if (on) sfx('lift', true); setSt(x => ({ ...x, sound: on })) }}>
               SOUND {st.sound ? 'ON' : 'OFF'}</button>
           </div>
           <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
             {/* A11Y-4: haptics on their own switch, no longer riding on sound */}
             <button className={`btn${st.haptics ? ' go' : ''}`} style={{ flex: 1, padding: 11 }}
+              role="switch" aria-checked={st.haptics} aria-label="Haptics"
               onClick={() => { const on = !st.haptics; if (on) buzz(12, true); setSt(x => ({ ...x, haptics: on })) }}>
               HAPTICS {st.haptics ? 'ON' : 'OFF'}</button>
             <button className={`btn${st.assist ? ' go' : ''}`} style={{ flex: 1, padding: 11 }}
+              role="switch" aria-checked={st.assist} aria-label="Assist"
               onClick={() => setSt(x => ({ ...x, assist: !x.assist }))}>
               ASSIST {st.assist ? 'ON' : 'OFF'}</button>
           </div>
           {st.assist ? <div className="sub" style={{ marginTop: 3 }}>
             Every hold reads its exact Grip. Clearer, but you give up the guessing game.</div> : null}
           <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-            <button className={`btn${st.motion ? '' : ' go'}`} style={{ flex: 1, padding: 11 }}
+            {/* A11Y-6: MOTION fills when ON, consistent with every other toggle */}
+            <button className={`btn${st.motion ? ' go' : ''}`} style={{ flex: 1, padding: 11 }}
+              role="switch" aria-checked={st.motion} aria-label="Motion and animation"
               onClick={() => setSt(x => ({ ...x, motion: !x.motion }))}>
               MOTION {st.motion ? 'ON' : 'OFF'}</button>
             <button className="btn" style={{ flex: 1, padding: 11 }}
+              aria-label={`Text size: ${['normal', 'large', 'larger'][st.textScale]}`}
               onClick={() => setSt(x => ({ ...x, textScale: (x.textScale + 1) % 3 }))}>
               TEXT {['NORMAL', 'LARGE', 'LARGER'][st.textScale]}</button>
           </div>
           {/* A11Y-5: one-handed reach — a thumb-side bottom bar on the climb screen */}
           <button className={`btn${st.reach !== 'off' ? ' go' : ''}`} style={{ width: '100%', padding: 11, marginTop: 6 }}
+            aria-label={`One-handed reach: ${st.reach === 'off' ? 'off' : st.reach + ' thumb'}`}
             onClick={() => setSt(x => ({ ...x, reach: x.reach === 'off' ? 'right' : x.reach === 'right' ? 'left' : 'off' }))}>
             ONE-HANDED REACH {st.reach === 'off' ? 'OFF' : st.reach === 'right' ? 'RIGHT THUMB' : 'LEFT THUMB'}</button>
           <div className="sub" style={{ marginTop: 3 }}>
@@ -1099,9 +1101,11 @@ function startTutorial() {
               ? 'Two-handed layout. COMMIT sits where it always has.'
               : `The climb's controls drop to a bottom bar in reach of your ${st.reach} thumb, COMMIT on that side.`}</div>
           <button className={`btn${st.hints ? ' go' : ''}`} style={{ width: '100%', padding: 11, marginTop: 6 }}
+            role="switch" aria-checked={st.hints} aria-label="Draft hints"
             onClick={() => setSt(x => ({ ...x, hints: !x.hints }))}>
             DRAFT HINTS {st.hints ? 'ON' : 'OFF'}</button>
           <button className="btn" style={{ width: '100%', padding: 11, marginTop: 6 }}
+            aria-label={`Grades: ${st.grades === 'font' ? 'Fontainebleau' : 'V-scale'}`}
             onClick={() => setSt(x => ({ ...x, grades: x.grades === 'v' ? 'font' : 'v' }))}>
             GRADES {st.grades === 'font' ? 'FONT' : 'V-SCALE'}</button>
           <div className="sub" style={{ marginTop: 3 }}>
@@ -1112,8 +1116,21 @@ function startTutorial() {
             {st.hints ? 'A line or two on why a card fits, on the shelf and in the post.'
               : 'No hints. Work it out.'}</div>
           <button className={`btn${st.cbSafe ? ' go' : ''}`} style={{ width: '100%', padding: 11, marginTop: 6 }}
+            role="switch" aria-checked={st.cbSafe} aria-label="Colour-safe palette"
             onClick={() => setSt(x => ({ ...x, cbSafe: !x.cbSafe }))}>
             COLOUR-SAFE PALETTE {st.cbSafe ? 'ON' : 'OFF'}</button>
+
+          <div className="lbl" style={{ marginTop: 12 }}>THE BOOKS</div>
+          <Item t="Collection" sub={`${st.owned.length}/${total}`} on={go('collection')} />
+          <Item t="Logbook" sub={`${inAct.filter(r => st.book[r.name]).length}/${inAct.length} ticked`}
+            on={go('logbook')} />
+          <Item t="The Journal" sub={`${st.journal.length}/${JOURNAL.length} pages`} on={go('journal')} />
+          <Item t="The Numbers" sub="everything recorded" on={go('stats')} />
+          <Item t="Deeds" sub={`${deedsDone(st).length}/${DEEDS.length} done`} on={go('deeds')} />
+          <Item t="Every Trip" sub={st.history.length ? `last ${Math.min(st.history.length, HISTORY_MAX)} runs` : 'nothing yet'}
+            on={go('history')} />
+          <Item t="How It Works" sub="holds, keywords, marks" on={go('glossary')} />
+          <Item t="Saves" sub={`slot ${st.slot + 1}`} on={() => { setIo({ code: '', msg: '' }); setSt(x => ({ ...x, phase: 'saves' })) }} />
 
           <div className="lbl" style={{ marginTop: 12 }} {...tap(() => setShowPractice(!showPractice))}>
             PRACTICE {showPractice ? '▾' : '▸'}</div>
