@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.72 — NARR-13: your sandbagged lines come back with the consensus
+// SANDBAGGED v9.73 — ROUTE-12: signatures do something, on the lines you replay
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -943,7 +943,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.72 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.73 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

@@ -1775,6 +1775,46 @@ test('every signature is real, named and used at most once', () => {
     ok(changes, `${sig.id} is just its base hold with a name on it`)
   }
 })
+test('ROUTE-12: a signature does something, and the grind lines get one too', () => {
+  // every signature now pays a one-time read when first worked...
+  for (const s of E.SIGNATURES) ok(s.read > 0, `${s.id} still does nothing but sit there`)
+  // ...and the pool that may be TAGGED onto a generated line is ability-less and real
+  ok(E.GEN_SIG_IDS.length >= 3, 'too few signatures are safe to tag onto a grind line')
+  for (const id of E.GEN_SIG_IDS) {
+    const s = E.sigById(id)
+    ok(s, `${id} is not a signature`); ok(!s.ability, `${id} carries an ability and is not tag-safe`)
+  }
+  // the read hook fires when a signature is worked, and reads off the wall
+  const base = E.freshRun(0, 0, 3)
+  const climb = sig => ({ ...base, inRun: true, skirmish: null, phase: 'climb', beta: ['crimp'],
+    boardH: [{ uid: 1, name: 'crimp', bite: 3, grip: 1, crux: false, clean: false, ...(sig ? { sig } : {}) }, null, null],
+    boardP: [null, null, null], readAhead: 0, cleared: 0, worked: [], turn: 1, order: [],
+    holdDeck: Array.from({ length: 8 }, (_, k) => ({ uid: 100 + k, name: 'crimp', bite: 3, grip: 5, crux: false, clean: false })),
+    piles: { draw: [], discard: [], exhaust: [], hand: [E.spawn('Crimp Grip')] } })
+  const run = st => { let s = E.autoPlay(st, new E.RNG(1)); return E.resolve(s, new E.RNG(1)) }
+  const tagged = run(climb('sidewinder')), plain = run(climb(null))
+  ok(tagged.log.some(l => /read the next/.test(l)), 'working a signature read nothing off the wall')
+  // and it is BAND-NEUTRAL: the only ability-less-tagged difference is information —
+  // the clears, the pump and the board come out identical to the untagged hold
+  eq(tagged.cleared, plain.cleared, 'the read hook changed how much you cleared')
+  eq(tagged.pump, plain.pump, 'the read hook changed the pump')
+  eq(JSON.stringify(tagged.boardH.map(h => h && h.grip)), JSON.stringify(plain.boardH.map(h => h && h.grip)),
+    'the read hook changed the board')
+  // a generated line (the circuit) gets exactly one tagged hold, from the safe
+  // pool, and the tag adds no ability — the hold resolves as the plain one it was
+  const holds = E.buildRoute({ ...base, inRun: true, weather: 1, rock: 0,
+    skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds
+  const tags = holds.filter(h => h.sig)
+  eq(tags.length, 1, `a circuit line carried ${tags.length} named features, not one`)
+  ok(E.GEN_SIG_IDS.includes(tags[0].sig), 'the circuit tag came from outside the tag-safe pool')
+  const natural = E.HOLD_STATS[tags[0].name]?.ability ?? ''
+  eq(E.abilityOf(tags[0]), natural, 'the tag put an ability on a hold that had none')
+  ok(E.holdLabel(tags[0]) !== tags[0].name, 'the tagged hold shows no feature name')
+  // deterministic: the same line names the same feature every time (isolated rng)
+  const again = E.buildRoute({ ...base, inRun: true, weather: 1, rock: 0,
+    skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
+  eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
+})
 test('nothing builds a state from scratch without carrying you over', () => {
   /* SAVE-2. `startLostLine` built a fresh state and hand-copied five fields,
      dropping twenty. The round-trip test never caught it because it only

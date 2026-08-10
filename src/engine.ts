@@ -603,31 +603,42 @@ export const CRUX_CHAR: Record<StyleKey, { label: string; dBite: number }> = {
 export type Signature = {
   id: string; name: string; note: string; base: string
   dGrip?: number; dBite?: number; ability?: string
+  /* ROUTE-12: working it the first time reads this many holds off the wall —
+     the sequence you suss from that one good stance. Information, not power:
+     it moves readAhead only, which resolution never reads, so it is band-safe. */
+  read?: number
 }
 export const SIGNATURES: Signature[] = [
-  { id: 'rattler', name: 'The Rattler', base: 'crimp', dBite: 2, ability: 'Sharp',
+  { id: 'rattler', name: 'The Rattler', base: 'crimp', dBite: 2, ability: 'Sharp', read: 1,
     note: 'A flake the size of a dinner plate. It moves when you pull on it.' },
-  { id: 'twofinger', name: 'The Two-Finger Pocket', base: 'pocket', dGrip: 1,
+  { id: 'twofinger', name: 'The Two-Finger Pocket', base: 'pocket', dGrip: 1, read: 2,
     note: 'Two fingers fit. A third would have made this a different climb.' },
-  { id: 'wetjug', name: 'The Wet Jug', base: 'jug', dGrip: 2, ability: 'Greasy',
+  { id: 'wetjug', name: 'The Wet Jug', base: 'jug', dGrip: 2, ability: 'Greasy', read: 1,
     note: 'It seeps. It has always seeped. Everyone knows and nobody mentions it.' },
-  { id: 'thankgod', name: 'The Thank God Hold', base: 'jug', dGrip: -2,
-    note: 'You do not know it is there until your hand is already on it.' },
-  { id: 'guillotine', name: 'The Guillotine', base: 'sharp crimp', dBite: 1,
+  { id: 'thankgod', name: 'The Thank God Hold', base: 'jug', dGrip: -2, read: 3,
+    note: 'You do not know it is there until your hand is already on it. A place to breathe and look up.' },
+  { id: 'guillotine', name: 'The Guillotine', base: 'sharp crimp', dBite: 1, read: 1,
     note: 'A horizontal edge with an edge. People tape up for this one move.' },
-  { id: 'organpipe', name: 'The Organ Pipe', base: 'pinch', dGrip: 2, ability: 'Squeeze',
+  { id: 'organpipe', name: 'The Organ Pipe', base: 'pinch', dGrip: 2, ability: 'Squeeze', read: 2,
     note: 'A fin you can get both hands round and no way to weight your feet.' },
-  { id: 'deathblock', name: 'The Death Block', base: 'sloper', dGrip: 3,
-    note: 'Enormous, rounded, and entirely without features. It goes on for a while.' },
-  { id: 'letterbox', name: 'The Letterbox', base: 'pocket', dBite: -1, ability: 'Two-finger',
+  { id: 'deathblock', name: 'The Death Block', base: 'sloper', dGrip: 3, read: 2,
+    note: 'Enormous, rounded, and entirely without features. It goes on for a while — long enough to see what is next.' },
+  { id: 'letterbox', name: 'The Letterbox', base: 'pocket', dBite: -1, ability: 'Two-finger', read: 2,
     note: 'A slot you post a hand into and hope to get back.' },
-  { id: 'sidewinder', name: 'The Sidewinder', base: 'crimp', dGrip: 2,
+  { id: 'sidewinder', name: 'The Sidewinder', base: 'crimp', dGrip: 2, read: 1,
     note: 'Good, if you are standing somewhere you cannot stand.' },
-  { id: 'lastjug', name: 'The Last Jug', base: 'jug', dGrip: -1, ability: 'Rest',
+  { id: 'lastjug', name: 'The Last Jug', base: 'jug', dGrip: -1, ability: 'Rest', read: 2,
     note: 'The last thing on the route that is kind to you.' },
-  { id: 'bellows', name: 'The Bellows', base: 'pinch', dBite: 1, dGrip: -1,
+  { id: 'bellows', name: 'The Bellows', base: 'pinch', dBite: 1, dGrip: -1, read: 1,
     note: 'A slot the wind comes up through. Cold hands, and you can hear it coming.' },
 ]
+/* ROUTE-12: which signatures may be TAGGED onto a generated line (circuit,
+   skirmish, daily, first ascents) without moving its balance. The tag is
+   name + note + the read hook only — the grip/bite nudge is NOT applied and the
+   ability must be empty, so a tagged hold resolves exactly as the plain hold it
+   already was. So: the ability-less signatures, matched to a hold of their own
+   base type so the note still fits what is under your hand. */
+export const GEN_SIG_IDS = SIGNATURES.filter(s => !s.ability).map(s => s.id)
 export const sigById = (id: string) => SIGNATURES.find(x => x.id === id)
 
 export const FEET_STATS: Record<string, HoldDef> = {
@@ -2973,6 +2984,22 @@ export function buildRoute(s: GameState, rng: RNG): { holds: Hold[]; feet: Hold[
       ...(spec.fa ? { dirt: DIRT_GRIP } : {}) }
   }
   placeSig()
+  // ROUTE-12: the grind lines (circuit, daily, skirmish, first ascents) carried
+  // no named feature at all — the exact sameness ROUTE-5 set out to kill. Tag
+  // one, band-neutrally: an ability-less signature matched to a hold of its own
+  // base type, so NOTHING about the numbers changes — only the name, the note
+  // and the read hook. Chosen from an ISOLATED rng keyed to the line, so it
+  // draws nothing from the run stream (the daily and the seed replay identically).
+  const generated = !spec.signature && (!!s.skirmish || spec.fa === true)
+  if (generated) {
+    let h = 2166136261
+    for (const ch of spec.name) h = Math.imul(h ^ ch.charCodeAt(0), 16777619)
+    const sigRng = new RNG(((h ^ (spec.grade * 2654435761) ^ (spec.clear * 40503)) >>> 0) || 1)
+    for (const id of sigRng.shuffle(GEN_SIG_IDS.slice())) {
+      const at = holds.findIndex(x => !x.crux && !x.sig && x.name === sigById(id)!.base)
+      if (at >= 0) { holds[at] = { ...holds[at], sig: id }; break }
+    }
+  }
   const fp = FEET_POOLS[spec.feet], feet: Hold[] = []
   for (let i = 0; i < 40; i++) {
     const t = rng.weighted(fp), d = FEET_STATS[t]
@@ -3509,6 +3536,7 @@ export function resolve(s: GameState, rng: RNG): GameState {
   const boardH = s.boardH.slice(), boardP = s.boardP.slice()
   const holdDeckLocal = s.holdDeck.slice()
   let piles = s.piles, pump = s.pump, cleared = s.cleared
+  let readAhead = s.readAhead                              // ROUTE-12: a signature can add to it
   const worked = s.worked.slice(), log: string[] = []
   // ENG-11: what the route said it would do last turn, it does now — before
   // anything of yours resolves, so the telegraph was worth reading
@@ -3605,6 +3633,17 @@ export function resolve(s: GameState, rng: RNG): GameState {
         pump = Math.max(0, pump - bm.cruxShed)
         log.push(`Crux worked. Draw${bm.cruxShed ? `, shed ${bm.cruxShed}` : ''}.`)
       }
+      // ROUTE-12: a signature is a feature you learn something FROM. Working it
+      // the first time reads the next holds off the wall — the sequence you sussed
+      // from that stance. Information, never power (ROUTE-10's lesson): it moves
+      // readAhead, which the resolution never consults, so the band cannot feel it.
+      if (hold.sig) {
+        const sg = sigById(hold.sig)
+        if (sg?.read) {
+          readAhead = Math.min(holdDeckLocal.length, Math.max(readAhead, sg.read))
+          log.push(`${holdLabel(hold)} — you read the next ${readAhead} hold${readAhead === 1 ? '' : 's'} off it.`)
+        }
+      }
       boardH[i] = null
       if (card.fx === 'echo') {
         piles = { ...piles, hand: [...piles.hand, { ...card, settled: 0 }] }
@@ -3648,7 +3687,7 @@ export function resolve(s: GameState, rng: RNG): GameState {
     log.push(`Second wind. ${cleared} holds in — shed 2.`)
   }
   let out: GameState = { ...s, boardH, boardP, piles, pump, cleared, worked, runout, lastPiece,
-    savedBlow, holdDeck: holdDeckLocal, fxLane, fxTick: s.fxTick + 1, log: [...s.log, ...log] }
+    readAhead, savedBlow, holdDeck: holdDeckLocal, fxLane, fxTick: s.fxTick + 1, log: [...s.log, ...log] }
   // the plan: satisfied, broken, or paid out
   if (out.seq) {
     const q = seqById(out.seq.id)
