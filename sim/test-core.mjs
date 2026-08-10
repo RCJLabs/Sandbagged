@@ -1263,6 +1263,25 @@ test('RUN-10: a first ascent has a shape and a note, but no name yet', () => {
   ok(notes.size >= 4, `first ascents read from only ${notes.size} note(s)`)
   eq(E.faRoute(1, new E.RNG(7)).name, E.faRoute(1, new E.RNG(7)).name, 'faRoute is not deterministic')
 })
+test('ROUTE-10: the crux reads as its style, and resolves the same everywhere', () => {
+  const styles = Object.keys(E.CRUX_CHAR)
+  ok(styles.length >= 6, 'not every style gives its crux a name')
+  ok(new Set(styles.map(s => E.CRUX_CHAR[s].label)).size >= 3, 'the cruxes all read the same')
+  // the resolution is load-bearing: no style may lean the Bite (it moves the band)
+  for (const s of styles) eq(E.CRUX_CHAR[s].dBite, 0, `${s}'s crux leans its Bite — that moves the band`)
+  // build a crux on two styles: reads different on the board, resolves identical
+  const crux = style => {
+    const spec = { name: 'x', grade: 6, style, clear: 12, crux: 3, feet: 'normal', note: 'a route' }
+    const s = { ...E.freshRun(0, 0, 5), inRun: false, skirmish: spec, runDeck: E.DEFAULT_LOADOUT.map(E.spawn) }
+    return E.startBurn(s, new E.RNG(9)).holdDeck.find(h => h.crux)
+  }
+  const razor = crux('crimp ladder'), squeeze = crux('compression')
+  ok(razor && squeeze, 'no crux was placed')
+  ok(E.holdLabel(razor) !== E.holdLabel(squeeze), 'the cruxes read the same on the board')
+  eq(razor.grip, squeeze.grip, 'the crux grip diverged by style — that moves the band')
+  eq(razor.bite, squeeze.bite, 'the crux bite diverged by style — that moves the band')
+  eq(E.abilityOf(razor), 'Committing', 'the crux stopped being a committing wall')
+})
 test('the forecast is deterministic, varied and bounded', () => {
   const s = { ...E.freshRun(0, 0, 999), act: 0, tier: 2, reroll: 0 }
   eq(JSON.stringify(E.forecastFor(s)), JSON.stringify(E.forecastFor(s)), 'not deterministic')

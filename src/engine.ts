@@ -79,6 +79,10 @@ export type Hold = {
   /** Moss, lichen and loose rock on a line nobody has climbed. Comes off with
       a brush, and until it does every hold is harder than it looks. */
   dirt?: number
+  /** ROUTE-10: a display name that overrides the base type on the board — the
+      crux reads as its style's own feature (the razor, the blank, the throw)
+      while still resolving as a Committing crux. */
+  label?: string
 }
 export type Card = {
   uid: number; name: string; kind: 'move' | 'bonus'
@@ -566,6 +570,24 @@ export const HOLD_STATS: Record<string, HoldDef> = {
   'pinch':       { bite: 3, grip: 5, ability: 'Squeeze',    text: '+1 Bite while both hands are busy.' },
   'pocket':      { bite: 4, grip: 4, ability: 'Two-finger', text: 'Ignores Support.' },
   'crux':        { bite: 4, grip: 8, ability: 'Committing', text: 'Needs Power 2+. +1 hang tax.' },
+}
+/* ROUTE-10: the crux's character by style. `label` is what it reads as on the
+   board — the line's own defining move — so a crimp crux is "the razor", a slab
+   crux "the blank", a power crux "the throw". The resolution is deliberately
+   left alone: a crux is a Committing wall (Power 2+, +1 tax) and its Grip is the
+   load-bearing difficulty stat, so it must not diverge by style. `dBite` is the
+   one lever that could add mechanical character, but every non-zero lean was
+   measured to move the pinned completion band hard (a −1 on a common style is
+   worth +4-5 points — the sim gains far more from a softer crux than it loses
+   to a sharper one), so it is held at 0. The character is in the identity, and
+   the band stays where it was pinned. */
+export const CRUX_CHAR: Record<StyleKey, { label: string; dBite: number }> = {
+  'crimp ladder': { label: 'the razor', dBite: 0 },
+  'slab':         { label: 'the blank', dBite: 0 },
+  'compression':  { label: 'the squeeze', dBite: 0 },
+  'power':        { label: 'the throw', dBite: 0 },
+  'mixed':        { label: 'the crux', dBite: 0 },
+  'jug haul':     { label: 'the crux', dBite: 0 },
 }
 /* ROUTE-5. Seven hold types across thirty-one routes meant every crimp
    behaved like every other crimp, and a route was remembered as a stat line.
@@ -2812,9 +2834,15 @@ export function buildRoute(s: GameState, rng: RNG): { holds: Hold[]; feet: Hold[
       }
     }
   }
+  /* ROUTE-10: the crux takes its NAME from the style — it reads as the line's
+     own defining move — while resolving exactly as it always has: a Committing
+     crux (name 'crux' → Power 2+, +1 tax) with its load-bearing Grip untouched.
+     `dBite` is held at 0 (see CRUX_CHAR): a bite lean was measured to move the
+     pinned band hard, so the character is identity, not difficulty. */
+  const cc = CRUX_CHAR[spec.style]
   for (const i of rng.shuffle(holds.map((_, k) => k)).slice(0, spec.crux)) {
-    holds[i] = { uid: nextUid(), name: 'crux', crux: true, clean: false,
-      bite: 4 + biteBump + BITE_BUMP + w.dBite + asc.dBite,
+    holds[i] = { uid: nextUid(), name: 'crux', crux: true, clean: false, label: cc.label,
+      bite: Math.max(1, 4 + cc.dBite + biteBump + BITE_BUMP + w.dBite + asc.dBite),
       grip: 8 + bump + asc.dGrip + blind + (spec.fa ? DIRT_GRIP : 0),
       ...(spec.fa ? { dirt: DIRT_GRIP } : {}) }
   }
@@ -2835,7 +2863,7 @@ export const abilityOf = (h: Hold) => {
   return HOLD_STATS[h.name]?.ability ?? FEET_STATS[h.name]?.ability ?? ''
 }
 /** What a hold is called on the board — its own name if it has one. */
-export const holdLabel = (h: Hold) => (h.sig ? sigById(h.sig)?.name : null) ?? h.name
+export const holdLabel = (h: Hold) => h.label ?? (h.sig ? sigById(h.sig)?.name : null) ?? h.name
 
 /* UX-5. A run is fully determined by its starting seed — the forecast, the
    hold decks, every shuffle, event and offer. The live seed advances as you
