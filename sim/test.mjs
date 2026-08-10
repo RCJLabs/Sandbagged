@@ -1550,11 +1550,14 @@ if (SLOW) {
     ok(pcts.length >= 3, `read ${pcts.length} bands`)
     const full = pcts[pcts.length - 1]
     /* Set at 47.3% in v9.35 (RUN_SKIN 8→9), then 43.8% in v9.36 once BAL-13
-       gave the back half of act 1 teeth — that cost is deliberate and dated
-       rather than drift. The band is what gets defended; the number in the
-       comment is what somebody last chose. */
+       gave the back half of act 1 teeth. Back to ~48 at ROUTE-9/ENG-23. Then
+       ~46 at v9.62 (RUN-10): the two project nodes in each act used to be the
+       SAME boulder, so the second visit rode the first's beta — an accidental
+       discount. Distinct projects remove it, so the second project is honestly
+       a little harder. All deliberate and dated rather than drift. The band is
+       what gets defended; the number in the comment is what somebody last chose. */
     ok(full > 40 && full < 58,
-      `the campaign completes ${full}% with a full journal — last set at 47 in v9.35`)
+      `the campaign completes ${full}% with a full journal — ~46, last moved at v9.62 (RUN-10)`)
     ok(pcts[0] < full - 5, `reading his journal is worth ${(full - pcts[0]).toFixed(1)} points`)
   })
   test('the acts get deadlier in order', () => {
@@ -1606,8 +1609,11 @@ if (SLOW) {
        47% band above is unmoved) and a player who buys a Second Wind at every
        post and spends it at the last fall. The lift proves the buy-and-spend
        path is real; the ceiling proves an extra burn is a leg-up, not a skip. */
+    // 300 runs, not 200: once RUN-10 lowered the baseline the lift needed a
+    // bigger sample to read cleanly (at 200 the delta swung as low as 0.5 on
+    // noise; at 300 it is a steady ~3 points).
     const full = env => {
-      const out = execSync(`${env} SHARP_AT=99 node sim/run.mjs campaign 200`, { encoding: 'utf8' })
+      const out = execSync(`${env} SHARP_AT=99 node sim/run.mjs campaign 300`, { encoding: 'utf8' })
       const pcts = [...out.matchAll(/completion\s+([\d.]+)%/g)].map(m => Number(m[1]))
       return pcts[pcts.length - 1]
     }

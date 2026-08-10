@@ -170,17 +170,43 @@ export const establishedIn = (s: GameState, act: number) =>
   s.established.filter(e => e.act === act)
 /** A line nobody has been up. The grade exists — the rock does not care what
     you call it — but it is not shown until you have claimed one. */
+/* RUN-10: a first ascent is still unclimbed and unnamed — that is the whole
+   point, you name it after — but it has a SHAPE and a character now, per act,
+   so no two of them read as the same "An unclimbed line". Every difficulty stat
+   (grade, clear, crux, feet) is untouched, and `faRoute` builds off an isolated
+   RNG, so this changes what a first ascent feels like, never how hard it is. */
+const FA_NOTES: string[][] = [
+  [ // forest
+    'Nobody has been up this. No chalk, no tick marks, nothing in the book.',
+    'Green in the seams and a landing you would not choose. It has been waiting.',
+    'You found it looking for somewhere to eat lunch. That is usually how it goes.' ],
+  [ // desert
+    'Varnish and silence. The desert keeps its lines to itself.',
+    'No approach trail, no beta, and the sun already on it. Move.',
+    'A tower nobody bothered with, for reasons you are about to learn.' ],
+  [ // alpine
+    'Rimed up and a long way from the car. This is the real thing.',
+    'He never drew it in the margin. Up here, that means something.',
+    'Cloud coming and going across it. You get one look at a time.' ],
+]
 export function faRoute(act: number, rng: RNG): RouteSpec {
   const grade = Math.min(10, 3 + act * 3 + rng.int(3))
   const styles: StyleKey[] = ['mixed', 'slab', 'crimp ladder', 'compression', 'power']
   const feet: FeetKey[] = ['normal', 'hard']
+  const style = styles[rng.int(styles.length)]
+  const clear = 5 + Math.floor(grade * 0.7) + rng.int(2)
+  const feetK = feet[rng.int(feet.length)]
+  // the feature it climbs — unnamed, but no longer shapeless
+  const feature = style === 'slab' ? 'slab' : style === 'crimp ladder' ? 'wall'
+    : style === 'compression' ? 'prow' : style === 'power' ? 'roof' : 'line'
+  const notes = FA_NOTES[Math.min(act, FA_NOTES.length - 1)]
   return {
-    name: 'An unclimbed line', grade, style: styles[rng.int(styles.length)],
+    name: `An unclimbed ${feature}`, grade, style,
     // scales with the grade, as circuitRoute and skirmishRoute already did —
     // this alone did not, so every first ascent was the same length
-    clear: 5 + Math.floor(grade * 0.7) + rng.int(2), crux: 1 + Math.floor(grade / 4),
-    feet: feet[rng.int(feet.length)], fa: true,
-    note: 'Nobody has been up this. No chalk, no tick marks, nothing in the book.',
+    clear, crux: 1 + Math.floor(grade / 4),
+    feet: feetK, fa: true,
+    note: notes[rng.int(notes.length)],
   }
 }
 /* LOG-2. The book recorded every send and paid nothing back. You remember a
@@ -855,6 +881,18 @@ export const ROUTES: RouteSpec[] = [
     holds: ['jug', 'jug', 'jug', 'sloper', 'crimp', 'crimp', 'pinch', 'pinch',
       'sharp crimp', 'crux', 'jug', 'jug'],
     note: 'Ten minutes from the car. Everybody starts here.' },
+  /* RUN-10: a second project per act, so the two project nodes are no longer the
+     same boulder twice. Each is a stat-for-stat sibling of its act's other
+     project (same grade/clear/crux/style/feet) — a different line at the same
+     difficulty, so it reads new on the map and generates its own holds off its
+     own index, while the completion band does not move. Indices 34-36. */
+  { name: 'The Second Guess', grade: 3, style: 'crimp ladder', clear: 11, crux: 2, feet: 'normal',
+    note: 'The line beside The Sandbag. Same man, same optimistic grade in the book.' },
+  { name: 'The Rotisserie', grade: 6, style: 'power', clear: 13, crux: 2, feet: 'easy',
+    note: 'South-facing, like the Arete next door, and somehow hotter. Bring water.' },
+  { name: 'The Hanging Slab', grade: 8, style: 'slab', clear: 14, crux: 3, feet: 'hard',
+    roped: true, pitches: 2,
+    note: 'Two pitches of slab under a band of ice that lets go in the afternoon.' },
 ]
 
 /* ========================== CONTENT: CARDS ========================= */
@@ -1319,7 +1357,7 @@ export const ACT1_MAP: MapNode[][] = [
   [CAMP, EVT, C(5), SHOP],
   [C(5), C(6)],                  // The Fridge · Deer Tick
   [CAMP, C(7), EVT, FA],
-  [C(7), C(8), PROJ(10), SHOP],  // Cathedral Traverse · Wasp Nest · The Sandbag
+  [C(7), C(8), PROJ(34), SHOP],  // Cathedral Traverse · Wasp Nest · The Second Guess (RUN-10)
   [B(9)],                        // The Priest
 ]
 const ACT2_MAP: MapNode[][] = [
@@ -1329,7 +1367,7 @@ const ACT2_MAP: MapNode[][] = [
   [CAMP, C(15), EVT, FA],
   [C(15), C(16), C(30), SHOP],   // Rattlesnake Arete · Kiln · The Blowhole
   [C(30), C(32), EVT],           // The Blowhole · Sunstroke Slab
-  [CAMP, EVT, PROJ(18)],
+  [CAMP, EVT, PROJ(35)],         // The Rotisserie (RUN-10)
   [B(17)],                       // The Hourglass
 ]
 const ACT3_MAP: MapNode[][] = [
@@ -1339,7 +1377,7 @@ const ACT3_MAP: MapNode[][] = [
   [C(23), C(24), SHOP],          // The Nose Direct · Coffin Crack  — roped
   [CAMP, C(25), EVT, FA],
   [C(25), C(26), SHOP],          // The Diving Board · Bergschrund
-  [CAMP, EVT, PROJ(28)],
+  [CAMP, EVT, PROJ(36)],         // The Hanging Slab (RUN-10)
   [B(27)],                       // Summit Block
   [B(29)],                       // THE LOST LINE
 ]

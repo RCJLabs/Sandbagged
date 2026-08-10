@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.61 — SKIRM-4: the Circuit becomes a real mode
+// SANDBAGGED v9.62 — RUN-10: the stages you see every run stop repeating
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -928,7 +928,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.61 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.62 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

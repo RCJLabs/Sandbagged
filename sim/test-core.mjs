@@ -1231,6 +1231,38 @@ test('SKIRM-4: the Circuit climbs through named zones', () => {
   // the enduro deed (8 lines) lands in a real, named zone past the warm-up
   ok(E.circuitZone(8).floor > 0, 'the endurance deed still sits in the opening zone')
 })
+test('RUN-10: an act\'s two projects are different boulders at the same grade', () => {
+  for (let act = 0; act < E.ACTS.length; act++) {
+    const projs = E.ACTS[act].flat().filter(n => n.type === 'project').map(n => n.routeIdx)
+    ok(projs.length >= 2, `act ${act} has ${projs.length} project node(s)`)
+    // no act points two project nodes at the same boulder any more
+    eq(new Set(projs).size, projs.length, `act ${act} still shows the same project twice`)
+    const specs = projs.map(i => E.ROUTES[i])
+    eq(new Set(specs.map(r => r.name)).size, specs.length, `act ${act}'s projects share a name`)
+    // ...but they are the same difficulty, so the completion band cannot move
+    const key = r => `${r.grade}/${r.clear}/${r.crux}/${r.style}/${r.feet}/${r.roped ? 'roped' : 'dry'}`
+    for (const s of specs)
+      eq(key(s), key(specs[0]), `act ${act}'s projects differ in difficulty, not just in name`)
+  }
+})
+test('RUN-10: a first ascent has a shape and a note, but no name yet', () => {
+  const shapes = new Set(), notes = new Set()
+  for (let act = 0; act < 3; act++)
+    for (let seed = 0; seed < 60; seed++) {
+      const fa = E.faRoute(act, new E.RNG(seed * 131 + act))
+      ok(fa.fa, 'faRoute did not flag a first ascent')
+      // still unnamed — you name it after — but it has a shape now
+      ok(fa.name.startsWith('An unclimbed '), `a first ascent arrived pre-named: ${fa.name}`)
+      ok(fa.note.length > 8, 'a first ascent has no note')
+      // difficulty is untouched: grade stays in the act's original band
+      ok(fa.grade >= 3 + act * 3 && fa.grade <= Math.min(10, 3 + act * 3 + 2),
+        `fa grade ${fa.grade} out of range for act ${act}`)
+      shapes.add(fa.name); notes.add(fa.note)
+    }
+  ok(shapes.size >= 3, `first ascents come in only ${shapes.size} shape(s)`)
+  ok(notes.size >= 4, `first ascents read from only ${notes.size} note(s)`)
+  eq(E.faRoute(1, new E.RNG(7)).name, E.faRoute(1, new E.RNG(7)).name, 'faRoute is not deterministic')
+})
 test('the forecast is deterministic, varied and bounded', () => {
   const s = { ...E.freshRun(0, 0, 999), act: 0, tier: 2, reroll: 0 }
   eq(JSON.stringify(E.forecastFor(s)), JSON.stringify(E.forecastFor(s)), 'not deterministic')
