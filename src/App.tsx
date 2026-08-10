@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.71 — SKIRM-5: Into the Dark keeps biting past the grade cap
+// SANDBAGGED v9.72 — NARR-13: your sandbagged lines come back with the consensus
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -16,7 +16,7 @@ import {
   PUMP_MAX, Phase, RARE_SLOTS, RNG, ROCK, ROUTES, RUN_SKIN, Rarity, SKIN_MAX,
   SLOTS, SYNERGY_PER, TAG_NAMES, TALKS, TOPROPE_SKIN, TUTORIAL_DECK, TWEAK_GRIP,
   UNCOMMON_SLOTS, WEATHER, abilityOf, activeSlot, aheadSummary, applyOutcome,
-  archUnlocked, attemptsFor, availableTalk, biteAgainst, boonById, boonMods,
+  archUnlocked, attemptsFor, availableTalk, talkById, biteAgainst, boonById, boonMods,
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
   campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitZone, claimCurse, claimVerdict,
   consumableById, KIT_MAX, useKitStep, secondWindStep,
@@ -943,7 +943,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.71 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.72 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2161,7 +2161,9 @@ function startTutorial() {
   }
 
   if (st.phase === 'talk') {
-    const talk = TALKS.find(t => t.id === st.talkId)
+    // NARR-13: resolve dynamic line-of-yours talks (fa:/con:) too, not just the
+    // static cast — TALKS.find alone dead-ended every first-ascent conversation
+    const talk = talkById(st, st.talkId)
     if (!talk) return <div className={skin}><button className="btn"
       onClick={() => setSt(s => ({ ...s, phase: 'camp' }))}>BACK</button><style>{CSS}</style></div>
     return (
@@ -2250,7 +2252,7 @@ function startTutorial() {
       const name = (c.name.trim() || suggest()).slice(0, 28)
       const spec = st.skirmish!
       const rec: Established = { name, claimed: c.grade, real, act: st.act, burns: st.burn,
-        style: spec.style, clear: spec.clear, crux: spec.crux, feet: spec.feet }
+        style: spec.style, clear: spec.clear, crux: spec.crux, feet: spec.feet, run: st.runs }
       setClaim(null)
       // CARD-6: the grade you put on it is checked against the ones before it
       setSt(x => claimCurse({ ...x, established: [rec, ...x.established].slice(0, 40),

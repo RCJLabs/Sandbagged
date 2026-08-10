@@ -852,6 +852,40 @@ test('she has something to say about what you put your name to', () => {
   }
 })
 
+test('NARR-13: a line of yours comes back a trip later with the consensus', () => {
+  const L = (claimed, real, run) => ({ name: 'Broken Arete', claimed, real, act: 0, burns: 2, run })
+  const mk = over => ({ ...E.freshRun(0, 0, 1), inRun: true, act: 1, runs: 1,
+    seen: ['marge1', 'fa:Broken Arete'], established: [L(5, 8, 0)], ...over })
+  // it matures only in a LATER expedition, and only after the first reaction
+  ok(E.consensusTalk(mk({})), 'the line never comes back')
+  eq(E.consensusTalk(mk({ runs: 0 })), null, 'it comes back the same trip you put it up')
+  eq(E.consensusTalk(mk({ seen: ['marge1'] })), null, 'the consensus jumps the queue ahead of her first word on it')
+  eq(E.consensusTalk(mk({ seen: ['marge1', 'fa:Broken Arete', 'con:Broken Arete'] })), null,
+    'she gives you the consensus twice')
+  // a line from a save made before this shipped (no run stamp) never matures
+  eq(E.consensusTalk(mk({ established: [L(5, 8, undefined)] })), null, 'an unstamped old line matured anyway')
+  // all three verdicts read differently, and the consensus states the REAL grade
+  const say = (c, r) => E.consensusTalkFor(L(c, r, 0), 0)
+  const texts = [say(5, 8), say(7, 7), say(9, 6)].map(t => t.text)
+  eq(new Set(texts).size, 3, 'the consensus reads the same however it drifted')
+  ok(say(5, 8).text.includes('V8'), 'the sandbag consensus does not state the real grade')
+  ok(say(9, 6).text.includes('V6'), 'the soft-grade consensus does not state the downgrade')
+  for (const t of [say(5, 8), say(7, 7), say(9, 6)]) {
+    ok(t.text.includes('Broken Arete'), 'the consensus does not name the line')
+    ok(t.replies.length >= 2, 'a consensus with one way out')
+    for (const r of t.replies) ok(r.label.length > 3 && r.text.length > 20, 'an empty reply')
+  }
+  // priority: a brand-new line's first reaction still comes before an old line's consensus
+  const both = mk({ seen: ['marge1', 'fa:Broken Arete'],
+    established: [L(5, 8, 0), { name: 'New Prow', claimed: 6, real: 6, act: 0, burns: 1, run: 1 }] })
+  eq(E.availableTalk(both).id, 'fa:New Prow', 'the fresh line does not get the first word')
+  // the screen can resolve every id it stores — static, fa:, and con:
+  eq(E.talkById(mk({}), 'con:Broken Arete').id, 'con:Broken Arete', 'the consensus id dead-ends in the UI')
+  eq(E.talkById(mk({}), 'fa:Broken Arete').id, 'fa:Broken Arete', 'the first-ascent id dead-ends in the UI')
+  ok(E.talkById(mk({}), 'marge1'), 'a static talk stopped resolving')
+  eq(E.talkById(mk({}), 'con:Nonexistent'), null, 'a phantom line resolved to a talk')
+})
+
 test('every conversation is reachable', () => {
   let st = { ...E.freshRun(0, 0, 1), seen: [], journal: [1, 2, 3, 4, 5, 6, 7], act: 0 }
   const seen = []

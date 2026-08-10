@@ -151,6 +151,10 @@ export type Established = {
   // enough to rebuild the line exactly. Stored rather than regenerated,
   // because a line you put up must not change if the generator ever does.
   style?: StyleKey; clear?: number; crux?: number; feet?: FeetKey
+  /** NARR-13: which expedition you put it up on, so the cast can come back to
+      it a trip LATER with the consensus — a repeat is a thing that takes time.
+      Optional: lines from saves made before this shipped simply never mature. */
+  run?: number
 }
 /* FA-1b. A line you established is player-authored content living in the save.
    It is deliberately NOT appended to ROUTES: the act maps address routes by
@@ -2388,9 +2392,13 @@ export function faTalk(s: GameState): Talk | null {
   if (!s.seen.includes('marge1')) return null
   const line = s.established.find(e => !s.seen.includes('fa:' + e.name))
   if (!line) return null
+  return faTalkFor(line, s.act)
+}
+/** Marge's first reaction to a line you just put up, for one specific line. */
+export function faTalkFor(line: Established, act: number): Talk {
   const d = line.claimed - line.real
   const id = 'fa:' + line.name
-  if (d <= -2) return { id, who: 'Marge', act: s.act,
+  if (d <= -2) return { id, who: 'Marge', act,
     text: `"${line.name}." She says it like she is trying it out. "Somebody came down off that `
       + `saying it was V${line.claimed}. It is not V${line.claimed}." A pause. "He used to do that too."`,
     replies: [
@@ -2399,7 +2407,7 @@ export function faTalk(s: GameState): Talk | null {
       { label: 'I got it wrong.', outcome: { psyche: 1 },
         text: '"You got it wrong on the low side, which is the only honest way to get it wrong." She refills your cup.' },
     ] }
-  if (d >= 2) return { id, who: 'Marge', act: s.act,
+  if (d >= 2) return { id, who: 'Marge', act,
     text: `"${line.name}, V${line.claimed}." She does not look up. "Two people have been on it since. `
       + `They both came down laughing." She pokes the fire. "It will get downgraded. They always do."`,
     replies: [
@@ -2408,7 +2416,7 @@ export function faTalk(s: GameState): Talk | null {
       { label: 'Let them downgrade it.', outcome: {},
         text: '"They will." She sounds almost fond. "The name will stick, though. The name always sticks."' },
     ] }
-  return { id, who: 'Marge', act: s.act,
+  return { id, who: 'Marge', act,
     text: `"${line.name}." She turns the name over. "V${line.claimed}. That is what it is, near enough. `
       + `You would be surprised how rare that is." She hands you the cup without being asked.`,
     replies: [
@@ -2417,6 +2425,74 @@ export function faTalk(s: GameState): Talk | null {
       { label: 'Thank you.', outcome: { psyche: 1 },
         text: 'She waves it off, but she writes the name down in the back of something, and does not show you.' },
     ] }
+}
+
+/* NARR-13. You name and grade a first ascent — the game's namesake act — and
+   the cast reacts once, the evening you come down. Then the line went silent
+   forever: `fa:<name>` sat in `seen` and never recurred, so a claim nobody could
+   test over time was exactly the thing time never touched. A grade is a claim
+   others repeat and re-grade; this brings the line back a trip LATER with the
+   consensus. Deterministic from the drift you already stored (claimed vs real),
+   fired only in a later expedition (`run` stamped at the claim). No new node, no
+   RNG, no touch to the campaign path — flavour, off the band. */
+export function consensusTalkFor(line: Established, act: number): Talk {
+  const d = line.claimed - line.real
+  const id = 'con:' + line.name
+  if (d < 0) return { id, who: 'Marge', act,
+    text: `"Your ${line.name}." She almost smiles. "Two people repeated it while you were gone. `
+      + `Both came down cursing your name — the consensus is V${line.real}, a grade stiffer than you `
+      + `called it." A pause. "A sandbag ages well. People remember who undersold them."`,
+    replies: [
+      { label: 'I graded it honestly.', outcome: {},
+        text: '"You graded it scared, which came out honest. It happens." She lets it sit.' },
+      { label: 'Good.', outcome: { psyche: 1 },
+        text: '"Good," she agrees. "Let them find out the hard way. That is the whole pleasure of it."' },
+    ] }
+  if (d > 0) return { id, who: 'Marge', act,
+    text: `"That ${line.name} of yours." She does not look up. "Somebody flashed it. Then somebody else. `
+      + `It is going in the book at V${line.real}, not the V${line.claimed} you put on it." She shrugs. `
+      + `"I did tell you. The name sticks, though — that part you got right."`,
+    replies: [
+      { label: 'I called it as I found it.', outcome: {},
+        text: '"You called it as you hoped. Different thing. No harm done — the rock does not keep grudges."' },
+      { label: 'Fair enough.', outcome: { psyche: 1 },
+        text: '"Fair enough," she echoes, and crosses out a number in the back of the book without ceremony.' },
+    ] }
+  return { id, who: 'Marge', act,
+    text: `"${line.name} has had repeats." She turns the cup in her hands. "Nobody has argued the grade. `
+      + `V${line.claimed} stands — they are climbing it and calling it exactly what you did." She nods, once. `
+      + `"That is the rarest thing in this whole book. A number that held."`,
+    replies: [
+      { label: 'It felt right.', outcome: { psyche: 1 },
+        text: '"It was right. There is a difference, and this time you were on the good side of it."' },
+      { label: 'One out of how many.', outcome: {},
+        text: '"One is one." She is not smiling now. "Most people put up a lifetime of lines and never get a single one square."' },
+    ] }
+}
+export function consensusTalk(s: GameState): Talk | null {
+  if (!s.seen.includes('marge1')) return null
+  // a line only matures a trip later: its first reaction is spent (`fa:` seen),
+  // this one has not fired (`con:` unseen), and it was put up on an earlier run
+  const line = s.established.find(e => e.run !== undefined && s.runs > e.run
+    && s.seen.includes('fa:' + e.name) && !s.seen.includes('con:' + e.name))
+  return line ? consensusTalkFor(line, s.act) : null
+}
+/** Resolve any talk id — the static cast, or a dynamic line-of-yours id
+    (`fa:`/`con:`). The screen stores only the id, so without this the dynamic
+    talks (which are never in TALKS) resolved to nothing and dead-ended. */
+export function talkById(s: GameState, id: string | null): Talk | null {
+  if (!id) return null
+  const stat = TALKS.find(t => t.id === id)
+  if (stat) return stat
+  if (id.startsWith('fa:')) {
+    const line = s.established.find(e => 'fa:' + e.name === id)
+    return line ? faTalkFor(line, s.act) : null
+  }
+  if (id.startsWith('con:')) {
+    const line = s.established.find(e => 'con:' + e.name === id)
+    return line ? consensusTalkFor(line, s.act) : null
+  }
+  return null
 }
 
 /** A trading post has people in it. Somebody who has been out there is
@@ -2436,6 +2512,9 @@ export function availableTalk(s: GameState): Talk | null {
   // what you put your name to comes first — she has been waiting to say it
   const fa = faTalk(s)
   if (fa) return fa
+  // then a line of yours that has matured since — the repeats, the consensus
+  const con = consensusTalk(s)
+  if (con) return con
   return TALKS.find(t =>
     t.act <= s.act && !s.seen.includes(t.id)
     && (!t.after || s.seen.includes(t.after))
