@@ -460,6 +460,20 @@ test('UX-18: the Collection is a codex — mark, text and family, not a checklis
   // unowned cards stay a mystery — the text must be gated on `have`
   ok(/have \?/.test(coll), 'the codex reveals unowned cards')
 })
+test('VIS-6: the family mark reaches every card-list screen', () => {
+  const app = readFileSync('src/App.tsx', 'utf8')
+  // the scannable shape mark used to stop at the hand and board; a draft screen
+  // is exactly where "is this a feet card, a rest, a curse?" decides the pick
+  // anchor on each SCREEN block and bound it by the next screen's `if`
+  const screen = phase => { const i = app.indexOf(`if (st.phase === '${phase}'`); return app.slice(i, app.indexOf('if (st.phase ===', i + 8)) }
+  const reward = screen('reward'), shop = screen('shop'), pack = screen('pack')
+  ok(/<FamMark /.test(reward), 'the reward offers show no family mark')
+  ok(/<FamMark /.test(shop), 'the shop cards show no family mark')
+  ok(/<FamMark /.test(pack), 'the level-up pack shows no family mark')
+  // the inline mark and its row style both exist
+  ok(/function FamMark\(/.test(app), 'the inline family mark is gone')
+  ok(/\.famname\{/.test(app), 'the family-name row has no style')
+})
 test('A11Y-6: the settings are switches, consistent, and reachable first', () => {
   const app = readFileSync('src/App.tsx', 'utf8')
   const more = app.slice(app.indexOf("st.phase === 'more'"))

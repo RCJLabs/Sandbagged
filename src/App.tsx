@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.73 — ROUTE-12: signatures do something, on the lines you replay
+// SANDBAGGED v9.74 — VIS-6: the family shape mark reaches every card-list screen
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -260,6 +260,7 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
 [role="button"]:focus-visible,button:focus-visible{outline:2.5px solid var(--red);outline-offset:2px}
 .menu-item{border:1.5px solid var(--ink);border-radius:2px;padding:8px 9px;margin-bottom:6px;background:#f0eade}
 .big{font-size:calc(15px * var(--fs));font-weight:700}.center{text-align:center}
+.famname{display:flex;align-items:center;gap:6px;min-width:0}
 .deckrow{display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid rgba(122,114,100,.28)}
 .deckrow .nmx{flex:1;min-width:0}
 .deckrow .t1{font-size:calc(12px * var(--fs));font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -943,7 +944,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.73 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.74 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -1180,7 +1181,7 @@ function startTutorial() {
       <div style={{ marginTop: 6 }}>
         {st.packCards.length ? st.packCards.map(c => (
           <div key={c.uid} className="menu-item">
-            <div className="row"><span className="big">{c.name}</span>
+            <div className="row"><span className="famname"><FamMark c={c} size={16} /><span className="big">{c.name}</span></span>
               <span className="big" style={{ color: c.rarity === 'rare' ? 'var(--red)' : 'var(--fade)' }}>
                 {c.rarity.toUpperCase()}</span></div>
             <div className="sub">
@@ -1929,7 +1930,7 @@ function startTutorial() {
               <div key={c.uid} className="menu-item"
                 style={{ opacity: sold(key) ? 0.3 : st.cash < cost ? 0.55 : 1 }}
                 {...tap(() => buy(key, cost, s => ({ ...s, runDeck: [...s.runDeck, c] })))}>
-                <div className="row"><span className="big">{c.name}</span>
+                <div className="row"><span className="famname"><FamMark c={c} size={16} /><span className="big">{c.name}</span></span>
                   <span className="big" style={{ color: 'var(--tan)' }}>
                     {sold(key) ? 'sold' : '$' + cost}</span></div>
                 <div className="sub">
@@ -2058,7 +2059,7 @@ function startTutorial() {
                 setTakeTwo([])
                 setSt(x => ({ ...takeTwoStep(x, picks, rng), seed: rng.s }))
               })}>
-              <div className="row"><span className="big">{c.name}</span>
+              <div className="row"><span className="famname"><FamMark c={c} size={16} /><span className="big">{c.name}</span></span>
                 <span className="big">
                   {c.kind === 'move' ? `${c.power} / ${c.contact}` : `${c.cost} pump`}</span></div>
               <div className="sub">{c.lane === 'feet' ? 'feet · ' : c.lane === 'any' ? 'any · ' : ''}{c.text}</div>
