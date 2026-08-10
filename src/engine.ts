@@ -93,6 +93,10 @@ export type Card = {
       coming, which projecting never showed. Information, not power. */
   read: number
   restore: number; rarity: Rarity; chip: number; skinCost: number; synergy: Tag
+  /** CARD-11: a rest that also works the hold in its OWN lane — chips its grip
+      by this much. Where you rest becomes a choice (soften the hold you want
+      next vs block the bite you fear), not just how much you shed. */
+  restChip?: number
   clip: boolean; seq: string
   /** ENG-12. A move that pulls sideways needs the other hand pulling back.
       Left and right were interchangeable, which made a three-lane board a
@@ -1035,6 +1039,10 @@ for (const c of [
   ft('Stem', 1, 9, 'uncommon', { support: 2, text: 'Support 2. Bridge it.' }),
   ft('Frog Step', 3, 6, 'uncommon', { support: 1, text: 'Support 1.' }),
   ft('Knee Bar', 0, 9, 'uncommon', { support: 1, shed: 2, anchor: true, text: 'Support 1 · rest · shed 2.' }),
+  // CARD-11: a rest that poses a decision — it sheds less than a plain rest, but
+  // brushes and chalks the hold you rest under, so where you shake out matters.
+  rest('Chalk the Hold', 7, 2, 'uncommon', { restChip: 2,
+    text: 'Rest · shed 2. −2 Grip to the hold you rest under. Anchor.' }),
 
   // ---------- UNCOMMON · technique ----------
   bn('Visualize', 0, 'uncommon', { draw: 2, text: 'Draw 2.' }),
@@ -3572,6 +3580,12 @@ export function resolve(s: GameState, rng: RNG): GameState {
   if (bm.restChips) for (let i = 0; i < 3; i++) {
     const c = boardP[i], h = boardH[i]
     if (c && c.shed > 0 && h) boardH[i] = { ...h, grip: Math.max(0, h.grip - bm.restChips) }
+  }
+  // CARD-11: a rest that works its own lane's hold while you shake out. Only
+  // where you actually rest, and only if there is a rest to be had here.
+  if (!noRest) for (let i = 0; i < 3; i++) {
+    const c = boardP[i], h = boardH[i]
+    if (c && c.restChip && h) boardH[i] = { ...h, grip: Math.max(0, h.grip - c.restChip) }
   }
   for (const c of boardP) if (c && c.shed) {
     if (noRest) { restedThis = true; log.push(`${c.name} · nowhere to shake out up here.`); continue }

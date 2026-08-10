@@ -1815,6 +1815,30 @@ test('ROUTE-12: a signature does something, and the grind lines get one too', ()
     skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
   eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
 })
+test('CARD-11: a rest can pose a decision — where you rest chips that lane', () => {
+  const c = E.CARDS['Chalk the Hold']
+  ok(c, 'the deciding rest is gone')
+  ok(c.shed > 0, 'it does not rest'); ok(c.restChip > 0, 'it chips nothing')
+  // it trades recovery for the chip — sheds less than a plain full rest
+  ok(c.shed < 3, 'it is a strict upgrade on a plain rest, not a trade')
+  // resolve: the hold in the lane you rest under loses grip; the other does NOT
+  const H = (uid, grip) => ({ uid, name: 'crimp', bite: 3, grip, crux: false, clean: false })
+  const climb = lane => {
+    const boardP = [null, null, null]; boardP[lane] = E.spawn('Chalk the Hold')
+    const s = { ...E.freshRun(0, 0, 5), inRun: true, skirmish: null, phase: 'climb', beta: ['crimp'],
+      boardH: [H(1, 8), H(2, 8), null], boardP, holdDeck: [], feetDeck: [], readAhead: 0,
+      piles: { draw: [], discard: [], exhaust: [], hand: [] }, cleared: 0, worked: [], turn: 1, order: [] }
+    return E.resolve(s, new E.RNG(1)).boardH
+  }
+  const chip = E.CARDS['Chalk the Hold'].restChip
+  const on0 = climb(0)
+  eq(on0[0].grip, 8 - chip, 'resting under a hold did not chip it')
+  eq(on0[1].grip, 8, 'the rest chipped a lane it was not on')
+  // put it on the OTHER lane and the OTHER hold is the one that softens
+  const on1 = climb(1)
+  eq(on1[1].grip, 8 - chip, 'moving the rest did not move the chip')
+  eq(on1[0].grip, 8, 'the rest chipped a lane it was not on')
+})
 test('nothing builds a state from scratch without carrying you over', () => {
   /* SAVE-2. `startLostLine` built a fresh state and hand-copied five fields,
      dropping twenty. The round-trip test never caught it because it only

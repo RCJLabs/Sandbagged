@@ -1663,9 +1663,14 @@ if (SLOW) {
        SAME boulder, so the second visit rode the first's beta — an accidental
        discount. Distinct projects remove it, so the second project is honestly
        a little harder. All deliberate and dated rather than drift. The band is
-       what gets defended; the number in the comment is what somebody last chose. */
+       what gets defended; the number in the comment is what somebody last chose.
+       v9.74 (CARD-11) added an uncommon rest, Chalk the Hold. Adding any card to
+       a rarity pool changes pool.length and reshuffles every offer roll, so the
+       n=300 point estimate slid to 45.3 — but the chip effect itself is
+       band-neutral (measured identical at chip 0/1/2) and n=600 reads 47.0, so
+       the ~46 pin holds; the move is reshuffle, not difficulty. */
     ok(full > 40 && full < 58,
-      `the campaign completes ${full}% with a full journal — ~46, last moved at v9.62 (RUN-10)`)
+      `the campaign completes ${full}% with a full journal — ~46, reverified at v9.74 (CARD-11)`)
     ok(pcts[0] < full - 5, `reading his journal is worth ${(full - pcts[0]).toFixed(1)} points`)
   })
   test('the acts get deadlier in order', () => {
