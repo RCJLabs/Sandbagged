@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.68 — ROUTE-11: the route move reads the live weather and rock
+// SANDBAGGED v9.69 — UX-18: the Collection is a codex, not a checklist
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -334,6 +334,21 @@ function Fam({ c, size = 15 }: { c: Card; size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"
       style={{ position: 'absolute', top: 5, right: 5, opacity: 0.6 }}>
+      <path d={f.d} fill="none" stroke="var(--ink)" strokeWidth="1.8"
+        strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/* The card mark, but inline for a list row rather than pinned to a card
+   corner — same shape language (VIS-3), so a codex entry is scannable by
+   family the way the board and hand already are. */
+function FamMark({ c, size = 18 }: { c: Card; size?: number }) {
+  const f = FAMILY[familyOf(c)]
+  if (!f) return null
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" role="img" aria-label={f.label}
+      style={{ flex: '0 0 auto', opacity: 0.7 }}>
       <path d={f.d} fill="none" stroke="var(--ink)" strokeWidth="1.8"
         strokeLinecap="round" strokeLinejoin="round" />
     </svg>
@@ -928,7 +943,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.68 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.69 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -1191,13 +1206,28 @@ function startTutorial() {
             <div key={t}>
               <div className="lbl" style={{ marginTop: 8 }}>{t.toUpperCase()}</div>
               {BY_RARITY(t).map(n => {
-                const c = CARDS[n]
+                const c = spawn(n)
                 const have = t === 'starter' || st.owned.includes(n)
+                const fam = FAMILY[familyOf(c)]
+                // UX-18: the one screen whose job is "here is everything you
+                // have" used to show the least — a name and a stat fraction, no
+                // text, no family, nowhere to look up what a card does. It is a
+                // codex now: the mark, the numbers, the family, the rules line.
+                // Unowned cards stay a mystery — mark and text withheld.
                 return (
-                  <div key={n} className="row" style={{ opacity: have ? 1 : 0.32, padding: '3px 0' }}>
-                    <span style={{ fontSize: 12, fontWeight: have ? 700 : 400 }}>{have ? n : '???'}</span>
-                    <span className="sub">{c.kind === 'move'
-                      ? `${c.power ?? 0}/${c.contact ?? 0}` : `${c.cost ?? 0}p`}</span>
+                  <div key={n} className="deckrow" style={{ opacity: have ? 1 : 0.4 }}>
+                    {have ? <FamMark c={c} />
+                      : <span style={{ flex: '0 0 auto', width: 18, textAlign: 'center',
+                          color: 'var(--fade)', fontWeight: 700 }}>·</span>}
+                    <div className="nmx">
+                      <div className="t1" style={{ fontWeight: have ? 700 : 400 }}>{have ? n : '???'}</div>
+                      {have ? (
+                        <div className="t2">
+                          {c.kind === 'move' ? `${c.power ?? 0}/${c.contact ?? 0}` : `${c.cost ?? 0}p`}
+                          {fam ? ` · ${fam.label}` : ''}{c.text ? ` · ${c.text}` : ''}</div>
+                      ) : (
+                        <div className="t2">not yet found</div>)}
+                    </div>
                   </div>)
               })}
             </div>))}

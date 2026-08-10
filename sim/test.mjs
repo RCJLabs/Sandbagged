@@ -444,6 +444,22 @@ test('UX-17: the tutorial step leads, and the marks key is one tap from a climb'
   ok(E.ROUTES.some(r => r.tutorial), 'there is no tutorial route for the banner to teach')
   ok(E.TUTORIAL_STEPS.length > 0, 'the tutorial has no steps')
 })
+test('UX-18: the Collection is a codex — mark, text and family, not a checklist', () => {
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const collStart = app.indexOf("st.phase === 'collection'")
+  const coll = app.slice(collStart, app.indexOf("st.phase === 'map'", collStart))
+  ok(collStart > 0 && coll.length > 0, 'the collection screen vanished')
+  // it uses the deckrow layout the deck/logbook screens use, not a bare row
+  ok(/className="deckrow"/.test(coll), 'the collection is still a bare name-and-stat row')
+  // an owned card shows its rules text and its family, and the scannable mark
+  ok(/<FamMark /.test(coll), 'owned cards show no family mark')
+  ok(/c\.text/.test(coll), 'the collection still shows no card text — nowhere to look a card up')
+  ok(/fam\.label/.test(coll), 'the family is not named on the entry')
+  // and the mark component exists as a real inline (list) mark, not the pinned one
+  ok(/function FamMark\(/.test(app), 'the inline family mark is missing')
+  // unowned cards stay a mystery — the text must be gated on `have`
+  ok(/have \?/.test(coll), 'the codex reveals unowned cards')
+})
 test('A11Y-6: the settings are switches, consistent, and reachable first', () => {
   const app = readFileSync('src/App.tsx', 'utf8')
   const more = app.slice(app.indexOf("st.phase === 'more'"))
