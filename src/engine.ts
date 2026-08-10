@@ -1877,7 +1877,19 @@ export type Mutator = {
   foul?: boolean; dContact?: number; noShakes?: boolean
   dAttempts?: number; noGear?: boolean; gradeUp?: number
   startCurse?: number; drySpell?: boolean
+  /* RUN-11. Every other mutator is a one-directional harder slider — worse
+     conditions, less Contact, fewer burns. This one changes the TEXTURE of a
+     climb instead of its number: you never re-rack. Your hand carries between
+     moves and you draw fewer fresh, so you climb the boulder on what you are
+     already holding rather than on a fresh five every turn. It is the mirror of
+     the All In boon (draw deep, keep nothing). Off the guarded band — the
+     campaign sim runs with no mutators (run.mjs), so this only shapes the runs a
+     player opts into. */
+  retain?: boolean
 }
+/** Sustained shrinks the working hand by this much, so carrying cards over is a
+    husbanding decision rather than a free hoard. */
+export const SUSTAINED_CUT = 2
 export const MUTATORS: Mutator[] = [
   { id: 'greasy', name: 'Greasy', xp: 25, foul: true,
     text: 'The conditions are never good. Not once, all trip.' },
@@ -1895,17 +1907,19 @@ export const MUTATORS: Mutator[] = [
     text: 'Four curses in the deck before you have touched the rock.' },
   { id: 'dryspell', name: 'Dry Spell', xp: 30, drySpell: true,
     text: 'Camps do nothing for your skin. Rest is only for your head.' },
+  { id: 'sustained', name: 'Sustained', xp: 40, retain: true,
+    text: 'No re-rack between moves. Your hand carries over and you draw fewer — climb it on what you are holding.' },
 ]
 export const mutById = (id: string) => MUTATORS.find(m => m.id === id)
 export function mutMods(ids: string[]) {
   const m = { foul: false, dContact: 0, noShakes: false, dAttempts: 0,
-    noGear: false, gradeUp: 0, startCurse: 0, drySpell: false, xp: 0 }
+    noGear: false, gradeUp: 0, startCurse: 0, drySpell: false, retain: false, xp: 0 }
   for (const id of ids) {
     const d = mutById(id); if (!d) continue
     m.foul ||= !!d.foul; m.dContact += d.dContact ?? 0; m.noShakes ||= !!d.noShakes
     m.dAttempts += d.dAttempts ?? 0; m.noGear ||= !!d.noGear
     m.gradeUp += d.gradeUp ?? 0; m.startCurse += d.startCurse ?? 0
-    m.drySpell ||= !!d.drySpell; m.xp += d.xp
+    m.drySpell ||= !!d.drySpell; m.retain ||= !!d.retain; m.xp += d.xp
   }
   return m
 }
@@ -3088,6 +3102,7 @@ function refillAndDraw(s: GameState, rng: RNG): GameState {
   const gm = gearMods(s.gear)
   const want = HAND_SIZE + gm.handSize + boonMods(s.boons).dDraw
     + (s.inRun ? (archOf(s).dHand ?? 0) : 0) + (s.turn === 1 ? gm.drawFirst : 0)
+    - (mutMods(s.mutators).retain ? SUSTAINED_CUT : 0)   // RUN-11: a smaller working hand
   const piles = pileDraw(s.piles, Math.max(0, want - s.piles.hand.length), rng)
   if (gm.brushFirst && s.turn === 1) for (const i of [0, 1])
     if (boardH[i]) { boardH[i] = clearDirt({ ...boardH[i]!, clean: true }); break }
@@ -3642,7 +3657,12 @@ export function resolve(s: GameState, rng: RNG): GameState {
   }
   // recorded at the very end, after every pump change including the hang tax
   out = { ...out, peakPump: Math.min(PUMP_MAX, Math.max(out.peakPump, out.pump)) }
-  return refillAndDraw({ ...out, piles: pileDiscard(out.piles, out.piles.hand), selected: null }, rng)
+  // RUN-11: Sustained keeps the unplayed hand between moves; otherwise the hand
+  // dumps each turn and a fresh five is dealt (All In already emptied it above)
+  const endPiles = mutMods(out.mutators).retain
+    ? out.piles
+    : pileDiscard(out.piles, out.piles.hand)
+  return refillAndDraw({ ...out, piles: endPiles, selected: null }, rng)
 }
 
 /* SIM-5. Playing a technique card was implemented twice — once in the screen's

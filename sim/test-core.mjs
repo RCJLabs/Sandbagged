@@ -391,6 +391,35 @@ test('what you choose before a run is inside the bounds', () => {
   ok(Number.isFinite(E.xpMult(['not-a-mutator'])), 'an unknown mutator breaks the multiplier')
 })
 
+test('RUN-11: Sustained changes the texture — the hand carries, and it is smaller', () => {
+  // every other mutator is a one-directional harder slider; this one changes
+  // how a climb plays. It must be a real, reachable mutator that flips `retain`.
+  const sus = E.MUTATORS.find(m => m.id === 'sustained')
+  ok(sus, 'the Sustained mutator is gone')
+  ok(E.mutMods(['sustained']).retain, 'Sustained does not set retain')
+  ok(!E.mutMods([]).retain, 'retain is on with no mutator')
+  // it pays XP like every other opt-in hardship, and is not free
+  ok(sus.xp > 0, 'Sustained pays no XP')
+  const burn = muts => {
+    const rng = new E.RNG(9)
+    let b = E.startBurn({ ...E.freshRun(6, 0, 5), inRun: true, skirmish: null,
+      weather: 1, rock: 0, mutators: muts, runDeck: E.DEFAULT_LOADOUT.map(E.spawn) }, rng)
+    const open = b.piles.hand.length
+    const before = new Set(b.piles.hand.map(c => c.uid))
+    b = E.autoPlay(b, rng); b = E.resolve(b, rng)
+    const carried = b.phase === 'climb' ? b.piles.hand.filter(c => before.has(c.uid)).length : 0
+    return { open, carried, phase: b.phase }
+  }
+  const control = burn([]), sustained = burn(['sustained'])
+  // the working hand is smaller by exactly the cut
+  eq(sustained.open, control.open - E.SUSTAINED_CUT, 'Sustained did not shrink the opening hand')
+  // the default hand dumps each turn (a fresh five); Sustained carries the
+  // unplayed cards, so at least one survives the turn it was drawn
+  eq(control.carried, 0, 'the default hand did not dump between turns')
+  ok(sustained.phase === 'climb' && sustained.carried > 0,
+    'Sustained did not carry an unplayed card between turns')
+})
+
 test('a trading post is worth the stop', () => {
   /* BAL-5. A post was offered in 4 of 25 stages, so picking at random you saw
      1.00 posts against 2.67 camps — and the harness skipped even those, which

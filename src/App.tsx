@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.69 — UX-18: the Collection is a codex, not a checklist
+// SANDBAGGED v9.70 — RUN-11: Sustained, a mutator that changes the game not the grade
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -943,7 +943,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.69 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.70 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
