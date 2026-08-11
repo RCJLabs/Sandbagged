@@ -97,6 +97,11 @@ export type Card = {
       by this much. Where you rest becomes a choice (soften the hold you want
       next vs block the bite you fear), not just how much you shed. */
   restChip?: number
+  /** CARD-13: a curse that does something — the mirror of restChip. Dumping this
+      onto a lane sharpens the hold there by this much Grip (a tweak, a flapper,
+      a wet hold makes the rock worse), so a curse costs you a position, not just
+      a draw. You still choose the least-bad lane to be rid of it. */
+  hex?: number
   clip: boolean; seq: string
   /** ENG-12. A move that pulls sideways needs the other hand pulling back.
       Left and right were interchangeable, which made a three-lane board a
@@ -1197,8 +1202,8 @@ for (const c of [
 
   // ================= EXPANDED POOL · curses =================
   mv('Tweaked Pulley', 1, 2, 'curse', { text: 'It popped. You felt it pop.' }),
-  mv('Split Tip', 2, 3, 'curse', { text: 'Right down the middle of the pad.' }),
-  mv('Wet Holds', 1, 4, 'curse', { text: 'Seeping. Nothing sticks.' }),
+  mv('Split Tip', 2, 3, 'curse', { hex: 1, text: 'Right down the middle of the pad. Whatever you put it on gets +1 Grip.' }),
+  mv('Wet Holds', 1, 4, 'curse', { hex: 1, text: 'Seeping. Nothing sticks — the hold you use it on gets +1 Grip.' }),
   bn('Bad Landing', 2, 'curse', { text: 'The pads were in the wrong place.' }),
   bn('Ego', 1, 'curse', { text: 'You told everyone the grade before you did it.' }),
   bn('Doubt', 1, 'curse', { text: 'You are already thinking about the fall.' }),
@@ -1261,7 +1266,7 @@ for (const c of [
 
   // ---------- CURSE (never in packs) ----------
   mv('Tweaky Finger', 1, 3, 'curse', { text: 'It twinges. You keep going.' }),
-  mv('Flapper', 2, 4, 'curse', { text: 'Skin off. Tape it.' }),
+  mv('Flapper', 2, 4, 'curse', { hex: 1, text: 'Skin off. The hold you use it on gets +1 Grip.' }),
   mv('Cold Shut', 0, 5, 'curse', { text: 'No feeling in it at all.' }),
   bn('Sandbagged Beta', 1, 'curse', { text: 'Someone lied about the grade.' }),
 ]) CARDS[c.name] = c
@@ -2857,6 +2862,7 @@ export function spawn(name: string): Card {
     powerAll: d.powerAll ?? 0, gripCut: d.gripCut ?? 0, draw: d.draw ?? 0, read: d.read ?? 0,
     cleans: d.cleans ?? false, restore: d.restore ?? 0, rarity: d.rarity ?? 'common',
     chip: d.chip ?? 0, skinCost: d.skinCost ?? 0, synergy: d.synergy ?? '', clip: d.clip ?? false, seq: d.seq ?? '', opposes: d.opposes ?? false,
+    restChip: d.restChip, hex: d.hex,   // CARD-11 / CARD-13: were dropped here, so both were dead in play
     fx: d.fx ?? '', targeted: d.targeted ?? false, text: d.text ?? '' }
 }
 export function synth(power: number, contact: number): Card {
@@ -2878,6 +2884,7 @@ export function makeDeck(tier: number): Card[] {
       gripCut: d.gripCut ?? 0, draw: d.draw ?? 0, read: d.read ?? 0, cleans: d.cleans ?? false,
       restore: d.restore ?? 0, rarity: d.rarity ?? 'common',
       chip: d.chip ?? 0, skinCost: d.skinCost ?? 0, synergy: d.synergy ?? '', clip: d.clip ?? false, seq: d.seq ?? '', opposes: d.opposes ?? false,
+      restChip: d.restChip, hex: d.hex,   // CARD-11 / CARD-13
       fx: d.fx ?? '', targeted: d.targeted ?? false, text: d.text ?? '',
     })
   }
@@ -3607,6 +3614,15 @@ export function resolve(s: GameState, rng: RNG): GameState {
   if (!noRest) for (let i = 0; i < 3; i++) {
     const c = boardP[i], h = boardH[i]
     if (c && c.restChip && h) boardH[i] = { ...h, grip: Math.max(0, h.grip - c.restChip) }
+  }
+  // CARD-13: a curse dumped onto a lane sharpens the hold there — the tweak, the
+  // flapper, the seep makes the rock meaner, so a curse costs a position too
+  for (let i = 0; i < 3; i++) {
+    const c = boardP[i], h = boardH[i]
+    if (c && c.hex && h) {
+      boardH[i] = { ...h, grip: h.grip + c.hex }
+      log.push(`${c.name} · the ${holdLabel(h)} is worse for it now.`)
+    }
   }
   for (const c of boardP) if (c && c.shed) {
     if (noRest) { restedThis = true; log.push(`${c.name} · nowhere to shake out up here.`); continue }

@@ -1823,23 +1823,61 @@ test('CARD-11: a rest can pose a decision — where you rest chips that lane', (
   ok(c.shed > 0, 'it does not rest'); ok(c.restChip > 0, 'it chips nothing')
   // it trades recovery for the chip — sheds less than a plain full rest
   ok(c.shed < 3, 'it is a strict upgrade on a plain rest, not a trade')
-  // resolve: the hold in the lane you rest under loses grip; the other does NOT
+  // resolve, comparing against a restChip-neutered clone of the SAME spawned
+  // card — baseline-independent, so it measures ONLY the chip. (The old version
+  // asserted an absolute grip that coincidentally matched the un-chipped
+  // baseline, which is how the fact that `spawn` dropped restChip went unseen.)
   const H = (uid, grip) => ({ uid, name: 'crimp', bite: 3, grip, crux: false, clean: false })
-  const climb = lane => {
-    const boardP = [null, null, null]; boardP[lane] = E.spawn('Chalk the Hold')
+  const play = card => {
     const s = { ...E.freshRun(0, 0, 5), inRun: true, skirmish: null, phase: 'climb', beta: ['crimp'],
-      boardH: [H(1, 8), H(2, 8), null], boardP, holdDeck: [], feetDeck: [], readAhead: 0,
+      boardH: [H(1, 8), H(2, 8), null], boardP: [card, null, null], holdDeck: [], feetDeck: [], readAhead: 0,
       piles: { draw: [], discard: [], exhaust: [], hand: [] }, cleared: 0, worked: [], turn: 1, order: [] }
     return E.resolve(s, new E.RNG(1)).boardH
   }
-  const chip = E.CARDS['Chalk the Hold'].restChip
-  const on0 = climb(0)
-  eq(on0[0].grip, 8 - chip, 'resting under a hold did not chip it')
-  eq(on0[1].grip, 8, 'the rest chipped a lane it was not on')
-  // put it on the OTHER lane and the OTHER hold is the one that softens
-  const on1 = climb(1)
-  eq(on1[1].grip, 8 - chip, 'moving the rest did not move the chip')
-  eq(on1[0].grip, 8, 'the rest chipped a lane it was not on')
+  const chip = c.restChip
+  // the card as it comes off spawn (the real deck path) must carry the chip —
+  // this is what catches the field being dropped in spawn/makeDeck
+  const real = play(E.spawn('Chalk the Hold'))
+  const ctrl = play({ ...E.spawn('Chalk the Hold'), restChip: 0 })
+  eq(real[0].grip, ctrl[0].grip - chip, 'a spawned Chalk the Hold does not chip its lane — restChip was dropped')
+  eq(real[1].grip, ctrl[1].grip, 'the rest chipped a lane it was not on')
+})
+test('CARD-13: a curse does something — it sharpens the hold you dump it on', () => {
+  // curses are no longer inert dead weight: at least one carries an active hex,
+  // and every hex card is a curse (the effect must not leak onto a real card)
+  const hexed = Object.values(E.CARDS).filter(c => c.hex)
+  ok(hexed.length >= 1, 'no curse does anything — they are all still dead weight')
+  for (const c of hexed) eq(c.rarity, 'curse', `${c.name} carries a hex but is not a curse`)
+  // resolve: dump the curse on a lane and compare against a hex-neutered clone of
+  // the SAME card — timing-independent, so it isolates exactly the hex's effect
+  const H = (uid, grip) => ({ uid, name: 'crimp', bite: 3, grip, crux: false, clean: false })
+  const curse = hexed[0]
+  const play = card => {
+    const s = { ...E.freshRun(0, 0, 5), inRun: true, skirmish: null, phase: 'climb', beta: ['crimp'],
+      boardH: [H(1, 8), H(2, 8), null], boardP: [card, null, null], holdDeck: [], feetDeck: [], readAhead: 0,
+      piles: { draw: [], discard: [], exhaust: [], hand: [] }, cleared: 0, worked: [], turn: 1, order: [] }
+    return E.resolve(s, new E.RNG(1)).boardH
+  }
+  const hexed0 = play(E.spawn(curse.name))
+  const ctrl = play({ ...E.spawn(curse.name), hex: 0 })
+  ok(hexed0[0] && ctrl[0], 'the curse cleared the hold it should have been too weak for')
+  eq(hexed0[0].grip - ctrl[0].grip, curse.hex, 'the hex did not sharpen its lane by exactly its hex')
+  eq(hexed0[1].grip, ctrl[1].grip, 'the hex reached a lane the curse was not on')
+  // and it is a real DOWNSIDE — a hex only ever raises grip, never lowers it
+  ok(curse.hex > 0, 'a hex that helps you is not a curse')
+})
+test('spawn carries every field a card defines — no effect silently dropped', () => {
+  // the tripwire for the class of bug that made CARD-11 and CARD-13 ship DEAD:
+  // spawn()/makeDeck() copy an EXPLICIT field list, and a new field left off it
+  // is silently lost, so the card works in a hand-built test and does nothing in
+  // a real deck. A card off spawn must equal its definition on every field.
+  for (const [name, def] of Object.entries(E.CARDS)) {
+    const s = E.spawn(name)
+    for (const k of Object.keys(def)) {
+      if (k === 'uid') continue
+      eq(JSON.stringify(s[k]), JSON.stringify(def[k]), `spawn dropped '${k}' on ${name}`)
+    }
+  }
 })
 test('nothing builds a state from scratch without carrying you over', () => {
   /* SAVE-2. `startLostLine` built a fresh state and hand-copied five fields,
