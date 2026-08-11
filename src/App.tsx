@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.82 — SKIRM-6: the Circuit offers a boon at its deep zones
+// SANDBAGGED v9.83 — UX-19: the scroll lists grow with the text-size setting
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -957,7 +957,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.82 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.83 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -1079,7 +1079,7 @@ function startTutorial() {
         <div className="row"><span className="h1" role="heading" aria-level={1}><Lettered t="THE BOOKS" seed={19} /></span>
           <button className="btn" style={{ padding: '5px 10px', fontSize: 11 }} onClick={goBack}>◂ BACK</button></div>
         <InkRule seed={53} color="var(--ink)" />
-        <div style={{ maxHeight: 620, overflowY: 'auto', marginTop: 6 }}>
+        <div style={{ maxHeight: 'min(620px * var(--fs), 70dvh)', overflowY: 'auto', marginTop: 6 }}>
           {/* A11Y-6: settings lead now, so the accessibility toggles (text size,
               colour-safe, motion, reach) are the first thing reachable, not the
               last after eight archive menus. Every on/off is a real switch to a
@@ -1215,7 +1215,7 @@ function startTutorial() {
         <div className="row"><span className="h1" role="heading" aria-level={1}>COLLECTION</span>
           <span className="sub">{st.owned.length}/{Object.keys(CARDS).length}</span></div>
         <hr className="rule" />
-        <div style={{ maxHeight: 640, overflowY: 'auto' }}>
+        <div style={{ maxHeight: 'min(640px * var(--fs), 70dvh)', overflowY: 'auto' }}>
           {tiers.map(t => (
             <div key={t}>
               <div className="lbl" style={{ marginTop: 8 }}>{t.toUpperCase()}</div>
@@ -1541,7 +1541,7 @@ function startTutorial() {
             ? `${uniq.length} cards you can build with`
             : `${shown.length} of ${uniq.length}`}
           {q && !shown.length ? ' — nothing by that name. The pool grows as you level.' : ''}</div>
-        <div style={{ maxHeight: 520, overflowY: 'auto' }}>
+        <div style={{ maxHeight: 'min(520px * var(--fs), 70dvh)', overflowY: 'auto' }}>
           {shown.map(n => {
             const c = CARDS[n], k = count(n)
             return (
@@ -1604,7 +1604,7 @@ function startTutorial() {
                 </div>
               </div>))}
           </>) : null}
-        <div style={{ maxHeight: 640, overflowY: 'auto', marginTop: 6 }}>
+        <div style={{ maxHeight: 'min(640px * var(--fs), 70dvh)', overflowY: 'auto', marginTop: 6 }}>
           {[0, 1, 2].map(act => (
             <div key={act}>
               {(() => {
@@ -1653,7 +1653,7 @@ function startTutorial() {
       <div className="row"><span className="h1" role="heading" aria-level={1}>HOW IT WORKS</span>
         <button className="btn" style={{ padding: '5px 10px', fontSize: 11 }} onClick={goBack}>◂ BOOKS</button></div>
       <hr className="rule" />
-      <div style={{ maxHeight: 640, overflowY: 'auto' }}>
+      <div style={{ maxHeight: 'min(640px * var(--fs), 70dvh)', overflowY: 'auto' }}>
         <div className="lbl">WHAT THE ROCK DOES</div>
         {Object.entries(HOLD_STATS).map(([name, d]) => (
           <div key={name} className="deckrow">
@@ -1701,7 +1701,7 @@ function startTutorial() {
         <span className="sub">{st.journal.length}/{JOURNAL.length}</span></div>
       <div className="sub">Pages of the first ascensionist. They keep between runs.</div>
       <hr className="rule" />
-      <div style={{ maxHeight: 620, overflowY: 'auto' }}>
+      <div style={{ maxHeight: 'min(620px * var(--fs), 70dvh)', overflowY: 'auto' }}>
         {JOURNAL.map(j => {
           const have = st.journal.includes(j.id)
           return (
@@ -1724,7 +1724,7 @@ function startTutorial() {
           <button className="btn" style={{ padding: '5px 10px', fontSize: 11 }} onClick={goBack}>◂ BOOKS</button></div>
         <InkRule seed={83} color="var(--ink)" />
         <div className="sub">The last {HISTORY_MAX}. Tap a seed to climb it again.</div>
-        <div style={{ maxHeight: 660, overflowY: 'auto', marginTop: 8 }}>
+        <div style={{ maxHeight: 'min(660px * var(--fs), 70dvh)', overflowY: 'auto', marginTop: 8 }}>
           {st.history.length ? st.history.map((r, i) => (
             <div key={i} className="menu-item"
               {...tap(() => { setSeedIn(seedCode(r.seed))
@@ -1756,7 +1756,7 @@ function startTutorial() {
           <button className="btn" style={{ padding: '5px 10px', fontSize: 11 }} onClick={goBack}>◂ BOOKS</button></div>
         <InkRule seed={41} color="var(--ink)" />
         <div className="sub">{done.size} of {DEEDS.length} done. No prizes — a record, not a grind.</div>
-        <div style={{ maxHeight: 660, overflowY: 'auto', marginTop: 8 }}>
+        <div style={{ maxHeight: 'min(660px * var(--fs), 70dvh)', overflowY: 'auto', marginTop: 8 }}>
           {DEEDS.map(d => {
             const got = done.has(d.id)
             return (
@@ -1793,7 +1793,7 @@ function startTutorial() {
         <div className="row"><span className="h1" role="heading" aria-level={1}><Lettered t="THE NUMBERS" seed={97} /></span>
           <button className="btn" style={{ padding: '5px 10px', fontSize: 11 }} onClick={goBack}>◂ BOOKS</button></div>
         <InkRule seed={37} color="var(--ink)" />
-        <div style={{ maxHeight: 660, overflowY: 'auto', marginTop: 4 }}>
+        <div style={{ maxHeight: 'min(660px * var(--fs), 70dvh)', overflowY: 'auto', marginTop: 4 }}>
           <div className="lbl" style={{ marginTop: 8 }}>CAREER</div>
           <Row k="level" v={`${st.level} · ${st.xp}/${xpToNext(st.level)} xp`} />
           <Row k="boulders sent" v={String(st.sends)} />
@@ -1939,7 +1939,7 @@ function startTutorial() {
           </div>) : null}
         <InkRule seed={19} color="var(--ink)" />
         <div className="sub">Gear shop off the back of a van. Cash only.</div>
-        <div style={{ maxHeight: 520, overflowY: 'auto', marginTop: 8 }}>
+        <div style={{ maxHeight: 'min(520px * var(--fs), 70dvh)', overflowY: 'auto', marginTop: 8 }}>
           {st.shopCards.map((c, k) => {
             const key = 'c' + k, cost = priceOf(c)
             return (
@@ -2158,7 +2158,7 @@ function startTutorial() {
               : 'A tighter deck draws better. Pick one to cut.'}</div>
         )}
         {showList ? (
-          <div style={{ maxHeight: 470, overflowY: 'auto' }}>
+          <div style={{ maxHeight: 'min(470px * var(--fs), 70dvh)', overflowY: 'auto' }}>
             {st.runDeck.map(c => (
               <div key={c.uid} className="deckrow" {...tap(() => campMode === 'cut'
                 ? camp({ kind: 'cut', uid: c.uid })

@@ -481,6 +481,18 @@ test('A11Y-8: the accessibility tree — headings, polite log, modal sheets', ()
   ok(/e\.key === 'Escape'/.test(app), 'the sheets cannot be dismissed with Escape')
   ok(/sheetRef\.current\?\.focus\(\)/.test(app), 'focus is never moved into an open sheet')
 })
+test('UX-19: scroll lists scale with the text-size setting, not a fixed pixel box', () => {
+  const app = readFileSync('src/App.tsx', 'utf8')
+  // a hardcoded maxHeight in px does not grow with --fs, so at TEXT LARGER the
+  // box shows fewer rows while everything in it got bigger — the one setting a
+  // low-vision player turns on makes these lists show the least
+  const fixed = app.match(/maxHeight: \d/g) ?? []
+  eq(fixed.length, 0, `${fixed.length} scroll list(s) still use a fixed pixel height`)
+  // every list height scales with --fs and is capped to the viewport (dvh) so a
+  // short screen never overflows
+  const scaled = app.match(/maxHeight: 'min\(\d+px \* var\(--fs\), \d+dvh\)'/g) ?? []
+  ok(scaled.length >= 10, `only ${scaled.length} lists scale with the text size`)
+})
 test('VIS-7: the forecast never rides on colour alone, on any node', () => {
   const app = readFileSync('src/App.tsx', 'utf8')
   // every conditions line on the map (☁ weather · ⛰ rock) must carry the
