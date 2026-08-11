@@ -2,9 +2,9 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.77 — VIS-7: the forecast reads without colour, on every node
+// SANDBAGGED v9.78 — A11Y-8: headings, a polite log, and real modal sheets
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
 import {
   ACTS, ACT_NAMES, ACT_OF_ROUTE, ACT_TERRAIN, ACT_XP, ARCHETYPES, ASCENT, BOOK_BETA_MAX,
@@ -519,6 +519,18 @@ export default function App() {
   const [campMode, setCampMode] = useState<'rest' | 'sharpen' | 'cut'>('rest')
   const [sheet, setSheet] = useState(false)
   const [legend, setLegend] = useState(false)   // UX-17: the glyph/family key, in reach of a climb
+  // A11Y-8: the climb sheets are modal dialogs — move focus into whichever is
+  // open, and let Escape dismiss it (keyboard/SR users were stranded behind them)
+  const sheetRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!sheet && !legend) return
+    sheetRef.current?.focus()
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') { setSheet(false); setLegend(false) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [sheet, legend])
   const [shared, setShared] = useState(false)   // SOCIAL-1: copied-the-daily flash
   /* A11Y-3. Thirty-five things in this file were tappable divs: not focusable,
      not announced, and unreachable without a pointer. This gives one the
@@ -864,7 +876,7 @@ function startTutorial() {
     return (
       <div className={skin}>
         <div className="row">
-          <span className="h1" style={{ fontSize: 26, letterSpacing: '.5px' }}>
+          <span className="h1" role="heading" aria-level={1} style={{ fontSize: 26, letterSpacing: '.5px' }}>
             <Lettered t="SANDBAGGED" seed={5} /></span>
           <span className="big" style={{ color: 'var(--red)' }}>LV {st.level}</span></div>
         <InkRule seed={9} color="var(--ink)" />
@@ -944,7 +956,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.77 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.78 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -954,7 +966,7 @@ function startTutorial() {
     const total = Object.keys(CARDS).length
     return (
       <div className={skin}>
-        <div className="row"><span className="h1"><Lettered t="BEFORE YOU GO" seed={13} /></span>
+        <div className="row"><span className="h1" role="heading" aria-level={1}><Lettered t="BEFORE YOU GO" seed={13} /></span>
           <button className="btn" style={{ padding: '5px 10px', fontSize: 11 }} onClick={goBack}>◂ BACK</button></div>
         <InkRule seed={41} color="var(--ink)" />
 
@@ -1063,7 +1075,7 @@ function startTutorial() {
           <span className="sub">{sub}</span></div></div>)
     return (
       <div className={skin}>
-        <div className="row"><span className="h1"><Lettered t="THE BOOKS" seed={19} /></span>
+        <div className="row"><span className="h1" role="heading" aria-level={1}><Lettered t="THE BOOKS" seed={19} /></span>
           <button className="btn" style={{ padding: '5px 10px', fontSize: 11 }} onClick={goBack}>◂ BACK</button></div>
         <InkRule seed={53} color="var(--ink)" />
         <div style={{ maxHeight: 620, overflowY: 'auto', marginTop: 6 }}>
@@ -1175,7 +1187,7 @@ function startTutorial() {
 
   if (st.phase === 'pack') return (
     <div className={skin}>
-      <div className="h1">LEVEL {st.level}</div>
+      <div className="h1" role="heading" aria-level={1}>LEVEL {st.level}</div>
       <div className="sub">A pack for the effort. These are yours now.</div>
       <hr className="rule" />
       <div style={{ marginTop: 6 }}>
@@ -1199,7 +1211,7 @@ function startTutorial() {
     const tiers: Rarity[] = ['starter', 'common', 'uncommon', 'rare', 'curse']
     return (
       <div className={skin}>
-        <div className="row"><span className="h1">COLLECTION</span>
+        <div className="row"><span className="h1" role="heading" aria-level={1}>COLLECTION</span>
           <span className="sub">{st.owned.length}/{Object.keys(CARDS).length}</span></div>
         <hr className="rule" />
         <div style={{ maxHeight: 640, overflowY: 'auto' }}>
@@ -1259,7 +1271,7 @@ function startTutorial() {
             <span style={{ color: st.psyche <= DOUBT_AT ? 'var(--red)' : 'var(--green)' }}>
               {' '}· psyche {st.psyche}</span>
           </span></div>
-        <div className="h1" style={{ marginTop: 6 }}><Lettered t="THE LOST LINE" seed={17} /></div>
+        <div className="h1" role="heading" aria-level={1} style={{ marginTop: 6 }}><Lettered t="THE LOST LINE" seed={17} /></div>
         <div className="sub">{ACT_NAMES[st.act]} · stage {st.tier + 1} of {ACTS[st.act].length} · deck {st.runDeck.length}</div>
         {/* RUN-7: you can see one stage ahead, so this is a line rather than a menu */}
         <div className="sub" style={{ marginTop: 2, color: bossNext(st) ? 'var(--red)' : 'var(--tan)' }}>
@@ -1430,7 +1442,7 @@ function startTutorial() {
     if (!ev) return <div className={skin}><button className="btn" onClick={leaveEvent}>ON</button><style>{CSS}</style></div>
     return (
       <div className={skin}>
-        <div className="h1">{ev.title.toUpperCase()}</div>
+        <div className="h1" role="heading" aria-level={1}>{ev.title.toUpperCase()}</div>
         <hr className="rule" />
         <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.65, margin: '10px 0 14px' }}>{ev.text}</div>
         {st.eventResult ? (
@@ -1481,7 +1493,7 @@ function startTutorial() {
     })
     return (
       <div className={skin}>
-        <div className="row"><span className="h1">LOADOUT</span>
+        <div className="row"><span className="h1" role="heading" aria-level={1}>LOADOUT</span>
           <span className="big" style={{ color: full ? 'var(--green)' : 'var(--red)' }}>
             {mine.length}/{DECK_SIZE}</span></div>
         <div className="sub">{ARCHETYPES[st.arch].name} · what you start every climb with.</div>
@@ -1571,7 +1583,7 @@ function startTutorial() {
     const done = inAct.filter(r => st.book[r.name]).length
     return (
       <div className={skin}>
-        <div className="row"><span className="h1"><Lettered t="THE LOGBOOK" seed={61} /></span>
+        <div className="row"><span className="h1" role="heading" aria-level={1}><Lettered t="THE LOGBOOK" seed={61} /></span>
           <button className="btn" style={{ padding: '5px 10px', fontSize: 11 }} onClick={goBack}>◂ BOOKS</button></div>
         <InkRule seed={44} color="var(--ink)" />
         <div className="sub">{done}/{inAct.length} lines ticked</div>
@@ -1637,7 +1649,7 @@ function startTutorial() {
 
   if (st.phase === 'glossary') return (
     <div className={skin}>
-      <div className="row"><span className="h1">HOW IT WORKS</span>
+      <div className="row"><span className="h1" role="heading" aria-level={1}>HOW IT WORKS</span>
         <button className="btn" style={{ padding: '5px 10px', fontSize: 11 }} onClick={goBack}>◂ BOOKS</button></div>
       <hr className="rule" />
       <div style={{ maxHeight: 640, overflowY: 'auto' }}>
@@ -1684,7 +1696,7 @@ function startTutorial() {
 
   if (st.phase === 'journal') return (
     <div className={skin}>
-      <div className="row"><span className="h1">THE JOURNAL</span>
+      <div className="row"><span className="h1" role="heading" aria-level={1}>THE JOURNAL</span>
         <span className="sub">{st.journal.length}/{JOURNAL.length}</span></div>
       <div className="sub">Pages of the first ascensionist. They keep between runs.</div>
       <hr className="rule" />
@@ -1707,7 +1719,7 @@ function startTutorial() {
   if (st.phase === 'history') {
     return (
       <div className={skin}>
-        <div className="row"><span className="h1"><Lettered t="EVERY TRIP" seed={109} /></span>
+        <div className="row"><span className="h1" role="heading" aria-level={1}><Lettered t="EVERY TRIP" seed={109} /></span>
           <button className="btn" style={{ padding: '5px 10px', fontSize: 11 }} onClick={goBack}>◂ BOOKS</button></div>
         <InkRule seed={83} color="var(--ink)" />
         <div className="sub">The last {HISTORY_MAX}. Tap a seed to climb it again.</div>
@@ -1739,7 +1751,7 @@ function startTutorial() {
     const done = new Set(deedsDone(st))
     return (
       <div className={skin}>
-        <div className="row"><span className="h1"><Lettered t="DEEDS" seed={71} /></span>
+        <div className="row"><span className="h1" role="heading" aria-level={1}><Lettered t="DEEDS" seed={71} /></span>
           <button className="btn" style={{ padding: '5px 10px', fontSize: 11 }} onClick={goBack}>◂ BOOKS</button></div>
         <InkRule seed={41} color="var(--ink)" />
         <div className="sub">{done.size} of {DEEDS.length} done. No prizes — a record, not a grind.</div>
@@ -1777,7 +1789,7 @@ function startTutorial() {
         <span style={{ fontSize: 12, fontWeight: 700 }}>{v}</span></div>)
     return (
       <div className={skin}>
-        <div className="row"><span className="h1"><Lettered t="THE NUMBERS" seed={97} /></span>
+        <div className="row"><span className="h1" role="heading" aria-level={1}><Lettered t="THE NUMBERS" seed={97} /></span>
           <button className="btn" style={{ padding: '5px 10px', fontSize: 11 }} onClick={goBack}>◂ BOOKS</button></div>
         <InkRule seed={37} color="var(--ink)" />
         <div style={{ maxHeight: 660, overflowY: 'auto', marginTop: 4 }}>
@@ -1823,7 +1835,7 @@ function startTutorial() {
     }))
     return (
       <div className={skin}>
-        <div className="row"><span className="h1"><Lettered t="SAVES" seed={83} /></span>
+        <div className="row"><span className="h1" role="heading" aria-level={1}><Lettered t="SAVES" seed={83} /></span>
           <button className="btn" style={{ padding: '5px 10px', fontSize: 11 }} onClick={goBack}>◂ BOOKS</button></div>
         <InkRule seed={29} color="var(--ink)" />
         <div style={{ marginTop: 8 }}>
@@ -1880,7 +1892,7 @@ function startTutorial() {
     const beatsBest = st.circuitScore >= st.bestCircuit && st.bestCircuit > 0
     return (
       <div className={skin}>
-        <div className="row"><span className="h1"><Lettered t="THE CIRCUIT" seed={71} /></span>
+        <div className="row"><span className="h1" role="heading" aria-level={1}><Lettered t="THE CIRCUIT" seed={71} /></span>
           <span className="big" style={{ color: 'var(--green)' }}>{st.circuitScore} sent</span></div>
         <InkRule seed={23} color="var(--ink)" />
         {/* SKIRM-4: the zone you have climbed into gives the endless mode a place */}
@@ -1915,7 +1927,7 @@ function startTutorial() {
     const sold = (key: string) => st.bought.includes(key)
     return (
       <div className={skin}>
-        <div className="row"><span className="h1"><Lettered t="TRADING POST" seed={53} /></span>
+        <div className="row"><span className="h1" role="heading" aria-level={1}><Lettered t="TRADING POST" seed={53} /></span>
           <span className="big" style={{ color: 'var(--tan)' }}>${st.cash}</span></div>
         {postT ? (
           <div className="spot" style={{ borderLeftColor: 'var(--tan)' }}>
@@ -2007,7 +2019,7 @@ function startTutorial() {
 
   if (st.phase === 'gear') return (
     <div className={skin}>
-      <div className="h1"><Lettered t="THE NEXT RANGE" seed={41} /></div>
+      <div className="h1" role="heading" aria-level={1}><Lettered t="THE NEXT RANGE" seed={41} /></div>
       <InkRule seed={12} color="var(--ink)" />
       <div className="sub">Something out of the van before you drive on.</div>
       <div style={{ marginTop: 8 }}>
@@ -2042,7 +2054,7 @@ function startTutorial() {
     return (
       <div className={skin}>
         <div className="row">
-          <span className="h1">{st.result === 'send' ? 'SENT' : 'WORTH KNOWING'}</span>
+          <span className="h1" role="heading" aria-level={1}>{st.result === 'send' ? 'SENT' : 'WORTH KNOWING'}</span>
           <span className="big" style={{ color: 'var(--tan)' }}>${st.cash}</span></div>
         <div className="sub">{two
           ? 'Pick one more. There is a curse in it.'
@@ -2101,7 +2113,7 @@ function startTutorial() {
       setSt(s => ({ ...campStep(s, { kind: 'van', rng }), seed: rng.s })) }
     return (
       <div className={skin}>
-        <div className="h1"><Lettered t="CAMP" seed={23} /></div>
+        <div className="h1" role="heading" aria-level={1}><Lettered t="CAMP" seed={23} /></div>
         <InkRule seed={31} color="var(--ink)" />
         <div className="sub">skin {st.skin}/{RUN_SKIN + styleMods(st.style).skin} · deck {st.runDeck.length}</div>
         {talk ? (
@@ -2172,7 +2184,7 @@ function startTutorial() {
       onClick={() => setSt(s => ({ ...s, phase: 'camp' }))}>BACK</button><style>{CSS}</style></div>
     return (
       <div className={skin}>
-        <div className="h1">{talk.who.toUpperCase()}</div>
+        <div className="h1" role="heading" aria-level={1}>{talk.who.toUpperCase()}</div>
         <hr className="rule" />
         <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.7, margin: '10px 0 14px' }}>{talk.text}</div>
         {st.talkReply ? (
@@ -2219,7 +2231,7 @@ function startTutorial() {
     }
     return (
       <div className={skin}>
-        <div className="row"><span className="h1"><Lettered t={base.name.toUpperCase()} seed={pending.routeIdx * 3 + 2} /></span>
+        <div className="row"><span className="h1" role="heading" aria-level={1}><Lettered t={base.name.toUpperCase()} seed={pending.routeIdx * 3 + 2} /></span>
           <span className="big" style={{ color: 'var(--red)' }}>{gradeLabel(base, st.grades)}</span></div>
         <InkRule seed={91} color="var(--ink)" />
         <div className="sub">{base.note}</div>
@@ -2266,7 +2278,7 @@ function startTutorial() {
     }
     return (
       <div className={skin}>
-        <div className="h1"><Lettered t="A FIRST ASCENT" seed={113} /></div>
+        <div className="h1" role="heading" aria-level={1}><Lettered t="A FIRST ASCENT" seed={113} /></div>
         <InkRule seed={77} color="var(--ink)" />
         <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.7, marginTop: 8 }}>
           <p style={{ margin: '0 0 8px' }}>
@@ -2368,7 +2380,7 @@ function startTutorial() {
       : 'Put the stone back. You do not know enough to put a name anywhere.'
     return (
       <div className={skin}>
-        <div className="h1"><Lettered t="THE TOP" seed={101} /></div>
+        <div className="h1" role="heading" aria-level={1}><Lettered t="THE TOP" seed={101} /></div>
         <div className="sub">{pages} of {JOURNAL.length} pages · {gradeLabel(spec, st.grades)}</div>
         <InkRule seed={71} color="var(--ink)" />
         <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.7, marginTop: 10 }}>{body}</div>
@@ -2399,7 +2411,7 @@ function startTutorial() {
     const won = st.result === 'send'
     return (
       <div className={skin}>
-        <div className="h1">{st.circuit ? 'CIRCUIT OVER' : won ? 'THE LOST LINE GOES' : 'RUN OVER'}</div>
+        <div className="h1" role="heading" aria-level={1}>{st.circuit ? 'CIRCUIT OVER' : won ? 'THE LOST LINE GOES' : 'RUN OVER'}</div>
         {/* UX-11: this said "Act 1" whatever act you actually died in */}
         <div className="sub">{ACT_NAMES[st.act]} · stage {st.tier + 1} · deck {st.runDeck.length}</div>
         <hr className="rule" />
@@ -2479,7 +2491,7 @@ function startTutorial() {
     const sent = st.result === 'send'
     return (
       <div className={skin}>
-        <div className="h1">{sent ? 'SENT' : st.result === 'bail' ? 'WALKED AWAY' : 'NOT TODAY'}</div>
+        <div className="h1" role="heading" aria-level={1}>{sent ? 'SENT' : st.result === 'bail' ? 'WALKED AWAY' : 'NOT TODAY'}</div>
         <div className="sub">{spec.name} · {gradeLabel(spec, st.grades)} · {weather.name}, {rock.name}</div>
         {st.runSeed ? <div className="sub">seed {seedCode(st.runSeed)} — same seed, same run</div> : null}
         {st.ending ? (
@@ -2549,7 +2561,7 @@ function startTutorial() {
     return (
       <div className={skin}>
         <div className="row">
-          <span className="h1"><Lettered t={headline} seed={sent ? 41 : 17} /></span>
+          <span className="h1" role="heading" aria-level={1}><Lettered t={headline} seed={sent ? 41 : 17} /></span>
           <span className="big" style={{ color: sent ? 'var(--green)' : 'var(--red)' }}>
             {gradeLabel(spec, st.grades)}</span></div>
         <div className="sub">{spec.name} · burn {st.burn} of {attemptsFor(st)}
@@ -2607,10 +2619,10 @@ function startTutorial() {
           screen, so it leads — a pinned banner up top, not a spot box buried
           under the board and the COMMIT bar. */}
       {spec.tutorial && tip ? (
-        <div className="teach" role="status" aria-live="assertive">
+        <div className="teach" role="status" aria-live="polite">
           <b>STEP {'▸'}</b>{tip}</div>) : null}
       <div className="row">
-        <span className="h1"><Lettered t={spec.name.toUpperCase()} seed={st.routeIdx * 3 + 2} /></span>
+        <span className="h1" role="heading" aria-level={1}><Lettered t={spec.name.toUpperCase()} seed={st.routeIdx * 3 + 2} /></span>
         <span className="sub" style={{ color: 'var(--red)', fontWeight: 700 }}>burn {st.burn}/{attemptsFor(st)}</span>
       </div>
       {/* UX-17: the ink marks are the whole visual language — a key you can open
@@ -2815,7 +2827,7 @@ function startTutorial() {
           </div>
         ))}
       </div>
-      <div className="vis-hidden" role="status" aria-live="assertive">
+      <div className="vis-hidden" role="status" aria-live="polite">
         {st.log.length ? st.log[st.log.length - 1] : ''}</div>
       {st.boardP.filter(Boolean).length > 1 ? (
         <div className="sub" style={{ marginTop: 2 }}>
@@ -2862,8 +2874,9 @@ function startTutorial() {
       </div>
       {sheet ? (
         <div className="sheet" {...tap(() => setSheet(false), 'Close what is left')}>
-          <div className="sheetin" onClick={e => e.stopPropagation()}>
-            <div className="row"><span className="h1" style={{ fontSize: 17 }}>WHAT IS LEFT</span>
+          <div className="sheetin" ref={sheetRef} tabIndex={-1} role="dialog" aria-modal="true"
+            aria-label="What is left in the deck" onClick={e => e.stopPropagation()}>
+            <div className="row"><span className="h1" role="heading" aria-level={1} style={{ fontSize: 17 }}>WHAT IS LEFT</span>
               <button className="btn" style={{ padding: '5px 10px', fontSize: 11 }}
                 onClick={() => setSheet(false)}>CLOSE</button></div>
             <InkRule seed={67} color="var(--ink)" />
@@ -2958,8 +2971,9 @@ function startTutorial() {
       {/* UX-17: the marks key, opened from the climb header */}
       {legend ? (
         <div className="sheet" {...tap(() => setLegend(false), 'Close the key')}>
-          <div className="sheetin" onClick={e => e.stopPropagation()}>
-            <div className="row"><span className="h1" style={{ fontSize: 17 }}>WHAT THE MARKS MEAN</span>
+          <div className="sheetin" ref={sheetRef} tabIndex={-1} role="dialog" aria-modal="true"
+            aria-label="What the marks mean" onClick={e => e.stopPropagation()}>
+            <div className="row"><span className="h1" role="heading" aria-level={1} style={{ fontSize: 17 }}>WHAT THE MARKS MEAN</span>
               <button className="btn" style={{ padding: '5px 10px', fontSize: 11 }}
                 onClick={() => setLegend(false)}>CLOSE</button></div>
             <div className="lbl" style={{ marginTop: 6 }}>THE ROCK</div>

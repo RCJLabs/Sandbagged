@@ -460,6 +460,27 @@ test('UX-18: the Collection is a codex — mark, text and family, not a checklis
   // unowned cards stay a mystery — the text must be gated on `have`
   ok(/have \?/.test(coll), 'the codex reveals unowned cards')
 })
+test('A11Y-8: the accessibility tree — headings, polite log, modal sheets', () => {
+  const app = readFileSync('src/App.tsx', 'utf8')
+  // 1. no live region SHOUTS: the running climb log and the tutorial step were
+  // assertive, so every update interrupted a screen reader mid-utterance
+  eq((app.match(/aria-live="assertive"/g) ?? []).length, 0,
+    'a live region still interrupts the screen reader (should be polite)')
+  ok(/aria-live="polite"/.test(app), 'the polite live regions vanished')
+  // 2. every screen title is a real heading, not just a styled span
+  const h1 = (app.match(/className="h1"/g) ?? []).length
+  const heading = (app.match(/className="h1" role="heading" aria-level=\{1\}/g) ?? []).length
+  ok(h1 >= 20, `only ${h1} screen titles`)
+  eq(heading, h1, `${h1 - heading} screen title(s) are not exposed as headings`)
+  // 3. the two climb bottom-sheets are modal dialogs you can escape and are
+  // dropped into — not divs a keyboard user tabs straight past
+  eq((app.match(/role="dialog" aria-modal="true"/g) ?? []).length, 2,
+    'the pile and marks-key sheets are not both modal dialogs')
+  ok(/aria-label="What is left/.test(app) && /aria-label="What the marks mean/.test(app),
+    'a climb sheet is an unnamed dialog')
+  ok(/e\.key === 'Escape'/.test(app), 'the sheets cannot be dismissed with Escape')
+  ok(/sheetRef\.current\?\.focus\(\)/.test(app), 'focus is never moved into an open sheet')
+})
 test('VIS-7: the forecast never rides on colour alone, on any node', () => {
   const app = readFileSync('src/App.tsx', 'utf8')
   // every conditions line on the map (☁ weather · ⛰ rock) must carry the

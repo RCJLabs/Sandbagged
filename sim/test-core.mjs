@@ -991,7 +991,9 @@ test('nothing interactive is unreachable without a pointer', () => {
 test('the game announces itself', () => {
   const src = readFileSync('src/App.tsx', 'utf8')
   ok(/aria-live="polite"/.test(src), 'the spotter is not announced')
-  ok(/aria-live="assertive"/.test(src), 'the result of a turn is not announced')
+  // A11Y-8: the turn result is still announced — via the hidden log live region
+  // — but POLITELY now, so it no longer interrupts the reader mid-utterance
+  ok(/vis-hidden"[^>]*aria-live/.test(src), 'the result of a turn is not announced')
   ok(/role="meter"/.test(src), 'the pump meter has no role')
   // most labels are passed as the second argument to `tap`, not written inline
   const inline = (src.match(/aria-label/g) ?? []).length
