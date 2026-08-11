@@ -1752,6 +1752,42 @@ test('ENG-27: a roped fall pays the fall-skin modifiers a boulder fall does', ()
   ok(withPads === base.skin, `Crash Pads does not save the first roped fall (${withPads}/${base.skin})`)
 })
 
+test('FA-1: the FA is a real mode, and the grade you claim is an economy', () => {
+  /* THE FA menu button ran a plain skirmish that never reached the claim, and
+     the grade you put on a first ascent bought nothing. Now: a standalone FA
+     send reaches the claim screen, and claimStep is a real economy — undersell
+     (sandbag) for quiet XP, oversell (spray) for loud cash at the Ego risk,
+     honest for a little XP. All off-band: the sim's honest-claim stub never
+     calls claimStep, and XP feeds a collection the drift guard measures full. */
+  // (a) a standalone FA (inRun:false) sent reaches the claim, not sessionEnd
+  const fa = { ...E.freshRun(6, 0, 1), inRun: false, result: 'send',
+    skirmish: E.faRoute(1, new E.RNG(2)), beta: [], worked: [] }
+  eq(E.endSession(fa, new E.RNG(1)).phase, 'claim',
+    'a standalone FA send never reaches the naming screen')
+  // (b) the honesty economy
+  const base = { ...E.freshRun(6, 0, 1), inRun: false, established: [], book: {},
+    cash: 0, level: 10, xp: 0, burn: 1, act: 1, tier: 2, runs: 3,
+    skirmish: E.faRoute(1, new E.RNG(2)) }
+  const real = base.skirmish.grade
+  const claim = (g, n) => E.claimStep(base, n, g, new E.RNG(5))
+  const sandbag = claim(real - 2, 'Low Ball'), honest = claim(real, 'Fair'), spray = claim(real + 2, 'Big Talk')
+  // the line is written to the book and the ledger, at the grade you called it
+  eq(sandbag.established[0].claimed, real - 2, 'the claimed grade was not recorded')
+  eq(sandbag.established[0].real, real, 'the real grade was not recorded')
+  ok(sandbag.book['Low Ball'], 'the named line never reached the book')
+  // spray pays loud cash; sandbag/honest pay none
+  ok(spray.cash > honest.cash, 'spraying the grade paid no cash')
+  eq(sandbag.cash, base.cash, 'a sandbag paid cash it should not')
+  // sandbag pays the most quiet XP, honest a little, spray none (no level-up at L10)
+  eq(sandbag.level, 10, 'the test leaked a level-up and the xp compare is unsafe')
+  ok(sandbag.xp > honest.xp && honest.xp > spray.xp,
+    `the honesty XP gradient is wrong: sandbag ${sandbag.xp} honest ${honest.xp} spray ${spray.xp}`)
+  // a standalone FA goes home to the menu; an in-run FA drops back on the map
+  eq(honest.phase, 'menu', 'a standalone FA claim did not return to the menu')
+  eq(E.claimStep({ ...base, inRun: true }, 'On The Map', real, new E.RNG(5)).phase, 'map',
+    'an in-run FA claim did not drop back onto the map')
+})
+
 test('the route telegraphs, then acts, exactly once', () => {
   // ENG-11. A move announced one turn and applied the next — if it can fire
   // twice it is a hidden penalty rather than a fight you can read.

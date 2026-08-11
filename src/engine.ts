@@ -3284,6 +3284,16 @@ export function endSession(s0: GameState, rng: RNG): GameState {
   }
   const gate = (next: GameState): GameState =>
     next.packCards.length ? { ...next, afterPack: next.phase, phase: 'pack' } : next
+  // FA-1: a first ascent — in a run OR as the standalone THE FA mode — is sent,
+  // then NAMED. You do not get a reward screen; you get to grade it (claimStep).
+  // This sits BEFORE the !inRun return so the menu's THE FA reaches the claim
+  // too; it used to be reachable only from the in-campaign fa node.
+  if (s.result === 'send' && s.skirmish?.fa) {
+    const paid = cashForSend(s.skirmish.grade)
+    return gainXp({ ...s, beta, sends: s.sends + 1, cash: s.cash + paid,
+      psyche: Math.min(PSYCHE_MAX, s.psyche + PSYCHE_SEND), phase: 'claim' },
+      xpForSend(s.skirmish.grade) + 20, rng)
+  }
   if (!s.inRun) return gate({ ...s, beta, phase: 'sessionEnd' })
   const map = ACTS[s.act]
   // a boulder that beats you costs psyche, whether you were projecting it or not
@@ -3294,13 +3304,6 @@ export function endSession(s0: GameState, rng: RNG): GameState {
   const finale = specOf(s).finale === true
   if (s.skin <= 0 || s.psyche <= 0)
     return gate(recordRun({ ...s, beta, phase: 'runEnd', result: 'fall' }, false))
-  if (s.result === 'send' && s.skirmish?.fa) {
-    // you do not get a reward screen for this. You get to name it.
-    const paid = cashForSend(s.skirmish.grade)
-    return gainXp({ ...s, beta, sends: s.sends + 1, cash: s.cash + paid,
-      psyche: Math.min(PSYCHE_MAX, s.psyche + PSYCHE_SEND), phase: 'claim' },
-      xpForSend(s.skirmish.grade) + 20, rng)
-  }
   if (s.result === 'send' && s.onProject) {
     // a project pays gear — otherwise boss-only — and a card on top
     return gate({ ...s, beta, onProject: false, gearOffers: gearOffers(s, rng),
@@ -4828,6 +4831,46 @@ export function honestyOf(s: GameState): 'sandbagged' | 'sprayed' | 'fair' | 'no
     book, because that is the moment you are doing it. */
 export function claimCurse(s: GameState): GameState {
   return honestyOf(s) === 'sprayed' ? addCurse(s, 'sprayed') : s
+}
+
+/* FA-1: the grade you put on a first ascent is a real economy now, not just a
+   flavour line. UNDERSELL it — a sandbag, the game's namesake — and the reward
+   is quiet and lasting: XP, because a line stiffer than its grade earns a
+   reputation and teaches you the most. OVERSELL it (spray) and the reward is
+   loud and immediate — cash, the story sells — but `claimCurse` still checks
+   your running average and hands you Ego if you make a habit of it. Honest pays
+   a little of the calm reward. All of it is OFF the campaign band by
+   construction: the reward lives here in the claim RULE, which the sim's
+   honest-claim policy (run.mjs) never calls, and XP only feeds the collection
+   the drift guard already measures at a full "built" loadout. */
+export const CLAIM_XP = 6
+export const SANDBAG_XP = 10   // per grade undersold, capped at three
+export const SPRAY_CASH = 15   // per grade oversold, capped at three
+
+export function claimStep(s: GameState, name: string, grade: number, rng: RNG): GameState {
+  const spec = s.skirmish
+  if (!spec) return s
+  const real = spec.grade
+  const rec: Established = { name, claimed: grade, real, act: s.act, burns: s.burn,
+    style: spec.style, clear: spec.clear, crux: spec.crux, feet: spec.feet, run: s.runs }
+  const honesty = real - grade      // > 0 undersold (sandbag), < 0 oversold (spray)
+  const xpGain = honesty > 0 ? CLAIM_XP + SANDBAG_XP * Math.min(honesty, 3)
+    : honesty === 0 ? CLAIM_XP : 0
+  const cashGain = honesty < 0 ? SPRAY_CASH * Math.min(-honesty, 3) : 0
+  let out: GameState = { ...s,
+    established: [rec, ...s.established].slice(0, 40),
+    book: { ...s.book, [name]: { sends: 1, bestBurn: s.burn, bestStyle: s.style,
+      flashed: s.burn === 1, weather: s.weather, rock: s.rock } },
+    cash: s.cash + cashGain, skirmish: null }
+  out = claimCurse(out)                       // CARD-6: a habit of spraying earns Ego
+  if (xpGain > 0) out = gainXp(out, xpGain, rng)
+  // in a run you drop back onto the map a stage further on — and, like every
+  // other stage advance, it leaves a mark on the trail (UX-16); a standalone FA
+  // from the menu goes home to the menu
+  const back: GameState = s.inRun
+    ? noteTrail({ ...out, phase: 'map', tier: s.tier + 1 }, trailNote(s))
+    : { ...out, phase: 'menu' }
+  return back.packCards.length ? { ...back, afterPack: back.phase, phase: 'pack' } : back
 }
 
 export function endingStep(s: GameState, kind: 'told' | 'kept'): GameState {

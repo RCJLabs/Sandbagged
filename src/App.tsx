@@ -2,15 +2,15 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.93 — CARD-16: no move-curse is inert now — Tweaked Pulley,
-//   Tweaky Finger and Cold Shut sharpen the hold (hex), like the other curses
+// SANDBAGGED v9.94 — FA-1: THE FA is a real first-ascent mode now, and the
+//   grade you claim is an economy — sandbag for XP, spray for cash at the Ego risk
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
 import {
   ACTS, ACT_NAMES, ACT_OF_ROUTE, ACT_TERRAIN, ACT_XP, ARCHETYPES, ASCENT, BOOK_BETA_MAX,
   BY_RARITY, CAMPUS_BITE, CARDS, CROP_COST, CampAction, Card, DECKS, DECK_SIZE,
-  DEFAULT_LOADOUT, DOUBT_AT, EVENTS, EXPOSED_FALL_PSYCHE, EXPOSED_PSYCHE, Established,
+  DEFAULT_LOADOUT, DOUBT_AT, EVENTS, EXPOSED_FALL_PSYCHE, EXPOSED_PSYCHE,
   FA_NAMES_A, FA_NAMES_B, FEET_STATS, FLOW_AT, FLOW_HIGH, GameState, HISTORY_MAX, HOLD_STATS,
   JOURNAL, KEYWORDS, LANE_NAMES, LINES, MAP_BOT, MAP_H, MAP_TOP, MAP_W, MUTATORS,
   MapNode, OPPOSE_ALONE, OPPOSE_PAIR, PRICE, PROJECT_SKIN, PSYCHE_BAIL, PSYCHE_MAX,
@@ -19,7 +19,7 @@ import {
   UNCOMMON_SLOTS, WEATHER, abilityOf, activeSlot, aheadSummary, applyOutcome,
   archUnlocked, attemptsFor, availableTalk, talkById, biteAgainst, boonById, boonMods,
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
-  campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitZone, claimCurse, claimVerdict,
+  campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitZone, claimStep, claimVerdict,
   consumableById, KIT_MAX, useKitStep, secondWindStep,
   coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyRoute, dailySeed, dailyShare, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
   endSession, endingFor, endingStep, establishedIn, exportSave, exposed, exposureOf,
@@ -29,7 +29,7 @@ import {
   mapContours, mapPoints, mutMods, newRun, nextPhase, phaseOf, phaseSummary,
   pickGearStep, pileFromHand, playBonusStep, postOpen, postTalk, powerAgainst, repliesFor,
   previewLane, previewPump, priceOf, recordRun, rerollCost, rerollStep, resolve,
-  rollEvent, roughPath, saveGame, seedCode, seqById, seqNeedText, sigById, skirmishRoute,
+  rollEvent, roughPath, saveGame, seedCode, seqById, seqNeedText, sigById,
   slotSummary, slotsUsed, spawn, specFromEstablished, specOf, startBurn, stockShop, windowNear, windowOf,
   styleMods, tagCounts, tagOf, takeOfferStep, takeTwoStep, vanOpen, walkAwayStep, weekKey,
   wipeSlot, xpForSend, xpMult, xpToNext,
@@ -752,9 +752,14 @@ function startTutorial() {
       weather: rng.int(WEATHER.length), rock: rng.int(ROCK.length) }, rng)
     setSt({ ...next, seed: rng.s })
   }
-  function startSkirmish() {
+  /* FA-1: the menu button labelled THE FA used to run a plain skirmish — a
+     graded boulder that never reached the naming/claim branch, so the game's
+     namesake mode did not actually put up a first ascent. It now builds a real
+     unclimbed line (faRoute), scaled to your level, that sends into the claim
+     screen like the in-campaign fa node does. */
+  function startFA() {
     const rng = new RNG(st.seed)
-    const route = skirmishRoute(st.level, rng)
+    const route = faRoute(Math.min(2, Math.floor(st.level / 7)), rng)
     const next = startBurn({ ...st, skirmish: route, inRun: false, tier: 0,
       runDeck: loadoutDeck(st.loadouts[st.arch]), skin: SKIN_MAX, burn: 1, beta: [], worked: [],
       weather: rng.int(WEATHER.length), rock: rng.int(ROCK.length) }, rng)
@@ -955,11 +960,11 @@ function startTutorial() {
         })()}
 
         <div style={{ display: 'flex', gap: 6 }}>
-          <button className="btn" style={{ flex: 1, padding: 13 }} onClick={startSkirmish}>THE FA</button>
+          <button className="btn" style={{ flex: 1, padding: 13 }} onClick={startFA}>THE FA</button>
           <button className="btn" style={{ flex: 1, padding: 13 }} onClick={startCircuit}>THE CIRCUIT</button>
         </div>
         <div className="row" style={{ marginTop: 2 }}>
-          <span className="sub">one climb at your level</span>
+          <span className="sub">an unclimbed line · name it</span>
           <span className="sub">endless{st.bestCircuit ? ` · best ${st.bestCircuit}` : ''}</span>
         </div>
 
@@ -973,7 +978,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.93 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.94 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2287,15 +2292,11 @@ function startTutorial() {
     }
     const done = () => {
       const name = (c.name.trim() || suggest()).slice(0, 28)
-      const spec = st.skirmish!
-      const rec: Established = { name, claimed: c.grade, real, act: st.act, burns: st.burn,
-        style: spec.style, clear: spec.clear, crux: spec.crux, feet: spec.feet, run: st.runs }
+      const rng = new RNG(st.seed)
       setClaim(null)
-      // CARD-6: the grade you put on it is checked against the ones before it
-      setSt(x => claimCurse({ ...x, established: [rec, ...x.established].slice(0, 40),
-        book: { ...x.book, [name]: { sends: 1, bestBurn: st.burn, bestStyle: x.style,
-          flashed: st.burn === 1, weather: x.weather, rock: x.rock } },
-        skirmish: null, phase: 'map', tier: x.tier + 1 }))
+      // FA-1: the RULE lives in the engine now (record + book + the honesty
+      // economy + the Ego check + where you land). The screen only names it.
+      setSt(x => ({ ...claimStep(x, name, c.grade, rng), seed: rng.s }))
     }
     return (
       <div className={skin}>
