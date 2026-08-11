@@ -850,8 +850,17 @@ export const ROUTES: RouteSpec[] = [
   { name: 'The Priest', grade: 5, style: 'compression', clear: 10, crux: 3, feet: 'hard',
     signature: 'guillotine',
     note: "His chalk is still in the crack. Thirty years and nobody's touched it.",
+    /* BAL-13 (v9.88): the two early bosses were single-phase — a slightly harder
+       route, not a fight with an arc like the act-3 bosses. The Priest now
+       kicks into a second phase near the top: the guillotine crack narrows to
+       one hand while the clock keeps running (dTax carried, lockLane added), so
+       the last three holds are a real closing crux. dTax/lockLane, never dBite —
+       the Summit Block ledger proved added Bite on a crit path charges the
+       Alpinist (−2 Contact) and Comp Kid (a burn) twice. */
     phases: [{ at: 0.65, name: 'The Headwall', dTax: 1,
-      text: 'It steepens and does not stop. The clock runs faster from here.' }] },
+      text: 'It steepens and does not stop. The clock runs faster from here.' },
+      { at: 0.85, name: 'The Guillotine', dTax: 1, lockLane: 1,
+        text: 'The crack narrows to a blade. One hand above it — and the clock still running.' }] },
 
   { name: 'The Sandbag', grade: 3, style: 'crimp ladder', clear: 11, crux: 2, feet: 'normal',
     note: 'Given V2 by a man who never did it. It has never been V2.' },
@@ -874,8 +883,14 @@ export const ROUTES: RouteSpec[] = [
   { name: 'The Hourglass', grade: 7, style: 'mixed', clear: 12, crux: 2, feet: 'normal',
     signature: 'sidewinder',
     note: 'Two towers welded at the waist. He drew it in the margin twice.',
+    /* BAL-13 (v9.88): a second phase above the waist. The pinch opens into the
+       upper tower, both hands back — but it kicks back and the clock runs
+       faster to the top (dTax). A distinct late constraint, reached tired,
+       rather than the waist's lane-lock all the way up. */
     phases: [{ at: 0.5, name: 'The Waist', lockLane: 1,
-      text: 'The tower pinches in. There is nothing out right — left hand only.' }] },
+      text: 'The tower pinches in. There is nothing out right — left hand only.' },
+      { at: 0.8, name: 'The Upper Tower', dTax: 1, lockLane: 1,
+        text: 'Past the waist it kicks back — still nothing out right, and the clock running.' }] },
 
   { name: 'Furnace Arete', grade: 6, style: 'power', clear: 13, crux: 2, feet: 'easy',
     note: 'South facing, no shade, and the rock stays warm past midnight.' },

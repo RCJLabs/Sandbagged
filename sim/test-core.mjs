@@ -1639,6 +1639,24 @@ test('ENG-25: the sim can see opposition — it drafts toward it and seats the p
     'cardValue is blind to a partner already in the deck')
 })
 
+test('BAL-13: the early bosses are fights, not flat routes', () => {
+  /* The fourth audit found The Priest (act 1) and The Hourglass (act 2) were
+     single-phase — a slightly harder route — against the two- and three-phase
+     act-3 bosses. They now kick into a real second phase near the top. This is
+     a feel/arc change, measured band-neutral (the early bosses are not the
+     completion bottleneck; act 3 is). Even-handed clock/lane effects ONLY: the
+     Summit Block ledger proved dBite on a crit path charges the Alpinist (−2
+     Contact) and the Comp Kid (a burn) twice, so no early-boss phase adds Bite. */
+  const byName = n => E.ROUTES.find(r => r.name === n)
+  for (const n of ['The Priest', 'The Hourglass']) {
+    const r = byName(n)
+    ok(r, `${n} is gone from the route table`)
+    ok((r.phases?.length ?? 0) >= 2, `${n} is still a flat single-phase boss`)
+    ok(r.phases.some(p => p.at >= 0.75), `${n}'s closing phase never reaches the top`)
+    for (const p of r.phases) ok(!p.dBite, `${n}'s ${p.name} adds Bite on the crit path (climber-spread)`)
+  }
+})
+
 test('the route telegraphs, then acts, exactly once', () => {
   // ENG-11. A move announced one turn and applied the next — if it can fire
   // twice it is a hidden penalty rather than a fight you can read.

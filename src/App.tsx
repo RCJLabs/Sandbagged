@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.87 — ENG-25: the balance sim can see opposition now — the
-//   drafter builds toward the pair and the policy seats it (band held at ~46)
+// SANDBAGGED v9.88 — BAL-13: the early bosses are fights now — The Priest and
+//   The Hourglass get a real second phase (feel/arc, measured band-neutral)
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -973,7 +973,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.87 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.88 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
