@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.91 — ENG-27: a roped fall pays the same fall-skin modifiers a
-//   boulder fall does — dFallSkin costs, skinSave (Crash Pads) eats the first
+// SANDBAGGED v9.92 — RUN-13: a Circuit walk-off is recorded now — the good
+//   circuit outcome shows in Every Trip, not just the ones you lose
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -973,7 +973,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.91 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.92 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

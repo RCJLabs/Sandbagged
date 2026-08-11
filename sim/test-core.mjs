@@ -322,6 +322,10 @@ test('walking away from the circuit banks what you did', () => {
     level: 9, owned: ['Gaston'], seen: ['marge1'], ticked: ['act0'], hints: false }
   const out = E.walkAwayStep(mid)
   eq(out.bestCircuit, 7, 'walking away did not bank a new best')
+  // RUN-13: the good circuit outcome is recorded, not just the ones you lose
+  eq(out.history.length, mid.history.length + 1, 'walking off wrote no history record')
+  ok(out.history[0].won && out.history[0].circuit, 'the walk-off was not recorded as a won circuit')
+  ok(/walked off · 7 lines/.test(out.history[0].cause), `wrong walk-off cause: ${out.history[0].cause}`)
   eq(out.circuit, false, 'you are still on the circuit after walking away')
   eq(out.skirmish, null, 'the route came with you')
   eq(out.runDeck.length, 0, 'the deck came with you')

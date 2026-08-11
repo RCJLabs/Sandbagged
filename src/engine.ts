@@ -4724,7 +4724,15 @@ export function addCurse(s: GameState, cause: CurseCause): GameState {
 }
 
 export function walkAwayStep(s: GameState): GameState {
-  return { ...s, circuit: false, skirmish: null, runDeck: [], log: [],
+  /* RUN-13: walking off is the GOOD circuit outcome — a clean stop with a score
+     in hand — but it left no trace in history, which then only ever showed the
+     circuits you LOST (endSession records those). Record it as the win it is,
+     so "Every Trip" tells the whole story. Career "expeditions started" /
+     "success rate" stay Lost-Line metrics on purpose — `wins` counts finale
+     sends and the mastery deeds read it — so the circuit lives in history, not
+     folded into `runs`/`wins`, which would corrupt the success rate. */
+  const rec = recordRun(s, true)
+  return { ...rec, circuit: false, skirmish: null, runDeck: [], log: [],
     bestCircuit: Math.max(s.bestCircuit, s.circuitScore), phase: 'menu' }
 }
 
@@ -4770,7 +4778,8 @@ export function recordRun(s: GameState, won: boolean): GameState {
   const got = tweakEarned(tw, rng0)
   if (got) tw = { ...tw, tweak: got, seed: rng0.s }
   s = tw
-  const cause = won ? 'topped out'
+  const cause = won
+    ? (s.circuit ? `walked off · ${s.circuitScore} lines` : 'topped out')   // RUN-13
     : s.circuit ? `${s.circuitScore} lines`
     : s.psyche <= 0 ? 'lost the psyche'
     : s.skin <= 0 ? 'skin ran out'
