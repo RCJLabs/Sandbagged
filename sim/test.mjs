@@ -209,6 +209,23 @@ test('ENG-23: flow is a track with two breakpoints, and it never buys the clock'
     'momentum Power is no longer capped at the old ceiling — the raised flow cap is buffing Power')
 })
 
+test('ENG-24: dialed-in flow reads the wall — information, never the clock', () => {
+  // the tax relief is spent by FLOW_AT (HANG_TAX is 1), so flow 3-5 gave a
+  // no-momentum deck nothing; the top of the bar pays in a read now. Crucially
+  // it must NOT ease the pump — that per-turn relief was measured at +7..+13 and
+  // cut (the guard above pins the clock; this pins the reward and re-pins the pump).
+  ok(E.FLOW_READ > 0, 'the flow read is nothing')
+  const H = (uid, grip) => ({ uid, name: 'crimp', bite: 3, grip, crux: false, clean: false })
+  const turn = flow => E.resolve({ ...E.freshRun(0, 0, 5), inRun: true, skirmish: null, phase: 'climb',
+    beta: ['crimp'], flow, pump: 10, cleared: 0, worked: [], turn: 5, order: [], readAhead: 0,
+    boardH: [H(1, 1), H(2, 8), null], boardP: [E.spawn('Crimp Grip'), null, null], feetDeck: [],
+    holdDeck: Array.from({ length: 6 }, (_, k) => H(200 + k, 5)),
+    piles: { draw: [], discard: [], exhaust: [], hand: [] } }, new E.RNG(1))
+  const high = turn(E.FLOW_HIGH - 1)   // clearing a hold pushes flow up to FLOW_HIGH
+  const low = turn(E.FLOW_AT - 1)      // ...only to FLOW_AT, below the dialed tier
+  ok(high.readAhead > low.readAhead, 'reaching FLOW_HIGH did not read further up the wall')
+  eq(high.pump, low.pump, 'high flow changed the pump — the cut clock relief crept back')
+})
 test('the preview is exact for every shape of deck on every kind of route', () => {
   /* The sweep. Seven deck shapes against four kinds of route — 28 combinations
      — so a rule that only misbehaves for one of them fails here rather than

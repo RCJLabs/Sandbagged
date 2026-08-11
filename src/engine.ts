@@ -29,6 +29,16 @@ export const FLOW_TAX = 1
    dyno and the track, never the explosive stat. */
 export const FLOW_HIGH = 4
 export const FLOW_MAX = 5
+/* ENG-24: the audit flagged that flow 3-5 does nothing for a deck with no
+   momentum/dyno cards — its one clock payoff, the unanswered-lane tax relief,
+   is already spent at FLOW_AT (HANG_TAX is 1, so the tax is 0 by flow 2, nothing
+   left to graduate). The obvious fix — easing the per-turn pump at FLOW_HIGH —
+   is the exact thing ENG-23 measured at +7 to +13 points and cut, so the top of
+   the bar pays in INFORMATION instead: dialed in, you read the coming holds. It
+   moves readAhead only, which resolution never consults and the greedy sim never
+   reads (the ROUTE-12 lesson), so it cannot touch the band — a real reward for a
+   steady deck that never touches the clock the flow-and-throw lesson protects. */
+export const FLOW_READ = 2
 export const BETA_GRIP = 1
 export const ATTEMPTS = 3        // v0.7: 4 → 3. Sessions must fit ~5 minutes.
 export const SKIN_MAX = 4
@@ -3849,7 +3859,13 @@ export function resolve(s: GameState, rng: RNG): GameState {
   const add = HANG_FLAT + tax * unanswered + cruxTax + (phaseOf(s)?.dTax ?? 0) + doubt
     + (LINES[s.line]?.dTax ?? 0)
   pump = Math.max(0, pump + add - gearMods(s.gear).shedPerTurn)
-  out = { ...out, pump, flow, turn: s.turn + 1, log: [...out.log, `Hanging. +${add} pump.`] }
+  // ENG-24: dialed in (FLOW_HIGH), you read the coming holds — the top of the
+  // flow bar's reward for a deck that has nothing to spend it on. Information,
+  // never the clock (see the constant); refillAndDraw nets it as holds arrive.
+  const flowRead = flow >= FLOW_HIGH
+    ? Math.min(holdDeckLocal.length, Math.max(readAhead, FLOW_READ)) : readAhead
+  out = { ...out, pump, flow, readAhead: flowRead, turn: s.turn + 1,
+    log: [...out.log, `Hanging. +${add} pump.${flow >= FLOW_HIGH ? ' Dialed in — you can read the wall.' : ''}`] }
   if (out.turn >= TURN_CAP + bm.dTurnCap)
     return { ...out, peakPump: Math.min(PUMP_MAX, Math.max(out.peakPump, out.pump)), phase: 'burnEnd', result: 'fall',
       log: [...out.log, 'The light has gone. That is the day — down you come.'] }
