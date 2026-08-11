@@ -333,6 +333,30 @@ test('walking away from the circuit banks what you did', () => {
   for (const k of ['level', 'owned', 'seen', 'ticked', 'hints'])
     eq(JSON.stringify(out[k]), JSON.stringify(mid[k]), `walking away lost ${k}`)
 })
+test('SKIRM-6: a deep Circuit zone offers a boon, not just a card', () => {
+  // a send that crosses FROM `score` INTO line score+1
+  const send = score => E.endSession({ ...E.freshRun(0, 0, 1), circuit: true, circuitScore: score,
+    bestCircuit: 20, skirmish: E.circuitRoute(score, new E.RNG(1)), result: 'send', inRun: false,
+    runDeck: E.DEFAULT_LOADOUT.map(E.spawn) }, new E.RNG(1))
+  // crossing into The Business (line 10) and Into the Dark (line 14) offers a boon,
+  // with the next line already queued behind it
+  for (const enter of [9, 13]) {
+    const out = send(enter)
+    eq(out.phase, 'gear', `entering line ${enter + 1} did not offer a boon`)
+    ok(out.gearOffers.some(id => E.isBoon(id)), `line ${enter + 1}'s offer holds no rule-breaker`)
+    ok(out.skirmish, 'the next line was not queued behind the offer')
+  }
+  // below the deep zones — including the enduro deed at line 8 — none is offered,
+  // so the mode's one pinned checkpoint is untouched
+  for (const enter of [5, 7]) ok(send(enter).phase !== 'gear', `line ${enter + 1} offered a boon too shallow`)
+  // taking the boon adds it and hands straight back to the next line
+  const offered = send(9)
+  const boon = offered.gearOffers.find(id => E.isBoon(id))
+  const after = E.pickGearStep(offered, boon)
+  eq(after.phase, 'circuitNext', 'the circuit boon pick did not return to the next line')
+  ok(after.boons.includes(boon), 'the boon was not taken')
+  ok(after.skirmish, 'the next line vanished after the pick')
+})
 test('the end of a session writes what it should and nothing else', () => {
   const rng = new E.RNG(11)
   const lived = { ...E.freshRun(6, 0, 5), inRun: false, skirmish: E.dailyRoute(),

@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.81 — RUN-12: the weekly ladder gets a deed and a share
+// SANDBAGGED v9.82 — SKIRM-6: the Circuit offers a boon at its deep zones
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -957,7 +957,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.81 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.82 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2020,9 +2020,13 @@ function startTutorial() {
 
   if (st.phase === 'gear') return (
     <div className={skin}>
-      <div className="h1" role="heading" aria-level={1}><Lettered t="THE NEXT RANGE" seed={41} /></div>
+      {/* SKIRM-6: the Circuit hands out boons at a deep-zone boundary, not from the van */}
+      <div className="h1" role="heading" aria-level={1}>
+        <Lettered t={st.circuit ? 'DEEPER IN' : 'THE NEXT RANGE'} seed={41} /></div>
       <InkRule seed={12} color="var(--ink)" />
-      <div className="sub">Something out of the van before you drive on.</div>
+      <div className="sub">{st.circuit
+        ? `${circuitZone(st.circuitScore).name} — this far in, the rock offers something back.`
+        : 'Something out of the van before you drive on.'}</div>
       <div style={{ marginTop: 8 }}>
         {st.gearOffers.map(id => {
           const b = boonById(id), g = gearById(id)

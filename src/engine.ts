@@ -3186,6 +3186,14 @@ export function endSession(s0: GameState, rng: RNG): GameState {
     s = gainXp({ ...s, circuitScore: n, sends: s.sends + 1,
       psyche: Math.min(PSYCHE_MAX, s.psyche + PSYCHE_SEND),
       bestCircuit: Math.max(s.bestCircuit, n) }, xpForSend(specOf(s).grade), rng)
+    // SKIRM-6: crossing into a deep zone (The Business at 10, Into the Dark at
+    // 14 — past the enduro deed at line 8) offers a boon, so the endless deck
+    // can break a RULE, not only grow a card every third line. The next line's
+    // route is set now so the pick returns straight to circuitNext.
+    const deepZone = circuitZone(n).floor === n && n >= 10
+    const boonOffer = deepZone ? gearOffers(s, rng) : []
+    if (boonOffer.length) return { ...s, beta, skirmish: circuitRoute(n, rng),
+      gearOffers: boonOffer, phase: 'gear' }
     // a card every third line, so the deck grows with the grade
     if (n % 3 === 0) return { ...s, beta, offers: rollOffers(rng, 3, false, Math.min(2, Math.floor(n / 6))),
       phase: 'reward' }
@@ -4483,6 +4491,9 @@ export function pickGearStep(s: GameState, id: string | null): GameState {
   const gear = g ? [...s.gear.filter(x => gearById(x)?.slot !== g.slot), g.id] : s.gear
   const boons = b ? [...s.boons, b.id] : s.boons
   const next = { ...s, gear, boons, gearOffers: [] }
+  // SKIRM-6: in the Circuit the boon offer sits mid-run and the next line's
+  // route is already set, so hand straight back to it rather than the map
+  if (s.circuit) return { ...next, phase: 'circuitNext' }
   return next.offers.length ? { ...next, phase: 'reward' } : toMapNext(next)
 }
 export type CampAction =
