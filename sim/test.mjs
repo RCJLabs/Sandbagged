@@ -671,8 +671,25 @@ test('every consumable does something and says so', () => {
   ok(E.KIT_MAX >= 1, 'the kit holds nothing')
   for (const c of E.CONSUMABLES) {
     ok(c.name && c.text.length > 10, `${c.id} does not explain itself`)
-    ok((c.shed ?? 0) > 0 || (c.draw ?? 0) > 0 || (c.powerAll ?? 0) > 0 || (c.burn ?? 0) > 0, `${c.name} does nothing`)
+    ok((c.shed ?? 0) > 0 || (c.draw ?? 0) > 0 || (c.powerAll ?? 0) > 0 || (c.burn ?? 0) > 0
+      || (c.gripCut ?? 0) > 0 || (c.skin ?? 0) > 0 || (c.psyche ?? 0) > 0, `${c.name} does nothing`)
   }
+  // CARD-14: the stub grew past four — a grip-cut, a skin repair, a psyche
+  // restore — and each new one-shot actually resolves through useKitStep
+  ok(E.CONSUMABLES.length >= 7, `the consumable kit is still a stub: ${E.CONSUMABLES.length}`)
+  const H = (uid, grip) => ({ uid, name: 'crimp', bite: 3, grip, crux: false, clean: false })
+  const base = over => ({ ...E.freshRun(0, 0, 5), inRun: true, skirmish: null, phase: 'climb',
+    boardH: [H(1, 8), H(2, 8), null], boardP: [null, null, null],
+    piles: { draw: [], discard: [], exhaust: [], hand: [] }, ...over })
+  const tick = E.useKitStep(base({ kit: ['tickstick'] }), 'tickstick', new E.RNG(1))
+  eq(tick.boardH[0].grip, 6, 'Tick Stick did not ease the wall')
+  eq(tick.boardH[1].grip, 6, 'Tick Stick missed a lane')
+  const salve = E.useKitStep(base({ kit: ['skinsalve'], skin: 2 }), 'skinsalve', new E.RNG(1))
+  ok(salve.skin > 2, 'Skin Salve patched no skin')
+  const pep = E.useKitStep(base({ kit: ['peptalk'], psyche: 1 }), 'peptalk', new E.RNG(1))
+  eq(pep.psyche, 2, 'Pep Talk steadied no psyche')
+  ok(E.useKitStep(base({ kit: ['peptalk'], psyche: E.PSYCHE_MAX }), 'peptalk', new E.RNG(1)).psyche === E.PSYCHE_MAX,
+    'Pep Talk pushed psyche past its ceiling')
 })
 test('a consumable is spent on use, applies, and never leaks into the deck', () => {
   const rng = new E.RNG(11)

@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.84 — ENG-24: dialed-in flow reads the wall (not the clock)
+// SANDBAGGED v9.85 — CARD-14: three more one-shots — closes the third audit
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -957,7 +957,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.84 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.85 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

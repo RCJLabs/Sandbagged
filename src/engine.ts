@@ -2145,6 +2145,10 @@ export type Consumable = {
   /** CARD-9: extra burns. A `burn` consumable does nothing mid-climb — it is
       spent at the fall, to buy another go on this boulder (`secondWindStep`). */
   burn?: number
+  /** CARD-14: three one-shots the four-item stub was missing — a grip-cut that
+      eases the whole wall, a skin repair, and a psyche restore. All mid-climb,
+      all off the band (the drafting sim never buys or spends kit). */
+  gripCut?: number; skin?: number; psyche?: number
 }
 export const CONSUMABLES: Consumable[] = [
   { id: 'chalkshot', name: 'Chalk Shot', shed: 5,
@@ -2155,6 +2159,13 @@ export const CONSUMABLES: Consumable[] = [
     text: 'Slid under the crux. +2 Power to every lane you have out, this turn.' },
   { id: 'secondwind', name: 'Second Wind', burn: 1,
     text: 'Chalk up, shake out, tie back in. One more burn on this line.' },
+  // CARD-14
+  { id: 'tickstick', name: 'Tick Stick', gripCut: 2,
+    text: 'Chalk the holds you can reach. −2 Grip to every hold on the wall.' },
+  { id: 'skinsalve', name: 'Skin Salve', skin: 3,
+    text: 'Tape and time. Patch your tips — +3 skin.' },
+  { id: 'peptalk', name: 'Pep Talk', psyche: 1,
+    text: 'Somebody talks you back onto it. +1 psyche.' },
 ]
 export const consumableById = (id: string) => CONSUMABLES.find(k => k.id === id)
 export const KIT_MAX = 2
@@ -2168,17 +2179,24 @@ export function useKitStep(s: GameState, id: string, rng: RNG): GameState {
   if (!k || i < 0) return s
   // CARD-9: a burn consumable has no mid-climb effect — it is spent at the fall
   // (secondWindStep). Refuse it here so a mis-tap during the climb cannot waste it.
-  if (k.burn && !k.shed && !k.draw && !k.powerAll) return s
+  if (k.burn && !k.shed && !k.draw && !k.powerAll && !k.gripCut && !k.skin && !k.psyche) return s
   const kit = s.kit.slice(); kit.splice(i, 1)
-  let pump = s.pump, piles = s.piles
-  const boardP = s.boardP.slice(), log: string[] = []
+  let pump = s.pump, piles = s.piles, skin = s.skin, psyche = s.psyche
+  const boardP = s.boardP.slice(), boardH = s.boardH.slice(), log: string[] = []
   if (k.shed) { pump = Math.max(0, pump - k.shed); log.push(`${k.name}. −${k.shed} pump.`) }
   if (k.draw) { piles = pileDraw(piles, k.draw, rng); log.push(`${k.name}. Draw ${k.draw}.`) }
   if (k.powerAll) {
     for (let j = 0; j < 3; j++) if (boardP[j]) boardP[j] = { ...boardP[j]!, power: boardP[j]!.power + k.powerAll }
     log.push(`${k.name}. +${k.powerAll} Power everywhere.`)
   }
-  return { ...s, kit, pump, piles, boardP,
+  // CARD-14: soften the whole wall / patch skin / steady the head
+  if (k.gripCut) {
+    for (let j = 0; j < 3; j++) if (boardH[j]) boardH[j] = { ...boardH[j]!, grip: Math.max(1, boardH[j]!.grip - k.gripCut) }
+    log.push(`${k.name}. −${k.gripCut} Grip to every hold.`)
+  }
+  if (k.skin) { skin = Math.min(RUN_SKIN + styleMods(s.style).skin, skin + k.skin); log.push(`${k.name}. Skin patched.`) }
+  if (k.psyche) { psyche = Math.min(PSYCHE_MAX, psyche + k.psyche); log.push(`${k.name}. +${k.psyche} psyche.`) }
+  return { ...s, kit, pump, piles, boardP, boardH, skin, psyche,
     peakPump: Math.min(PUMP_MAX, Math.max(s.peakPump, pump)), log: [...s.log, ...log] }
 }
 
