@@ -4238,7 +4238,19 @@ export function previewLane(s0: GameState, i: number): LanePreview {
   const ab = abilityOf(hold)
   let power = powerAgainst(s, card, hold, i, live)
   if (ab === 'Committing' && power < 2) power = 0
-  const target = gripFor(s, hold)
+  /* ENG-26: resolve mutates this lane's hold grip BEFORE it resolves — a
+     chipping rest works it down (the Kneebar boon's restChips, or a CARD-11
+     restChip card) and a curse sharpens it (hex) — so the target must be read
+     off the same adjusted hold, or the preview reports the wrong grip on
+     exactly the turn one of those lands here. Mirrors resolve's order and its
+     clamps (rest chips floor at 0; hex does not). */
+  const bmL = boonMods(s.boons)
+  const noRestL = phaseOf(s)?.noRest === true || mutMods(s.mutators).noShakes || bmL.noRests
+  let g0 = hold.grip
+  if (bmL.restChips && card.shed > 0) g0 = Math.max(0, g0 - bmL.restChips)
+  if (!noRestL && card.restChip) g0 = Math.max(0, g0 - card.restChip)
+  if (card.hex) g0 = g0 + card.hex
+  const target = gripFor(s, g0 === hold.grip ? hold : { ...hold, grip: g0 })
   const snapped = card.fx === 'snap' && target <= 3
   const isDyno = card.fx === 'commit'
   const gripLeft = snapped ? 0 : target - power
@@ -4293,9 +4305,16 @@ export function previewPump(s0: GameState, lanes?: LanePreview[]): number {
     return pv.hold && !pv.clears && (!pv.card || pv.blows)
   }).length
   const hooked = s.boardP[2]?.fx === 'hooked'
+  /* ENG-26: resolve taxes holds whose ABILITY is Committing (`abilityOf`), over
+     the post-resolution board (a cleared hold is gone). The preview keyed on the
+     `h.crux` FLAG instead — and the allCrux boss phase promotes ordinary holds
+     to crux:true while leaving their base ability (a jug stays a Rest), so the
+     flag was set where the ability was not, and the preview over-reported the
+     tax on exactly that phase. Key on the same ability resolve does; `abilityOf`
+     already returns '' for a brushed-clean hold, so the old !h.clean is subsumed. */
   const cruxTax = hooked ? 0 : [0, 1, 2].filter(i => {
     const h = s.boardH[i]
-    return h && !L[i].clears && !h.clean && h.crux
+    return h && !L[i].clears && abilityOf(h) === 'Committing'
   }).length
   const doubt = s.inRun && s.psyche <= DOUBT_AT ? 1 : 0
   pump += HANG_FLAT + tax * unanswered + cruxTax + (phaseOf(s)?.dTax ?? 0) + doubt

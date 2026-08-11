@@ -1686,6 +1686,44 @@ test('CARD-15: the reward pool is real and carries the modern texture', () => {
   ok(below.some(c => c.synergy), 'no synergy specialist reaches a reward')
 })
 
+test('ENG-26: the preview reads the same board resolve does', () => {
+  /* The exact-preview pillar (UX-4/ENG-19) broke in two spots. (a) the tax:
+     resolve counts holds whose ABILITY is Committing, the preview counted the
+     crux FLAG — and the allCrux boss phase sets the flag on ordinary holds
+     without the ability, so the preview over-taxed there. (b) the grip: resolve
+     chips (restChip) or sharpens (hex) a lane's hold BEFORE it resolves, but the
+     preview read the un-mutated grip, so it disagreed on whether that lane
+     cleared. Each case below commits expecting one thing and must get it. */
+  const base = { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null, phase: 'climb',
+    gear: [], boons: [], mutators: [], weather: 1, rock: 0, turn: 1, flow: 0,
+    holdDeck: [], worked: [], order: [], fxLane: ['', '', ''],
+    piles: { draw: [], discard: [], exhaust: [], hand: [] } }
+  const pumpOf = s => E.previewPump(s, [0, 1, 2].map(i => E.previewLane(s, i)))
+
+  // (a) a promoted hold: the crux FLAG set, but a jug's Rest ability. resolve
+  // does not tax it (abilityOf ≠ Committing); the preview must not either.
+  const jug = { uid: 1, name: 'jug', bite: 2, grip: 3, crux: true, clean: false }
+  const s1 = { ...base, boardH: [jug, null, null], boardP: [null, null, null], pump: 0 }
+  eq(pumpOf(s1), E.resolve(s1, new E.RNG(1)).pump,
+    'the preview taxes an allCrux-promoted hold the resolve does not')
+
+  // (b1) a hex curse sharpens its lane BEFORE answering it: Split Tip (Power 2,
+  // hex 1) on a Grip-2 hold clears at 2 but not at 3, so resolve leaves it up.
+  const crimp = { uid: 2, name: 'crimp', bite: 2, grip: 2, crux: false, clean: false }
+  const s2 = { ...base, boardH: [crimp, null, null], boardP: [E.spawn('Split Tip'), null, null],
+    order: [0], pump: 0 }
+  eq(E.previewLane(s2, 0).clears, E.resolve(s2, new E.RNG(1)).boardH[0] === null,
+    'the preview ignores the hex the cursed lane takes before it resolves')
+
+  // (b2) a chipping rest works its own hold down first: Chalk the Hold (restChip
+  // 2, Power 0) on a Grip-2 hold clears it — the preview must show the clear.
+  const crimp2 = { uid: 3, name: 'crimp', bite: 2, grip: 2, crux: false, clean: false }
+  const s3 = { ...base, boardH: [crimp2, null, null], boardP: [E.spawn('Chalk the Hold'), null, null],
+    order: [0], pump: 3 }
+  eq(E.previewLane(s3, 0).clears, E.resolve(s3, new E.RNG(1)).boardH[0] === null,
+    'the preview ignores the restChip that works the hold before it resolves')
+})
+
 test('the route telegraphs, then acts, exactly once', () => {
   // ENG-11. A move announced one turn and applied the next — if it can fire
   // twice it is a hidden penalty rather than a fight you can read.
