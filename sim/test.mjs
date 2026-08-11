@@ -1712,10 +1712,11 @@ if (SLOW) {
        policy could see it, lifted the low-journal bands (it is journal-
        independent power), so the 7- and 14-page bands converged to within ~1
        point — and at n=250 the ~3-point per-band SE flicked them into a benign
-       inversion (7=51.6 over 14=49.2). Verified monotonic where it is readable:
-       n=600 reads 31.8 / 45.8 / 46.5 and n=1000 reads 34.1 / 47.6 / 48.8. Same
-       fix ROUTE-8 and CARD-9 took — measure the property at a sample that can
-       show it, not loosen the assertion. */
+       inversion (7=51.6 over 14=49.2). Same fix ROUTE-8 and CARD-9 took —
+       measure the property at a sample that can show it, not loosen it.
+       v9.89 (CARD-15): the richer reward pool lifted every band (the whole re-pin
+       to ~52); n=600 now reads ~40 / ~49 / ~53 and n=1000 ~36 / ~49 / ~52, still
+       monotonic and still worth well over 5 points to read the journal. */
     const out = execSync('node sim/run.mjs campaign 600', { encoding: 'utf8' })
     const found = [...out.matchAll(/pages ([\d.]+)/g)].map(m => Number(m[1]))
     ok(found.length >= 1, 'the harness stopped reporting pages found')
@@ -1764,9 +1765,22 @@ if (SLOW) {
        drafter values a partner, the policy seats the pair — and the band was
        re-verified: n=300 46.7, n=600 46.5, dead on the pin and tighter than the
        44.7/47.2 it replaced. Opposition made visible is a balanced archetype,
-       not a hidden lever. */
-    ok(full > 40 && full < 58,
-      `the campaign completes ${full}% with a full journal — ~46, reverified at v9.87 (ENG-25)`)
+       not a hidden lever.
+       v9.89 (CARD-15): the pin is DELIBERATELY re-set to ~52 (n=300 48.7,
+       n=600 53.0) as a joint balance pass agreed with Evan. The reward pool had
+       been a frozen 22-card subset and the old ~46 band was structurally held by
+       that thinness — a genuine texture refresh (tough/friction/static + the
+       synergy specialists) cannot hold ~46, even a same-size two-card swap read
+       53.7, and BAL-13 proved the early bosses cannot open offsetting headroom
+       (they are not the completion bottleneck). It is a global lever, so it
+       rippled: the ROUTE-8 direct line became a +7.8 free win (the richer pool
+       answers its extra cruxes) — retuned to `dClear:0` so it reads −2 vs the
+       guide — and the Onsighter sank to 4.8% under its floor — bought back with
+       `firstTurnPower 2→3` to 8.8%. Floor raised 40→44 below to defend the new
+       pin: a drift back toward the old thin-pool ~44 is now caught, not waved
+       through. */
+    ok(full > 44 && full < 58,
+      `the campaign completes ${full}% with a full journal — ~52 (n=300 ~49), re-pinned at v9.89 (CARD-15)`)
     ok(pcts[0] < full - 5, `reading his journal is worth ${(full - pcts[0]).toFixed(1)} points`)
   })
   test('the acts get deadlier in order', () => {

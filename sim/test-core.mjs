@@ -1657,6 +1657,35 @@ test('BAL-13: the early bosses are fights, not flat routes', () => {
   }
 })
 
+test('CARD-15: the reward pool is real and carries the modern texture', () => {
+  /* The pool was a frozen 22-card subset — mechanics added since were
+     undraftable as a climb reward. This pins the refresh: every name resolves
+     to a real card of its tier (a typo would have rollOffers spawn a blank),
+     and the texture that was missing (tough / friction / static + the synergy
+     specialists) is now present below the rare tier. The rare tier is
+     deliberately left untouched — it is the dominant band lever — so this does
+     not assert any rare additions. The completion cost of the refresh, and the
+     ROUTE-8 / Onsighter ripples it forced, are pinned by the slow guards. */
+  const tiers = [['common', E.REWARDS.common], ['uncommon', E.REWARDS.uncommon],
+    ['rare', E.REWARDS.rare]]
+  for (const [tier, names] of tiers)
+    for (const n of names) {
+      const c = E.CARDS[n]
+      ok(c, `reward "${n}" (${tier}) is not a real card — rollOffers would spawn a blank`)
+      ok(c.rarity === tier || c.rarity === 'starter', `${n} is ${c && c.rarity}, offered as ${tier}`)
+    }
+  // rollOffers only ever yields real, spawned cards
+  const rng = new E.RNG(9)
+  for (let a = 0; a < 3; a++) for (const c of E.rollOffers(rng, 3, false, a))
+    ok(c && c.name && E.CARDS[c.name], `rollOffers produced a blank in act ${a + 1}`)
+  // the texture the refresh set out to add is now draftable
+  const below = [...E.REWARDS.common, ...E.REWARDS.uncommon].map(n => E.CARDS[n])
+  ok(below.some(c => c.fx === 'tough'), 'no tough card reaches a reward')
+  ok(below.some(c => c.fx === 'friction'), 'no friction card reaches a reward')
+  ok(below.some(c => c.fx === 'static'), 'no static card reaches a reward')
+  ok(below.some(c => c.synergy), 'no synergy specialist reaches a reward')
+})
+
 test('the route telegraphs, then acts, exactly once', () => {
   // ENG-11. A move announced one turn and applied the next — if it can fire
   // twice it is a hidden penalty rather than a fight you can read.

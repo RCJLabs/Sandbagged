@@ -256,15 +256,20 @@ export type Line = { id: string; name: string; text: string
    points — the compounding trap this project has hit five times), grip is
    superlinear and nearly as violent, and crux is almost free. Only hold count
    is a medium lever, and shorter is always easier. So the lines trade TEXTURE,
-   not difficulty: the direct keeps just one fewer hold but four more cruxes, a
-   short cruxy line that a powerful deck eats and a weak one walls on; the
-   traverse drops two cruxes at the same height, the safe way past the hard
-   moves. All three land within a point of the guide for a default deck — none a
-   free win, none a trap — with the deck lean underneath. See the balance guard. */
+   not difficulty: the direct stacks four more cruxes at the SAME height, a cruxy
+   line that a powerful deck eats and a weak one walls on; the traverse drops two
+   cruxes at the same height, the safe way past the hard moves. All three land
+   within a few points of the guide for a default deck — none a free win, none a
+   trap — with the deck lean underneath. See the balance guard.
+   v9.89 (CARD-15): the direct used to keep one fewer hold (`dClear:-1`), which
+   was fine against the thin pool but a +7.8 free win once the richer pool could
+   answer its extra cruxes — a short line skips endurance, and endurance is what
+   the pool bought. Neutralised to `dClear:0` (same height, still +4 cruxes): the
+   line's identity is now the cruxes alone, and it lands ~2 under the guide. */
 export const LINES: Line[] = [
   { id: 'guide', name: 'As it goes', text: 'The line in the book. No arguments.' },
-  { id: 'direct', name: 'The direct', dClear: -1, dCrux: 4,
-    text: 'Straight up it. One fewer hold to work, but four more cruxes on the way.' },
+  { id: 'direct', name: 'The direct', dClear: 0, dCrux: 4,
+    text: 'Straight up it. Same height, but four more cruxes on the way.' },
   { id: 'traverse', name: 'The traverse', dCrux: -2, dClear: 1,
     text: 'Out left and back in, past the worst of it. Two fewer cruxes, but the long way — more holds to work before the top.' },
 ]
@@ -1845,11 +1850,17 @@ export const ARCHETYPES: Archetype[] = [
      extra burns — the compensation is being strong, not getting more goes. Her
      deck reads the line as it goes (Sight the Line) rather than working it.
      Landed at 7.7% against a 5% floor and a 1.37x spread — every lever below is
-     there because the sim asked for it, dHand:2 being a cliff to 11.8%. */
+     there because the sim asked for it, dHand:2 being a cliff to 11.8%.
+     v9.89 (CARD-15): the richer reward pool feeds her synergy specialists she
+     cannot build around (no beta, a fixed grindy hand), so it diluted her deck
+     and dropped her to 4.8% under the floor while lifting the others. Bought
+     back with firstTurnPower 2→3 (she commits even harder off the first move) —
+     to 8.8%, back in the pack (spread 1.45x). dContact:2 was tried first and was
+     the same cliff dHand:2 is (14.7%); firstTurnPower is the fine lever. */
   { id: 'onsight', name: 'The Onsighter', unlock: 16, gear: 'ball',
     text: 'Walks up, ties in, and climbs it. Strong, unfussy, no tick marks.',
     sig: 'Onsight', sigText: 'No beta ever — every hold stays a guess — but nothing the weather does touches you, your hand runs a card deeper, and you commit hard off the first move.',
-    noBeta: true, ignoreWeather: true, dHand: 1, dContact: 1, dSkin: 1, firstTurnPower: 2,
+    noBeta: true, ignoreWeather: true, dHand: 1, dContact: 1, dSkin: 1, firstTurnPower: 3,
     deed: 'flash',   // META-6: earned by a flash — a first-try send, which is the whole idea
     loadout: L(['Crimp Grip', 2], ['Open Hand', 2], ['Lock Off', 2], ['Mantle', 1],
       ['Smear', 2], ['Flag', 1], ['Shake Out', 2], ['Breathe', 1],
@@ -2681,10 +2692,24 @@ export function applyOutcome(s: GameState, o: EventOutcome, rng: RNG): GameState
   return { ...n, eventResult: o.text ?? '' }
 }
 
+/* CARD-15 (v9.89): the reward pool was a frozen 22-card subset — the vanilla
+   moves the game shipped with. Mechanics added since (tough, friction, an extra
+   static, the synergy specialists) were undraftable as a climb reward, so a
+   campaign deck could never express them. Added here across common and uncommon;
+   the rare tier is left untouched on purpose (it is the dominant band lever).
+   This is a DELIBERATE, dated re-pin and a joint balance pass — the ~46 band was
+   structurally held by the pool being thin, so enriching it moves the pin to ~52
+   AND lifts the ROUTE-8 alternate lines (retuned this version) and would sink the
+   Onsighter under its floor (bought back this version). Carved out: the strong
+   rare-only keywords (echo/settle2/weight/momentum/guard) and snap, each of which
+   pushed a fuller refresh to 58%; chip/sequences/protection/skin-cost as their
+   own sub-systems; and extra feet cards (the pool already covers that lever). */
 export const REWARDS = {
   common: ['Gaston', 'Sloper Slap', 'Undercling', 'Mantle', 'Pinch Grip', 'Deadpoint',
-    'Heel Hook', 'Drop Knee', 'Flag', 'High Step', 'Breathe', 'Brush'],
-  uncommon: ['Cross-Through', 'Lock & Bump', 'Dyno', 'Toe Hook', 'Visualize', 'Try-Hard Scream'],
+    'Heel Hook', 'Drop Knee', 'Flag', 'High Step', 'Breathe', 'Brush',
+    'Hand Jam', 'Palm Press', 'Static Reach'],
+  uncommon: ['Cross-Through', 'Lock & Bump', 'Dyno', 'Toe Hook', 'Visualize', 'Try-Hard Scream',
+    'Crimp Specialist', 'Pocket Poacher'],
   rare: ['Iron Fingers', 'Static Lock', 'Perfect Beta', 'Send Train'],
 }
 /** Reward quality scales with the act — later ranges hand out better gear,
