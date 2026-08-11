@@ -1707,8 +1707,16 @@ if (SLOW) {
   test('the journal can actually be read', () => {
     /* NARR-11. Fifteen pages is only an improvement if you can find them. Six
        of them used to have their own event branch and the other eight had none,
-       so a run found 0.4 pages and the full journal was 35 expeditions away. */
-    const out = execSync('node sim/run.mjs campaign 250', { encoding: 'utf8' })
+       so a run found 0.4 pages and the full journal was 35 expeditions away.
+       v9.87 (ENG-25): raised n=250 → n=600. Opposition, once the drafter and
+       policy could see it, lifted the low-journal bands (it is journal-
+       independent power), so the 7- and 14-page bands converged to within ~1
+       point — and at n=250 the ~3-point per-band SE flicked them into a benign
+       inversion (7=51.6 over 14=49.2). Verified monotonic where it is readable:
+       n=600 reads 31.8 / 45.8 / 46.5 and n=1000 reads 34.1 / 47.6 / 48.8. Same
+       fix ROUTE-8 and CARD-9 took — measure the property at a sample that can
+       show it, not loosen the assertion. */
+    const out = execSync('node sim/run.mjs campaign 600', { encoding: 'utf8' })
     const found = [...out.matchAll(/pages ([\d.]+)/g)].map(m => Number(m[1]))
     ok(found.length >= 1, 'the harness stopped reporting pages found')
     const natural = Math.min(...found)
@@ -1746,9 +1754,19 @@ if (SLOW) {
        a rarity pool changes pool.length and reshuffles every offer roll, so the
        n=300 point estimate slid to 45.3 — but the chip effect itself is
        band-neutral (measured identical at chip 0/1/2) and n=600 reads 47.0, so
-       the ~46 pin holds; the move is reshuffle, not difficulty. */
+       the ~46 pin holds; the move is reshuffle, not difficulty.
+       v9.87 (ENG-25): the tuning sim had been blind to opposition — `cardValue`
+       had no `opposes` term so the drafter never built toward the 14-card
+       compression identity, and `autoPlay` filled one hand lane at a time
+       against an empty partner, so every opposition card scored at its −2 alone
+       value and a pair never formed. This is an on-band change (it moves both
+       the deck the sim drafts and the line it plays). Both halves fixed — the
+       drafter values a partner, the policy seats the pair — and the band was
+       re-verified: n=300 46.7, n=600 46.5, dead on the pin and tighter than the
+       44.7/47.2 it replaced. Opposition made visible is a balanced archetype,
+       not a hidden lever. */
     ok(full > 40 && full < 58,
-      `the campaign completes ${full}% with a full journal — ~46, reverified at v9.74 (CARD-11)`)
+      `the campaign completes ${full}% with a full journal — ~46, reverified at v9.87 (ENG-25)`)
     ok(pcts[0] < full - 5, `reading his journal is worth ${(full - pcts[0]).toFixed(1)} points`)
   })
   test('the acts get deadlier in order', () => {

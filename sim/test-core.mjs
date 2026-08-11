@@ -1597,6 +1597,48 @@ test('opposition makes which hand a question', () => {
     `${n} needs opposition and does not say so`)
 })
 
+test('ENG-25: the sim can see opposition — it drafts toward it and seats the pair', () => {
+  /* powerAgainst has scored opposition since ENG-12, but the two halves of the
+     tuning sim were blind to it: `cardValue` had no `opposes` term, so the
+     drafter never built toward the 14-card compression identity, and `autoPlay`
+     filled one hand lane at a time against an empty partner, so every
+     opposition card was evaluated at its −2 alone value and a pair never
+     formed. This pins both fixes. */
+  const base = { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null,
+    gear: [], boons: [], mutators: [], pump: 0 }
+  const oppNames = Object.keys(E.CARDS).filter(n => {
+    const c = E.CARDS[n]; return c.opposes && (c.lane === 'hand' || c.lane === 'any')
+  })
+  ok(oppNames.length >= 2, `only ${oppNames.length} opposition hand moves to pair`)
+  const g1 = E.spawn(oppNames[0]), g2 = E.spawn(oppNames[1])
+  // a plain control move of the SAME base power and no power-shifting fx: it
+  // beats a lone opposition card (−2) but loses to a seated pair (+2), so it is
+  // exactly the card the old greedy fill wrongly kept in a lane.
+  const shift = ['greedy', 'momentum', 'weight', 'precise']
+  const plainName = Object.keys(E.CARDS).find(n => {
+    const c = E.CARDS[n]
+    return c.kind === 'move' && !c.opposes && (c.lane === 'hand' || c.lane === 'any')
+      && c.power === g1.power && !shift.includes(c.fx ?? '')
+  })
+  ok(plainName, 'no equal-power plain control card to discriminate the fix')
+  const plain = E.spawn(plainName)
+  const hold = { uid: 10, name: 'crimp', bite: 3, grip: 9, crux: false, clean: false }
+  const st = { ...base, boardH: [hold, { ...hold, uid: 11 }, null],
+    boardP: [null, null, null],
+    piles: { ...base.piles, hand: [g1, plain, g2] } }
+  const out = E.autoPlay(st, new E.RNG(3))
+  ok(out.boardP[0]?.opposes && out.boardP[1]?.opposes,
+    'autoPlay kept the plain card in a lane instead of seating the opposition pair')
+  // and the seated pair reads the full swing the mechanic promises
+  const alone = E.powerAgainst({ ...st, boardP: [g1, null, null] }, g1, hold, 0)
+  const paired = E.powerAgainst(out, out.boardP[0], hold, 0)
+  eq(paired - alone, E.OPPOSE_PAIR - E.OPPOSE_ALONE,
+    'the seated pair does not read the full opposition swing')
+  // the drafter now values a second opposition card above a lone one
+  ok(E.cardValue(base, g2, [g1]) > E.cardValue(base, g2, [plain]),
+    'cardValue is blind to a partner already in the deck')
+})
+
 test('the route telegraphs, then acts, exactly once', () => {
   // ENG-11. A move announced one turn and applied the next — if it can fire
   // twice it is a hidden penalty rather than a fight you can read.

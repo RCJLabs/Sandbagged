@@ -4007,9 +4007,28 @@ export function autoPlay(s: GameState, rng: RNG): GameState {
     if (rests.length && st.pump >= PUMP_MAX - 4 && real.length === 0) pick = rests[0]
     else if (real.length) {
       const target = gripFor(st, hold)
-      const clears = real.filter(c => powerAgainst(st, c, hold, i) >= target)
+      /* ENG-25: opposition pays +2 only with a hand partner pulling the other
+         way, and −2 alone. The greedy fill placed one hand lane at a time
+         against an empty partner, so every opposition card was scored at its
+         −2 alone value and a pair never formed — a 14-card mechanic the tuning
+         sim literally could not see. When the other hand lane is an open hold
+         and a second opposition card is in hand, score this one as the pair it
+         is about to become; once the first is placed, the second lane reads the
+         real partner off the board, so the +2 is counted once, not twice. */
+      const openOther = i < 2 && !!st.boardH[1 - i] && !st.boardP[1 - i]
+      const scorePow = (c: Card) => {
+        if (c.opposes && openOther) {
+          const partner = real.find(x => x.opposes && x.uid !== c.uid)
+          if (partner) {
+            const live = st.boardP.slice(); live[1 - i] = partner
+            return powerAgainst(st, c, hold, i, live)
+          }
+        }
+        return powerAgainst(st, c, hold, i)
+      }
+      const clears = real.filter(c => scorePow(c) >= target)
       pick = (clears.length ? clears : real).reduce((a, b) =>
-        (powerAgainst(st, b, hold, i) > powerAgainst(st, a, hold, i) ? b : a))
+        (scorePow(b) > scorePow(a) ? b : a))
     } else pick = rests[0]
     st.boardP[i] = pick; st.piles = pileFromHand(st.piles, pick.uid)
   }
@@ -4391,6 +4410,13 @@ export function cardValue(s: GameState, c: Card, deck: Card[]): number {
   if (c.synergy) v += ((tags[c.synergy] ?? 0) / SYNERGY_PER) * 2.2
   const t = tagOf(c)
   if (t) v += deck.filter(x => x.synergy === t).length * 1.6
+
+  // ENG-25: opposition is a pair mechanic (−2 alone, +2 with a partner pulling
+  // the other way), so it values like a light synergy — the first is a mild
+  // liability, every one after it turns a −2 into a seatable +2 pair. Without
+  // this the drafter scored the whole 14-card compression identity on raw
+  // stats and never built toward it.
+  if (c.opposes) v += deck.some(x => x.opposes) ? 2 : -1
 
   // keywords that measured well in the per-card probe
   if (c.anchor) v += 3
