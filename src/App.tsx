@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.76 — META-10: the mastery deeds are honest (3rd audit begins)
+// SANDBAGGED v9.77 — VIS-7: the forecast reads without colour, on every node
 
 import { useState, useMemo, useEffect } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -944,7 +944,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.76 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.77 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -1322,7 +1322,7 @@ function startTutorial() {
                     unless it goes — and if it goes, gear and a card.</div>
                   <div className="sub" style={{ marginTop: 2,
                     color: good > 0 ? 'var(--green)' : good < 0 ? 'var(--red)' : 'var(--fade)' }}>
-                    ☁ {w.name} · ⛰ {rk.name}</div>
+                    ☁ {w.name} · ⛰ {rk.name}{good > 0 ? ' · ▲ in nick' : good < 0 ? ' · ▼ out of nick' : ''}</div>
                 </div>)
             }
             if (n.type === 'established') {
@@ -1339,7 +1339,7 @@ function startTutorial() {
                   <div className="sub" style={{ color: 'var(--green)' }}>{r.note}</div>
                   <div className="sub" style={{ marginTop: 2,
                     color: good > 0 ? 'var(--green)' : good < 0 ? 'var(--red)' : 'var(--fade)' }}>
-                    ☁ {w.name} · ⛰ {rk.name}</div>
+                    ☁ {w.name} · ⛰ {rk.name}{good > 0 ? ' · ▲ in nick' : good < 0 ? ' · ▼ out of nick' : ''}</div>
                 </div>)
             }
             if (n.type === 'fa') {
@@ -1353,6 +1353,9 @@ function startTutorial() {
                   <div className="sub">{r.style} · nobody has been up it, so nobody knows how long</div>
                   <div className="sub" style={{ color: 'var(--red)' }}>
                     A season of dirt on every hold. Bring a brush.</div>
+                  <div className="sub" style={{ marginTop: 2,
+                    color: good > 0 ? 'var(--green)' : good < 0 ? 'var(--red)' : 'var(--fade)' }}>
+                    ☁ {w.name} · ⛰ {rk.name}{good > 0 ? ' · ▲ in nick' : good < 0 ? ' · ▼ out of nick' : ''}</div>
                 </div>)
             }
             if (n.type === 'shop') return (

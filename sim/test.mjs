@@ -460,6 +460,17 @@ test('UX-18: the Collection is a codex — mark, text and family, not a checklis
   // unowned cards stay a mystery — the text must be gated on `have`
   ok(/have \?/.test(coll), 'the codex reveals unowned cards')
 })
+test('VIS-7: the forecast never rides on colour alone, on any node', () => {
+  const app = readFileSync('src/App.tsx', 'utf8')
+  // every conditions line on the map (☁ weather · ⛰ rock) must carry the
+  // non-colour ▲/▼ cue — colour-blind players get no read otherwise, and the
+  // project / FA / established nodes used to render it green/red with no arrow
+  const conditions = app.match(/☁ \{w\.name\} · ⛰ \{rk\.name\}/g) ?? []
+  const cued = app.match(/☁ \{w\.name\} · ⛰ \{rk\.name\}\{good > 0 \? ' · ▲ in nick'/g) ?? []
+  ok(conditions.length >= 4, `only ${conditions.length} node types show the forecast`)
+  eq(cued.length, conditions.length,
+    `${conditions.length - cued.length} forecast line(s) still ride on colour alone`)
+})
 test('VIS-6: the family mark reaches every card-list screen', () => {
   const app = readFileSync('src/App.tsx', 'utf8')
   // the scannable shape mark used to stop at the hand and board; a draft screen
