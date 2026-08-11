@@ -1734,9 +1734,19 @@ if (SLOW) {
        the three — a shorter climb banks less pump than extra cruxes ever cost —
        so always taking it beat always-guide by six points of free completion.
        The lines trade texture now, not difficulty: none may beat the guide by
-       more than a hair, and none may sink into a trap far below it. */
+       more than a hair, and none may sink into a trap far below it.
+       v9.80 (CARD-12): raised from n=150 to n=500. At 150 the per-line SE is
+       ~4 points against a 3-point ceiling, so this passed on luck while the
+       traverse was quietly a ~+3.5 free win; at 300 the GUIDE sample still
+       swung enough (44.7–47.3 with the new cards' offer reshuffle) to flick a
+       benign +1 direct up over the ceiling. At 500 every line settles: guide on
+       its ~47 pin, direct +1, traverse −3. The traverse was retuned the same
+       version — it had dropped two cruxes for the same height (pure difficulty),
+       so it now also runs `dClear +1` (the long way is longer), a real
+       endurance-vs-power trade. The band the drift guard pins is the GUIDE line
+       (default `line:0`), untouched by any of this. */
     const full = line => {
-      const out = execSync(`LINE=${line} SHARP_AT=99 node sim/run.mjs campaign 150`, { encoding: 'utf8' })
+      const out = execSync(`LINE=${line} SHARP_AT=99 node sim/run.mjs campaign 500`, { encoding: 'utf8' })
       const pcts = [...out.matchAll(/completion\s+([\d.]+)%/g)].map(m => Number(m[1]))
       return pcts[pcts.length - 1]
     }

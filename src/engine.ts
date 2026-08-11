@@ -255,8 +255,8 @@ export const LINES: Line[] = [
   { id: 'guide', name: 'As it goes', text: 'The line in the book. No arguments.' },
   { id: 'direct', name: 'The direct', dClear: -1, dCrux: 4,
     text: 'Straight up it. One fewer hold to work, but four more cruxes on the way.' },
-  { id: 'traverse', name: 'The traverse', dCrux: -2,
-    text: 'Out left and back in, past the worst of it. Two fewer cruxes for the same height.' },
+  { id: 'traverse', name: 'The traverse', dCrux: -2, dClear: 1,
+    text: 'Out left and back in, past the worst of it. Two fewer cruxes, but the long way — more holds to work before the top.' },
 ]
 export type RunRecord = {
   seed: number; arch: number; style: number; rope: boolean; circuit: boolean
@@ -1029,6 +1029,10 @@ for (const c of [
   rest('Hands-Free', 8, 2, 'common', { text: 'Rest · shed 2. Anchor.' }),
 
   // ---------- UNCOMMON · hands ----------
+  // CARD-12: a second snap — Deadpoint clears a weak hold at low contact; Pounce
+  // trades some of that finish for staying power, so it snaps AND holds if the
+  // hold turns out to be a touch too stiff. The crux-clear identity, one step up.
+  mv('Pounce', 4, 5, 'uncommon', { fx: 'snap', text: 'Snap · clears Grip 3 or less outright.' }),
   mv('Cross-Through', 3, 7, 'uncommon', { opposes: true, text: 'Wrong hand, right hold. Opposition.' }),
   mv('Lock & Bump', 4, 5, 'uncommon', { text: 'Two moves in one breath.' }),
   mv('Iron Cross', 4, 6, 'uncommon', { opposes: true, text: 'Both arms, nothing spare. Opposition.' }),
@@ -1187,7 +1191,15 @@ for (const c of [
   mv('Bomber Jam', 4, 9, 'rare', { fx: 'tough', anchor: true, text: 'Tough · Anchor.' }),
   mv('Muscle Memory', 4, 7, 'rare', { fx: 'echo', text: 'Echo · returns to hand when it clears.' }),
   mv('Ripcord', 3, 6, 'rare', { fx: 'peel', text: 'Peel · draw a card when it blows.' }),
+  // CARD-12: a second peel with a different shape — commit hard, and if it rips
+  // you grab something. More Power, less Contact than Ripcord, so it blows (and
+  // peels) more often; a finisher you throw knowing the safety net is there.
+  mv('Bail Out', 4, 4, 'rare', { fx: 'peel', text: 'Peel · draw a card when it blows.' }),
   mv('Read And React', 3, 7, 'rare', { fx: 'cycle', text: 'Cycle · draws a card each turn it holds on.' }),
+  // CARD-12: a second cycle — low Power, high Contact, so it clings to a hold
+  // for turns and keeps feeding you cards while it does. The patient engine to
+  // Read And React's aggressive one.
+  mv('Latch And Look', 2, 9, 'rare', { fx: 'cycle', text: 'Cycle · draws a card each turn it holds on.' }),
   rest('The Rest', 12, 5, 'rare', { text: 'Rest · shed 5. Anchor.' }),
   ft('Perfect Heel', 2, 10, 'rare', { support: 2, anchor: true, text: 'Support 2. Anchor.' }),
   ft('No-Hands Rest', 0, 11, 'rare', { support: 2, shed: 5, anchor: true, text: 'Support 2 · shed 5.' }),

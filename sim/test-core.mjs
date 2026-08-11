@@ -1866,6 +1866,23 @@ test('CARD-13: a curse does something — it sharpens the hold you dump it on', 
   // and it is a real DOWNSIDE — a hex only ever raises grip, never lowers it
   ok(curse.hex > 0, 'a hex that helps you is not a curse')
 })
+test('CARD-12: the singleton effects have draftable breadth now', () => {
+  // snap / peel / cycle were carried by exactly one card each; each identity now
+  // has at least two, and the siblings are genuinely different cards, not clones
+  for (const fx of ['snap', 'peel', 'cycle']) {
+    const cards = Object.values(E.CARDS).filter(c => c.fx === fx)
+    ok(cards.length >= 2, `only ${cards.length} card carries ${fx}`)
+    const shapes = new Set(cards.map(c => `${c.power}/${c.contact}`))
+    eq(shapes.size, cards.length, `two ${fx} cards share a stat line — that is a reskin, not breadth`)
+    // and every one is a real, costed move that a deck can draw (not a curse)
+    for (const c of cards) { ok(c.kind === 'move', `a ${fx} card is not a move`); ok(c.rarity !== 'curse', `a ${fx} card is a curse`) }
+  }
+  // the siblings come off spawn carrying their fx (the field spawn nearly dropped)
+  for (const name of ['Pounce', 'Bail Out', 'Latch And Look']) {
+    const c = E.CARDS[name]; ok(c, `${name} is gone`)
+    eq(E.spawn(name).fx, c.fx, `${name} lost its effect on spawn`)
+  }
+})
 test('spawn carries every field a card defines — no effect silently dropped', () => {
   // the tripwire for the class of bug that made CARD-11 and CARD-13 ship DEAD:
   // spawn()/makeDeck() copy an EXPLICIT field list, and a new field left off it
