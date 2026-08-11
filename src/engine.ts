@@ -1869,6 +1869,10 @@ export const DEEDS: Deed[] = [
     done: s => s.established.some(e => e.claimed < e.real) },
   { id: 'streak', name: 'Every Morning', text: "Play the day's problem three days running.",
     done: s => s.dailyStreak >= 3 },
+  // RUN-12: the weekly ladder finally gates something — a real week of dailies
+  // (a single great day tops out around 600, so a thousand takes coming back)
+  { id: 'bigweek', name: 'In Season', text: 'Bank a thousand points in a single week of dailies.',
+    done: s => s.weekBest >= BIG_WEEK },
   { id: 'enduro', name: 'Enduro', text: 'Climb eight lines in a single Circuit.',
     done: s => s.bestCircuit >= 8 },
   { id: 'onsight', name: 'No Rehearsal', text: 'Unlock the Onsight style.',
@@ -2789,6 +2793,21 @@ export function dailyShare(s: GameState): string {
   if (s.dailyStreak > 1) tail.push(`${s.dailyStreak}-day streak`)
   if (s.weekScore > 0) tail.push(`week ${s.weekScore}`)
   if (tail.length) lines.push(tail.join(' · '))
+  return lines.join('\n')
+}
+/* RUN-12. The weekly ladder was accumulated, saved and printed — and nothing
+   else. The daily has a streak deed and a share; the week gets its own now: a
+   share of the running total (a week is an aggregate, so no per-hold grid — it
+   is the sum of the days behind it) and a deed for a real week of climbing. */
+export const BIG_WEEK = 1000
+export function weekShare(s: GameState): string {
+  const best = s.weekScore >= s.weekBest && s.weekScore > 0
+  const lines = [
+    'Sandbagged · the week',
+    `${s.weekScore} pts${best ? ' · a personal best' : ''}`,
+  ]
+  if (!best && s.weekBest > 0) lines.push(`best week ${s.weekBest}`)
+  if (s.dailyStreak > 1) lines.push(`${s.dailyStreak}-day streak going`)
   return lines.join('\n')
 }
 

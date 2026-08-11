@@ -2164,6 +2164,7 @@ test('deeds are earnable, pure, and pay nothing (META-8)', () => {
   // ...and the META-9 mastery tier: five finale wins, one on a mutator, one per
   // climber, the stone put back, every page found.
   const lived = { ...fresh, sends: 5, wins: 5, dailyStreak: 3, bestCircuit: 9, styleMax: 5,
+    weekBest: E.BIG_WEEK,   // RUN-12: a real week of dailies earns 'In Season'
     ending: 'stranger-kept',   // META-10: the real ending shape, not the bare 'kept' that never occurs
     journal: [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15],
     book: { 'The Priest': { sends: 1, bestBurn: 1, bestStyle: 0, flashed: true, weather: 5, rock: 0 } },
@@ -2223,6 +2224,21 @@ test('META-10: the mastery deeds are honest — no dead predicate, no eviction',
   const back = E.loadGame(0)
   eq(JSON.stringify(back.archWins), JSON.stringify([0, 2, 4]), 'archWins did not survive save/load')
   eq(back.mutatorWin, true, 'mutatorWin did not survive save/load')
+})
+test('RUN-12: the weekly ladder has a hook — a deed and a share', () => {
+  const base = E.freshRun(0, 0, 1)
+  // the deed exists, gates on the all-time best week, and is a real bar — a
+  // single great day cannot earn it (dailyScore tops out well under BIG_WEEK)
+  const deed = E.DEEDS.find(d => d.id === 'bigweek')
+  ok(deed, 'the weekly ladder still gates nothing')
+  ok(E.BIG_WEEK >= 800, `a week worth ${E.BIG_WEEK} is too cheap`)
+  ok(!deed.done({ ...base, weekBest: E.BIG_WEEK - 1 }), 'a near miss earned In Season')
+  ok(deed.done({ ...base, weekBest: E.BIG_WEEK }), 'a full week did not earn In Season')
+  ok(!deed.done(base), 'a fresh save earned In Season')
+  // the share reads off the week and names the total; a personal best says so
+  const sh = E.weekShare({ ...base, weekScore: 640, weekBest: 900 })
+  ok(sh.includes('640') && sh.includes('900'), 'the week share does not carry the week and the best')
+  ok(/best/i.test(E.weekShare({ ...base, weekScore: 1200, weekBest: 1200 })), 'a best week is not called out')
 })
 test('a phase summary describes every phase a boss has', () => {
   for (const r of E.ROUTES.filter(r => r.phases?.length)) {

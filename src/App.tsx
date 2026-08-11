@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.80 — CARD-12: the singleton snap/peel/cycle effects get siblings
+// SANDBAGGED v9.81 — RUN-12: the weekly ladder gets a deed and a share
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -20,7 +20,7 @@ import {
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
   campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitZone, claimCurse, claimVerdict,
   consumableById, KIT_MAX, useKitStep, secondWindStep,
-  coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyRoute, dailySeed, dailyShare, dayKey, DEEDS, deedsDone, desperationOf,
+  coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyRoute, dailySeed, dailyShare, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
   endSession, endingFor, endingStep, establishedIn, exportSave, exposed, exposureOf,
   faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
   gearMods, gradeLabel, gradeText, gripShown, holdLabel, honestyOf, importSave,
@@ -532,6 +532,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [sheet, legend])
   const [shared, setShared] = useState(false)   // SOCIAL-1: copied-the-daily flash
+  const [sharedWeek, setSharedWeek] = useState(false)   // RUN-12: copied-the-week flash
   /* A11Y-3. Thirty-five things in this file were tappable divs: not focusable,
      not announced, and unreachable without a pointer. This gives one the
      behaviour of a button without restructuring the markup around it. */
@@ -956,7 +957,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.80 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.81 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2514,12 +2515,18 @@ function startTutorial() {
             <b style={{ color: 'var(--tan)' }}>TODAY'S PROBLEM · {st.dailyScore}</b>
             {st.dailyScore >= st.dailyBest ? 'Your best on a daily yet. ' : `Your best is ${st.dailyBest}. `}
             {st.dailyStreak > 1 ? `${st.dailyStreak} days running. ` : 'Come back tomorrow and keep it going. '}
-            {st.weekScore > 0 ? `This week: ${st.weekScore}.` : ''}
+            {st.weekScore > 0 ? `This week: ${st.weekScore}${st.weekScore >= st.weekBest ? ' — your best week' : ` (best ${st.weekBest})`}.` : ''}
             {/* SOCIAL-1: paste your result anywhere, no server */}
             <button className="btn" style={{ width: '100%', marginTop: 8, padding: 10 }}
               {...tap(() => { try { void navigator.clipboard?.writeText(dailyShare(st)) } catch { /* blocked */ } setShared(true) },
                 'Copy your result to share')}>
               {shared ? 'COPIED ✓' : 'SHARE RESULT ▸'}</button>
+            {/* RUN-12: the week is its own thing to share and chase */}
+            {st.weekScore > 0 ? (
+              <button className="btn" style={{ width: '100%', marginTop: 6, padding: 10 }}
+                {...tap(() => { try { void navigator.clipboard?.writeText(weekShare(st)) } catch { /* blocked */ } setSharedWeek(true) },
+                  'Copy your week to share')}>
+                {sharedWeek ? 'COPIED ✓' : 'SHARE THE WEEK ▸'}</button>) : null}
           </div>) : null}
         <hr className="rule" />
         <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.6, margin: '9px 0' }}>
