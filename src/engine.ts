@@ -1243,7 +1243,7 @@ for (const c of [
   bn('The Whole Trip', 2, 'rare', { powerAll: 3, skinCost: 1, text: '+3 Power everywhere. Costs 1 skin.' }),
 
   // ================= EXPANDED POOL · curses =================
-  mv('Tweaked Pulley', 1, 2, 'curse', { text: 'It popped. You felt it pop.' }),
+  mv('Tweaked Pulley', 1, 2, 'curse', { hex: 1, text: 'It popped. You felt it pop — you crank harder to spare it, and the hold you put it on gets +1 Grip.' }),
   mv('Split Tip', 2, 3, 'curse', { hex: 1, text: 'Right down the middle of the pad. Whatever you put it on gets +1 Grip.' }),
   mv('Wet Holds', 1, 4, 'curse', { hex: 1, text: 'Seeping. Nothing sticks — the hold you use it on gets +1 Grip.' }),
   bn('Bad Landing', 2, 'curse', { text: 'The pads were in the wrong place.' }),
@@ -1307,9 +1307,9 @@ for (const c of [
   bn('Beta · The Name', 1, 'beta', { powerAll: 1, text: '+1 Power to every lane. He was never going to sign it.' }),
 
   // ---------- CURSE (never in packs) ----------
-  mv('Tweaky Finger', 1, 3, 'curse', { text: 'It twinges. You keep going.' }),
+  mv('Tweaky Finger', 1, 3, 'curse', { hex: 1, text: 'It twinges. You keep going, favouring it — the hold you put it on gets +1 Grip.' }),
   mv('Flapper', 2, 4, 'curse', { hex: 1, text: 'Skin off. The hold you use it on gets +1 Grip.' }),
-  mv('Cold Shut', 0, 5, 'curse', { text: 'No feeling in it at all.' }),
+  mv('Cold Shut', 0, 5, 'curse', { hex: 1, text: 'No feeling in it at all — you grip too hard to be sure of it, and the hold you put it on gets +1 Grip.' }),
   bn('Sandbagged Beta', 1, 'curse', { text: 'Someone lied about the grade.' }),
 ]) CARDS[c.name] = c
 

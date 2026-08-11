@@ -2045,6 +2045,18 @@ test('CARD-13: a curse does something — it sharpens the hold you dump it on', 
   // and it is a real DOWNSIDE — a hex only ever raises grip, never lowers it
   ok(curse.hex > 0, 'a hex that helps you is not a curse')
 })
+test('CARD-16: no move-curse is inert — every one sharpens the hold it lands on', () => {
+  /* The fourth audit found 7 of 10 curses did nothing beyond being a weak card.
+     The three that had slipped through CARD-13 — Tweaked Pulley, Tweaky Finger,
+     Cold Shut — now carry the same hex, so EVERY curse you can place on a lane
+     costs a position, not just a draw. (The four bonus curses are a documented
+     carve-out: an active effect there needs a per-turn or opening-hand hook that
+     risks the pump-compounding trap the ledger forbids — deferred, not forgotten.) */
+  const moveCurses = Object.values(E.CARDS).filter(c => c.rarity === 'curse' && c.kind === 'move')
+  ok(moveCurses.length >= 5, `only ${moveCurses.length} move curses to check`)
+  for (const c of moveCurses)
+    ok(c.hex > 0, `${c.name} is an inert move-curse — it does nothing to the hold it lands on`)
+})
 test('CARD-12: the singleton effects have draftable breadth now', () => {
   // snap / peel / cycle were carried by exactly one card each; each identity now
   // has at least two, and the siblings are genuinely different cards, not clones
