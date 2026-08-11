@@ -2,7 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.85 — CARD-14: three more one-shots — closes the third audit
+// SANDBAGGED v9.86 — UI-1: climb-screen visual overhaul — route reads as stone,
+//   your moves as paper; cleaner pump meter, type scale, sectioned page
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -114,7 +115,7 @@ export const buzz = (ms: number | number[], on: boolean) => {
 
 
 const CSS = `
-:root{--paper:#e8e1d0;--ink:#26221e;--red:#8c3124;--green:#3f5438;--tan:#b8873f;--fade:#5f584a;--blue:#355b72}
+:root{--paper:#e8e1d0;--ink:#26221e;--red:#8c3124;--green:#3f5438;--tan:#b8873f;--fade:#5f584a;--blue:#355b72;--card:#f3ede1;--stone:#c8c5bb}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{overflow-x:hidden}
 body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',serif;color:var(--ink)}
@@ -144,18 +145,28 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
 .track{display:flex;gap:3px;align-items:center;margin:5px 0 2px}
 .tick{flex:1;height:9px;border:1.5px solid var(--ink);border-radius:1px}
 .tick.done{background:var(--green);border-color:var(--green)}
-.goal{font-size:calc(12px * var(--fs));font-weight:700}
+.goal{font-size:calc(14px * var(--fs));font-weight:700;letter-spacing:.2px}
+/* UI-1: a small carved section header, so the climb reads top-to-bottom as
+   THE ROUTE → YOUR MOVES → PUMP → HAND instead of four unlabelled card grids. */
+.sect{display:flex;align-items:center;gap:7px;margin:9px 0 3px;
+ font-size:calc(9px * var(--fs));letter-spacing:1.4px;font-weight:800;color:var(--fade)}
+.sect::after{content:'';flex:1;height:0;border-top:1px solid var(--fade);opacity:.35}
 .board{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .rb{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
 .topo{display:block;width:100%;height:34px;margin:4px 0 0}
 .slot{position:relative;height:calc(120px + (var(--fs) - 1) * 95px);border-radius:2px;padding:6px;
  display:flex;flex-direction:column;justify-content:space-between;overflow:visible}
-.slot.foe{background:#ded5c2}.slot.you{background:#f0eade}
+/* UI-1: the route is stone, your moves are paper. The two board rows were
+   both a warm tan wash a shade apart, so "the wall" and "my hand" read as one
+   surface. The route now takes a cooler grey ground with a little carved depth;
+   your row keeps warm paper and a tan margin stripe — the line you're drawing. */
+.slot.foe{background:var(--stone);box-shadow:inset 0 3px 6px -4px rgba(38,34,30,.55)}
+.slot.you{background:var(--card);box-shadow:inset 3px 0 0 rgba(184,135,63,.6)}
 .slot.empty{opacity:.5;justify-content:center;align-items:center}
 .slot.tgt{box-shadow:0 0 0 2px rgba(158,58,44,.22)}
-.nm{font-size:calc(10.5px * var(--fs));font-weight:700;line-height:1.1;
+.nm{font-size:calc(11.5px * var(--fs));font-weight:700;line-height:1.08;
  overflow-wrap:anywhere;hyphens:auto}
-.ab{font-size:calc(8.5px * var(--fs));font-weight:700;color:var(--red);letter-spacing:.3px;margin-top:2px}
+.ab{font-size:calc(9.5px * var(--fs));font-weight:700;color:var(--red);letter-spacing:.3px;margin-top:2px}
 .tx{font-size:calc(8px * var(--fs));color:var(--fade);line-height:1.15;overflow-wrap:anywhere}
 .pips{display:flex;justify-content:space-between;align-items:center}
 /* A fixed 20px circle, which was fine for a single digit and clipped "12-13"
@@ -171,7 +182,8 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
    a violet to stay distinct from it (VIS-5) */
 .cb{--red:#a8442c;--green:#26557a;--tan:#7a6a4a;--blue:#6a4fa3}
 .lanes{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:4px 0 3px;text-align:center}
-.bar{height:18px;border:1.5px solid var(--ink);border-radius:2px;display:flex;overflow:hidden}
+.bar{height:22px;border:1.5px solid var(--ink);border-radius:3px;display:flex;overflow:hidden;
+ background:rgba(38,34,30,.05)}
 /* VIS-3: what the conditions do to the page. Deliberately under the text
    rather than over it — ENG-20 made these worth 46 points of send rate and they
    still have to be readable at the largest text size on a phone in the sun. */
@@ -196,9 +208,13 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
 .cb[class*="wx-"]::before{filter:saturate(.25)}
 .seg{flex:1;border-right:1px solid rgba(38,34,30,.35);transition:background .18s}
 /* VIS-1: where this turn takes you, drawn ahead of where you are */
-.seg.will{background:repeating-linear-gradient(45deg,var(--tan) 0 2px,transparent 2px 4px)}
-.seg.willfall{background:repeating-linear-gradient(45deg,var(--red) 0 2px,transparent 2px 4px)}
-.seg.shedding{background:repeating-linear-gradient(45deg,var(--green) 0 2px,transparent 2px 4px)}
+/* UI-1: the preview segments were a 45deg hatch that muddied into the solid
+   fill beside them. They read cleaner as a soft solid tint capped by a dashed
+   top edge — the dash is the colour-blind-safe texture cue (solid = now,
+   dashed = where COMMIT takes you), so the projection survives without hue. */
+.seg.will{background:rgba(184,135,63,.34);border-top:2px dashed var(--tan)}
+.seg.willfall{background:rgba(140,49,36,.32);border-top:2px dashed var(--red)}
+.seg.shedding{background:rgba(63,84,56,.34);border-top:2px dashed var(--green)}
 .bar.tremble{animation:shake .9s ease-in-out infinite}
 .nomo .bar.tremble{animation:none}.seg:last-child{border-right:0}
 .seg.on{background:var(--tan)}.seg.danger{background:var(--red)}
@@ -209,7 +225,7 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
  scroll-snap-type:x proximity;overscroll-behavior-x:contain}
 .hand::-webkit-scrollbar{display:none}
 .card{position:relative;width:calc(112px + (var(--fs) - 1) * 40px);min-width:calc(112px + (var(--fs) - 1) * 40px);height:calc(124px + (var(--fs) - 1) * 95px);border-radius:2px;
- background:#f0eade;padding:6px 12px 6px 7px;display:flex;flex-direction:column;justify-content:space-between;
+ background:var(--card);padding:6px 12px 6px 7px;display:flex;flex-direction:column;justify-content:space-between;
  margin-left:-8px;transition:transform .12s;box-shadow:2px 0 4px rgba(0,0,0,.10);
  scroll-snap-align:center;flex:0 0 auto}
 .card:last-child{padding-right:7px}
@@ -258,7 +274,7 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
 .vis-hidden{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
  clip:rect(0 0 0 0);white-space:nowrap;border:0}
 [role="button"]:focus-visible,button:focus-visible{outline:2.5px solid var(--red);outline-offset:2px}
-.menu-item{border:1.5px solid var(--ink);border-radius:2px;padding:8px 9px;margin-bottom:6px;background:#f0eade}
+.menu-item{border:1.5px solid var(--ink);border-radius:2px;padding:8px 9px;margin-bottom:6px;background:var(--card)}
 .big{font-size:calc(15px * var(--fs));font-weight:700}.center{text-align:center}
 .famname{display:flex;align-items:center;gap:6px;min-width:0}
 .deckrow{display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid rgba(122,114,100,.28)}
@@ -957,7 +973,7 @@ function startTutorial() {
 
         <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
           onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.85 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.86 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2655,7 +2671,7 @@ function startTutorial() {
         <span className="goal">{remaining === 0 ? 'TOP OUT!' : `${remaining} MORE HOLD${remaining === 1 ? '' : 'S'} TO TOP OUT`}</span>
         <span className="lbl">{st.cleared}/{spec.clear}</span>
       </div>
-      <hr className="rule" />
+      <div className="sect">THE ROUTE</div>
 
       <div className="board">
         {[0, 1, 2].map(i => {
@@ -2707,6 +2723,7 @@ function startTutorial() {
           )
         })}
       </div>
+      <div className="sect">YOUR MOVES</div>
       <div className="lanes">{LANE_NAMES.map(n => <div key={n} className="lbl">{n}</div>)}</div>
       <div className="board">
         {[0, 1, 2].map(i => {
@@ -2819,6 +2836,7 @@ function startTutorial() {
           deck {st.piles.draw.length} · discard {st.piles.discard.length} · gone {st.piles.exhaust.length}</span>
       </div>
 
+      <div className="sect">YOUR HAND</div>
       <div className="hand">
         {st.piles.hand.map(c => (
           <div key={c.uid} className={`card${st.selected === c.uid ? ' sel' : ''}${c.kind === 'bonus' ? ' bonus' : ''}`}
