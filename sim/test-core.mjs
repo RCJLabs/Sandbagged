@@ -1724,6 +1724,30 @@ test('ENG-26: the preview reads the same board resolve does', () => {
     'the preview ignores the restChip that works the hold before it resolves')
 })
 
+test('ENG-27: a roped fall pays the fall-skin modifiers a boulder fall does', () => {
+  /* The caught-fall skin cost in resolve ignored dFallSkin and skinSave, so on
+     the roped routes — where you fall most — Long Game / Static's stated
+     drawback vanished (strictly upside) and Crash Pads stopped working. Now it
+     mirrors the boulder fall handler. cleared stays below the next pitch line so
+     the belay does not reset pump before the fall lands. */
+  const ropedIdx = E.ROUTES.findIndex(r => r.roped)
+  ok(ropedIdx >= 0, 'no roped route to test')
+  const hold = { uid: 1, name: 'crimp', bite: 4, grip: 9, crux: false, clean: false }
+  const base = { ...E.freshRun(7, 0, 1), inRun: true, skirmish: null, phase: 'climb',
+    routeIdx: ropedIdx, weather: 1, rock: 0, turn: 1, flow: 0, burn: 1, onProject: false,
+    boardH: [hold, null, null], boardP: [null, null, null], boons: [], gear: [],
+    holdDeck: [], worked: [], order: [], fxLane: ['', '', ''],
+    piles: { draw: [], discard: [], exhaust: [], hand: [] },
+    pump: E.PUMP_MAX, cleared: 3, lastPiece: 0, runout: 3, pitch: 0, skin: 9 }
+  const skinAfter = over => E.resolve({ ...base, ...over }, new E.RNG(1)).skin
+  const plain = skinAfter({})
+  const withDraw = skinAfter({ boons: ['longgame'] })  // dFallSkin:1 — costs one more skin
+  const withPads = skinAfter({ gear: ['pads'] })        // skinSave:1 — eats the first fall
+  ok(plain < base.skin, `a plain roped fall cost no skin (${plain}/${base.skin})`)
+  ok(withDraw < plain, `Long Game's fall drawback is free on a rope (${withDraw} vs ${plain})`)
+  ok(withPads === base.skin, `Crash Pads does not save the first roped fall (${withPads}/${base.skin})`)
+})
+
 test('the route telegraphs, then acts, exactly once', () => {
   // ENG-11. A move announced one turn and applied the next — if it can fire
   // twice it is a hidden penalty rather than a fight you can read.

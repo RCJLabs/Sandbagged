@@ -3940,7 +3940,16 @@ export function resolve(s: GameState, rng: RNG): GameState {
     // grinding until your skin runs out.
     const lost = Math.max(0, out.cleared - out.lastPiece)
     const burn = out.burn + 1
-    const skin = Math.max(0, out.skin - Math.max(1, Math.ceil(lost / RUNOUT_SKIN)))
+    /* ENG-27: the caught-fall skin cost honours the same fall-skin modifiers a
+       boulder fall does (App.tsx's fall handler). It used to ignore both, so on
+       exactly the routes you fall most, Long Game / Static's stated drawback
+       (dFallSkin) vanished — they became strictly upside — and Crash Pads
+       (skinSave, which eats the first fall) stopped working. Base loss scales
+       with the runout as before; dFallSkin adds to it, skinSave eats the first. */
+    const freeFall = out.onProject || (out.inRun && gearMods(out.gear).skinSave > 0 && out.burn === 1)
+    const loss = freeFall ? 0
+      : Math.max(1, Math.ceil(lost / RUNOUT_SKIN)) + boonMods(out.boons).dFallSkin
+    const skin = Math.max(0, out.skin - loss)
     if (burn > attemptsFor(out) || skin <= 0)
       return { ...out, burn, skin, phase: 'burnEnd', result: 'fall',
         peakPump: Math.min(PUMP_MAX, Math.max(out.peakPump, out.pump)),
