@@ -478,7 +478,13 @@ if (mode === 'campaign') {
   const label = process.argv[4] ?? 'built'
   if (label === 'default') LOADOUT = undefined
   console.log(`Full campaign — ${label} loadout, Working It\n`)
-  for (const pages of [0, 7, 14]) {
+  /* GUARD-6: most guards read only the full-journal band but paid for all three,
+     so two runs in three were thrown away. `PAGES=14` measures one band, which
+     buys a 3x bigger sample for the same wall-clock — spend it on the guards
+     whose margins are tightest rather than on numbers nobody reads. */
+  const BANDS = process.env.PAGES !== undefined
+    ? [Number(process.env.PAGES)] : [0, 7, 14]
+  for (const pages of BANDS) {
     JOURNAL_PAGES = pages
     let won = 0, turns = 0, talksT = 0, pagesT = 0, restsT = 0
     const diedAct = [0, 0, 0]

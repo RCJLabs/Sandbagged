@@ -208,7 +208,12 @@ test('an injury is a consequence and never a strategy', () => {
   // it pays NOTHING. No xp, no cash, no card, no draw — that is the whole design
   // comments stripped first: the block SAYS "no cash, no gear", and a test that
   // reads prose instead of code will fail on its own documentation
-  const tweakBlock = src.slice(src.indexOf('export type Tweak'), src.indexOf('export type CurseCause'))
+  /* GUARD-3: anchor both ends. If either type is renamed the slice is '' and the
+     six negative assertions below all pass on nothing — "an injury must never pay
+     you anything" would be unenforced while reading green. */
+  const twFrom = src.indexOf('export type Tweak'), twTo = src.indexOf('export type CurseCause')
+  ok(twFrom > 0 && twTo > twFrom, 'the Tweak block moved — this guard is reading nothing')
+  const tweakBlock = src.slice(twFrom, twTo)
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
   for (const pay of ['xp', 'cash', 'dDraw', 'powerAll', 'dPower', 'reward'])
     ok(!new RegExp(`\\b${pay}\\b`).test(tweakBlock),
@@ -2367,7 +2372,12 @@ test('there is one way to play a card', () => {
   ok(engine.split('export function playBonusStep').length === 2,
     'playBonusStep is declared more than once')
   // the screen must not re-implement any of the rules
-  const screen = app.slice(app.indexOf('function playBonus('), app.indexOf('function playBonus(') + 900)
+  /* GUARD-3: anchor it. Convert playBonus to a const/arrow and the slice is '',
+     so all seven "the screen must not reimplement this rule" checks pass on
+     nothing — the exact SIM-3 divergence class they exist to prevent. */
+  const pbAt = app.indexOf('function playBonus(')
+  ok(pbAt > 0, 'playBonus moved or changed shape — this guard is reading nothing')
+  const screen = app.slice(pbAt, pbAt + 900)
   for (const rule of ['c.shed', 'c.draw', 'c.gripCut', 'c.powerAll', 'c.clip', 'c.seq', 'c.read'])
     ok(!screen.includes(rule), `the screen still handles ${rule} itself`)
   // and the harness must call it rather than its own
@@ -2635,6 +2645,31 @@ test('inked paths are cached without changing', () => {
   }
   ok(E.roughPath(84, 124, 1) !== E.roughPath(84, 124, 2), 'every border is the same stroke')
 })
+test('GUARD-6: the balance ledger is gated on a release, not on a habit', () => {
+  /* The dated completion band — the thing this project defends hardest — lived
+     entirely inside `if (SLOW)`, and NO script passed `slow`. `npm run check` and
+     `npm run ship` both skipped it, and there is no CI, so a release could be cut
+     without the band being evaluated once. It had been holding only because a
+     human remembered to type it. This pins the wiring instead. */
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
+  const s = pkg.scripts ?? {}
+  ok(/\bslow\b/.test(s['test:slow'] ?? ''), 'there is no script that runs the balance ledger')
+  ok(/\bslow\b/.test(s['check:slow'] ?? '') || /test:slow/.test(s['check:slow'] ?? ''),
+    'check:slow does not reach the ledger')
+  ok(/check:slow|test:slow|\bslow\b/.test(s.ship ?? ''),
+    'ship can still build without the completion band ever being measured')
+  // and the ledger must actually be behind that flag, i.e. the band lives there
+  const slow = readFileSync('sim/test.mjs', 'utf8')
+  const at = slow.indexOf('if (SLOW)')
+  ok(at > 0, 'the slow block moved — this guard is reading nothing')
+  const block = slow.slice(at)
+  for (const pin of ['has not drifted', 'no climber is twice as good', 'ROUTE-8'])
+    ok(block.includes(pin), `the ledger no longer contains "${pin}"`)
+  // the header must not under-advertise what it costs, or people skip it
+  ok(!/balance guardrails \(~20s\)/.test(slow),
+    'the header still claims the ledger costs ~20s, which is why it gets skipped')
+})
+
 test('SAVE-5: a save missing xp does not freeze levelling forever', () => {
   /* `level: d.level, xp: d.xp` were the only two fields in loadGame without a
      default, under a comment promising every field had one. Object spread copies

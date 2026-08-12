@@ -5,7 +5,17 @@
  * kept, so a future change cannot quietly undo what they proved.
  *
  *   node sim/test.mjs        all of it
- *   node sim/test.mjs slow   plus the balance guardrails (~20s)
+ *   node sim/test.mjs slow   plus the balance guardrails
+ *
+ * The slow block is the dated completion ledger and it is EXPENSIVE — roughly
+ * 11,300 campaign runs across a dozen child processes, about four minutes on a
+ * laptop. It is NOT the "~20s" this header used to claim, and that understatement
+ * is a large part of why it got skipped. (GUARD-6 also cut ~4,800 wasted runs:
+ * three guards read only the full-journal band but were paying for all three, so
+ * they now pass PAGES=14.) `npm run test:slow` runs it and `npm run
+ * ship` will not build without it (GUARD-6: it used to be reachable only by
+ * typing `slow` by hand, so a release could be cut without the band ever being
+ * evaluated).
  */
 import { build } from 'esbuild'
 import { readFileSync, unlinkSync } from 'node:fs'
@@ -1421,16 +1431,41 @@ test('a wild boon is a trade, not a gift', () => {
   const wild = E.BOONS.filter(b => b.wild)
   ok(wild.length >= 3, `only ${wild.length} boons change how a turn feels`)
   for (const b of wild) {
-    const m = E.mutMods ? null : null
     const mods = E.boonMods([b.id])
-    const gains = (mods.dPowerAll > 0) || (mods.dDraw > 0) || mods.dyno || (mods.dTurnCap > 0)
-      || (mods.dContactAll > 0)   // CARD-10: Contact on every move is a gain
-    const costs = mods.noRests || mods.dumpHand || (mods.dFallSkin > 0)
-      || (mods.dyno && true)   // halved Contact is the cost of doubled Power
-    ok(gains, `${b.id} gives nothing`)
-    ok(costs, `${b.id} costs nothing — a wild boon that is pure upside is just a good one`)
+    /* GUARD-4: `dyno` used to appear on BOTH sides of this trade — as a gain and,
+       via `mods.dyno && true`, as its own cost — so for Deadpointing (whose only
+       mod IS dyno) the assertion was a tautology and the boon could have become
+       pure upside with a green suite. Each side must now be satisfied by a
+       DISTINCT mechanism, and dyno's cost is pinned behaviourally below instead
+       of being asserted by restating the gain. */
+    const gains = [['dPowerAll', mods.dPowerAll > 0], ['dDraw', mods.dDraw > 0],
+      ['dyno', !!mods.dyno], ['dTurnCap', mods.dTurnCap > 0],
+      ['dContactAll', mods.dContactAll > 0]].filter(([, on]) => on).map(([k]) => k)
+    const costs = [['noRests', !!mods.noRests], ['dumpHand', !!mods.dumpHand],
+      ['dFallSkin', mods.dFallSkin > 0], ['halvedContact', !!mods.dyno]]
+      .filter(([, on]) => on).map(([k]) => k)
+    ok(gains.length, `${b.id} gives nothing`)
+    ok(costs.length, `${b.id} costs nothing — a wild boon that is pure upside is just a good one`)
     ok(b.text.length > 30, `${b.id} does not explain its own trade`)
   }
+})
+test('GUARD-4: Deadpointing pays for its doubled Power with halved Contact', () => {
+  /* The doubling was tested; the halving — the entire cost of the strongest wild
+     boon, and a global lever — was asserted nowhere in either suite. Delete the
+     `* 0.5` in startBurn's deck build and every guard stayed green. This pins it
+     on the real path: the deck the burn actually deals. */
+  const mk = boons => {
+    const rng = new E.RNG(11)
+    const s = E.startBurn({ ...E.freshRun(4, 0, 7), inRun: true, skirmish: null,
+      weather: 1, rock: 0, boons, runDeck: E.DEFAULT_LOADOUT.map(E.spawn) }, rng)
+    const moves = [...s.piles.draw, ...s.piles.hand].filter(c => c.kind === 'move')
+    return moves.reduce((a, c) => a + c.contact, 0) / moves.length
+  }
+  const plain = mk([]), dyno = mk(['deadpointing'])
+  ok(dyno < plain, `Deadpointing did not halve Contact: ${plain.toFixed(2)} → ${dyno.toFixed(2)}`)
+  ok(dyno <= plain * 0.75,
+    `Contact only fell ${(100 - 100 * dyno / plain).toFixed(0)}% — the doubled Power is close to free`)
+  ok(dyno >= 1, 'Contact was halved past the floor every move is meant to keep')
 })
 test('Deadpointing doubles Power and halves Contact', () => {
   const deck = E.DEFAULT_LOADOUT.map(E.spawn)
@@ -1616,9 +1651,23 @@ test('no Math.random anywhere in the engine', () => {
   eq(hits, 0, 'all randomness must go through the seeded RNG')
 })
 test('no unicode escapes in JSX text', () => {
-  // esbuild ships the literal \u00b7 rather than decoding it (v0.4)
-  const bad = /className=[^>]*>[^<]*\\u[0-9a-fA-F]{4}/.test(CODE)
-  ok(!bad, 'use a real glyph in JSX, never an escape')
+  /* esbuild ships the literal \u00b7 rather than decoding it (v0.4).
+     GUARD-2 (v10.0): this guard COULD NOT FAIL. It ran against `CODE`, which is
+     engine.ts \u2014 a file with zero `className=` in it, and a sibling guard
+     ("the engine reaches for JSX className") actively forbids ever adding one.
+     So the regex could never match and the check had been vacuously green since
+     v0.4 while all 571 JSX attributes lived unscanned in App.tsx. It reads the
+     screens now, and both files, so neither can regress.
+     The distinction it draws is deliberate: an escape inside a STRING LITERAL is
+     fine (JS decodes it \u2014 App.tsx has five, e.g. the trail marks), an escape in
+     JSX TEXT is the bug, because that is what shipped literally. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const jsxText = /className=[^>]*>[^<]*\\u[0-9a-fA-F]{4}/
+  for (const [name, src] of [['App.tsx', app], ['engine.ts', CODE]])
+    ok(!jsxText.test(src), `use a real glyph in JSX, never an escape (${name})`)
+  // and prove the check is live rather than trivially green
+  ok(jsxText.test('<span className="lbl">\\u00b7PUMP</span>'),
+    'the escape check no longer matches the bug it exists for')
 })
 test('every font size scales with --fs', () => {
   // the CSS and the prose both live in App.tsx, not engine.ts — the old guard
@@ -1626,7 +1675,16 @@ test('every font size scales with --fs', () => {
   // blocks' hardcoded 13px slipped the text-size setting for good)
   const app = readFileSync('src/App.tsx', 'utf8')
   const cssStart = app.indexOf('const CSS = `')
-  const css = app.slice(cssStart, app.indexOf('`', cssStart + 13))
+  /* GUARD-3: anchor the slice. `indexOf` returns -1 when the CSS block is renamed
+     or moved, `slice(-1, …)` yields '', and the assertion below is a
+     count-equals-zero — so the whole check would pass on an empty string. This is
+     the very guard whose comment above records the LAST time it silently matched
+     nothing; it should not be able to happen twice. */
+  ok(cssStart > 0, 'the CSS block moved — this guard is reading nothing')
+  const cssEnd = app.indexOf('`', cssStart + 13)
+  ok(cssEnd > cssStart, 'the CSS block has no end — this guard is reading nothing')
+  const css = app.slice(cssStart, cssEnd)
+  ok(css.length > 2000, `the CSS slice is only ${css.length} chars — the anchors are wrong`)
   const cssFixed = css.match(/font-size:\d/g) ?? []
   eq(cssFixed.length, 0, `${cssFixed.length} CSS font sizes bypass the text-size setting`)
   // 13px was the reading size for every narrative block (event, talk, claim,
@@ -1801,7 +1859,8 @@ if (SLOW) {
        for exactly the climbers that already give something up. So this guard
        holds the ORDER, which is the part that must never invert, and leaves the
        flatness to a fix that does not use route length. */
-    const out = execSync('SHARP_AT=99 node sim/run.mjs campaign 300', { encoding: 'utf8' })
+    // GUARD-6: only the full-journal row is read, so measure only that band
+    const out = execSync('PAGES=14 SHARP_AT=99 node sim/run.mjs campaign 300', { encoding: 'utf8' })
     const rows = [...out.matchAll(/act1 (\d+)% act2 (\d+)% act3 (\d+)%/g)]
     ok(rows.length >= 1, 'the harness stopped reporting where runs end')
     const [, a1, a2, a3] = rows[rows.length - 1].map(Number)
@@ -1833,7 +1892,8 @@ if (SLOW) {
        endurance-vs-power trade. The band the drift guard pins is the GUIDE line
        (default `line:0`), untouched by any of this. */
     const full = line => {
-      const out = execSync(`LINE=${line} SHARP_AT=99 node sim/run.mjs campaign 500`, { encoding: 'utf8' })
+      // GUARD-6: one band, not three — this guard reads only the full journal
+      const out = execSync(`PAGES=14 LINE=${line} SHARP_AT=99 node sim/run.mjs campaign 500`, { encoding: 'utf8' })
       const pcts = [...out.matchAll(/completion\s+([\d.]+)%/g)].map(m => Number(m[1]))
       return pcts[pcts.length - 1]
     }
@@ -1869,7 +1929,8 @@ if (SLOW) {
        hits the drift band, and the answer is to look at what is inflating the
        retry, not to move the 58. */
     const full = env => {
-      const out = execSync(`${env} SHARP_AT=99 node sim/run.mjs campaign 300`, { encoding: 'utf8' })
+      // GUARD-6: one band, not three — this guard reads only the full journal
+      const out = execSync(`PAGES=14 ${env} SHARP_AT=99 node sim/run.mjs campaign 300`, { encoding: 'utf8' })
       const pcts = [...out.matchAll(/completion\s+([\d.]+)%/g)].map(m => Number(m[1]))
       return pcts[pcts.length - 1]
     }

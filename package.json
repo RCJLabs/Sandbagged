@@ -1,7 +1,7 @@
 {
   "name": "sandbagged",
   "private": true,
-  "version": "9.99.0",
+  "version": "10.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,8 +9,10 @@
     "build:html": "node scripts/build-html.mjs",
     "sim": "node sim/run.mjs",
     "test": "node sim/test-core.mjs && node sim/test.mjs",
+    "test:slow": "node sim/test-core.mjs && node sim/test.mjs slow",
     "check": "tsc --noEmit && node sim/test-core.mjs && node sim/test.mjs",
-    "ship": "npm run check && vite build && npm run build:html"
+    "check:slow": "tsc --noEmit && npm run test:slow",
+    "ship": "npm run check:slow && vite build && npm run build:html"
   },
   "dependencies": {
     "react": "^19.0.0",

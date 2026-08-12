@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.99 — SAVE-1/2/5: the save system stops losing your game — an
-//   import is applied, a boss no longer drops the run, and xp cannot go NaN
+// SANDBAGGED v10.0 — GUARD-2/3/4/6: the guards can fail again, and the balance
+//   ledger is gated on a release instead of on somebody remembering to type it
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1053,7 +1053,7 @@ function startTutorial() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v9.99 · RCJ Labs</div>
+          <div className="sfoot">v10.0 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1165,7 +1165,7 @@ function startTutorial() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.99 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.0 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
