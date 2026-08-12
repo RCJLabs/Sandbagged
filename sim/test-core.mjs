@@ -875,6 +875,96 @@ test('the daily surfaces its conditions and stacks a weekly ladder (SKIRM-3)', (
   E.saveGame({ ...base, slot: 1, weekId: 'w123', weekScore: 700, weekBest: 900 })
   eq(E.loadGame(1).weekScore, 700, 'the weekly ladder did not survive a save')
 })
+test('the streak pays a ladder in kit and titles, and forgives one miss a week (DAILY-1)', () => {
+  /* DAILY-1. Coming back every day paid nothing at all before this: `dailyStreak`
+     was a number on the save that one deed read. The ladder pays it — but only in
+     kit and cosmetic titles, and only through the larder, which the App hands over
+     at run start. That is the whole reason the pinned completion band cannot feel
+     it: the balance harness calls `newRun` directly and never sees a larder. This
+     guard holds both halves — the payout is off-band by construction, and the
+     forgiveness is one miss per week rather than an open door. */
+  const base = { ...E.freshRun(0, 0, 1), daily: true, result: 'send', cleared: 10,
+    turn: 20, peakPump: 5, skirmish: E.dailyRoute(), dailyDay: '', dailyBest: 0,
+    dailyStreak: 0, larder: [], titles: [], graceWeek: '' }
+  const y = new Date(); y.setUTCDate(y.getUTCDate() - 1)
+  const yest = E.dayKey(y)
+  const d2 = new Date(); d2.setUTCDate(d2.getUTCDate() - 2)
+
+  // the rungs are where they say they are, and each pays something nameable
+  eq(E.STREAK_REWARDS.map(r => r.at).join(','), '3,7,14,30', 'the ladder moved its rungs')
+  for (const r of E.STREAK_REWARDS) {
+    ok(r.kit || r.title, `the rung at ${r.at} pays nothing`)
+    ok(r.text.length > 10, `the rung at ${r.at} has nothing to say`)
+    if (r.kit) ok(E.consumableById(r.kit), `the rung at ${r.at} pays kit that does not exist: ${r.kit}`)
+  }
+  // a rung pays on the day you reach it and on no other day
+  for (let n = 1; n <= 31; n++) {
+    const want = E.STREAK_REWARDS.some(r => r.at === n)
+    eq(!!E.streakReward(n), want, `day ${n} pays when it should not, or does not when it should`)
+  }
+  // reaching 3 puts kit in the larder — and touches nothing you could spend
+  const at3 = E.bankDaily({ ...base, dailyDay: yest, dailyStreak: 2 })
+  eq(at3.dailyStreak, 3, 'three days running is not a streak of three')
+  eq(at3.larder.join(','), 'chalkshot', 'the third day paid no kit into the larder')
+  eq(at3.cash, base.cash, 'the ladder paid cash')
+  eq(at3.xp, base.xp, 'the ladder paid xp')
+  eq(at3.level, base.level, 'the ladder paid a level')
+  eq(at3.kit.length, 0, 'the ladder put kit straight into your hands')
+  eq(at3.owned.length, base.owned.length, 'the ladder paid a card')
+  eq(at3.titles.length, 0, 'the third day handed out a title')
+  // a titled rung adds it once and never again
+  const at14 = E.bankDaily({ ...base, dailyDay: yest, dailyStreak: 13 })
+  eq(at14.titles.join(','), 'Regular', 'two weeks running earned no title')
+  eq(E.bankDaily({ ...base, dailyDay: yest, dailyStreak: 13, titles: ['Regular'] }).titles.length, 1,
+    'the same title was handed out twice')
+  // an ordinary day pays nothing into either pile
+  const at4 = E.bankDaily({ ...base, dailyDay: yest, dailyStreak: 3, larder: ['chalkshot'] })
+  eq(at4.larder.join(','), 'chalkshot', 'a day off the ladder paid kit anyway')
+
+  // ONE forgiven miss per week: the day before yesterday keeps the streak, and burns the grace
+  const wk = E.weekKey()
+  const forgiven = E.bankDaily({ ...base, dailyDay: E.dayKey(d2), dailyStreak: 8 })
+  eq(forgiven.dailyStreak, 9, 'a single missed day threw the streak away')
+  eq(forgiven.graceWeek, wk, 'the forgiven miss did not spend the week grace')
+  // and having spent it, the next miss in that same week is not forgiven
+  eq(E.bankDaily({ ...base, dailyDay: E.dayKey(d2), dailyStreak: 8, graceWeek: wk }).dailyStreak, 1,
+    'a second missed day in one week was forgiven too')
+  // grace spent in an earlier week does not carry
+  eq(E.bankDaily({ ...base, dailyDay: E.dayKey(d2), dailyStreak: 8, graceWeek: 'w-old' }).dailyStreak, 9,
+    "last week's spent grace blocked this week's")
+  // three days back is a gap, forgiven or not
+  const d3 = new Date(); d3.setUTCDate(d3.getUTCDate() - 3)
+  eq(E.bankDaily({ ...base, dailyDay: E.dayKey(d3), dailyStreak: 8 }).dailyStreak, 1,
+    'a two-day gap was forgiven')
+  // yesterday never spends the grace — it was not a miss
+  eq(E.bankDaily({ ...base, dailyDay: yest, dailyStreak: 8 }).graceWeek, '',
+    'an on-time day spent the week grace')
+
+  // the payout is off-band BY CONSTRUCTION: newRun cannot see a larder, so the
+  // harness that pins the completion band cannot be paid by a streak
+  eq(E.newRun(7, E.DEFAULT_LOADOUT, 0, 0, []).kit.length, 0, 'a fresh run starts holding kit')
+  eq(E.newRun(7, E.DEFAULT_LOADOUT, 0, 0, []).larder.length, 0, 'a fresh run starts with a larder')
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  ok(!/kit:\s*[^\n]*larder/.test(eng), 'the engine loads kit from the larder itself')
+  // the App hands it over, capped, and keeps the rest banked for next time
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const hand = app.slice(app.indexOf('function startLostLine'), app.indexOf('function startTutorial'))
+  ok(hand.length > 200, 'the run-start handover moved out from under this guard')
+  ok(/larder\.slice\(0,\s*KIT_MAX\)/.test(hand), 'the larder is handed over without a cap')
+  ok(/kit:\s*take/.test(hand) && /larder:\s*st\.larder\.slice\(take\.length\)/.test(hand),
+    'the leftover kit is not kept back for the next trip')
+
+  // and all three new fields survive a save
+  E.saveGame({ ...base, slot: 1, larder: ['chalkshot', 'tickstick', 'skinsalve'],
+    titles: ['Regular'], graceWeek: 'w42' })
+  const back = E.loadGame(1)
+  eq(back.larder.join(','), 'chalkshot,tickstick,skinsalve', 'the larder did not survive a save')
+  eq(back.titles.join(','), 'Regular', 'the titles did not survive a save')
+  eq(back.graceWeek, 'w42', 'the spent grace did not survive a save')
+  eq(E.nextStreakReward(0).at, 3, 'the next rung from nothing is not the first one')
+  eq(E.nextStreakReward(7).away, 7, 'the distance to the next rung is wrong')
+  eq(E.nextStreakReward(30), null, 'there is a rung past the top of the ladder')
+})
 test('the daily share is a deterministic, spoiler-shaped line (SOCIAL-1)', () => {
   const spec = E.dailyRoute('2026-07-29')
   const base = { ...E.freshRun(0, 0, 1), skirmish: spec, daily: false,

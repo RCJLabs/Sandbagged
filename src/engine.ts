@@ -418,6 +418,14 @@ export type GameState = {
   hints: boolean
   /** SKIRM-2: which day you last played, and what you got. */
   dailyDay: string
+  /** DAILY-1: consumables earned from a streak, waiting for your next trip. Kept
+      out of `newRun` on purpose — the App hands them over, so the balance harness
+      never receives them. */
+  larder: string[]
+  /** DAILY-1: cosmetic titles earned from the streak ladder. */
+  titles: string[]
+  /** DAILY-1: the week you last spent your one forgiven miss in. */
+  graceWeek: string
   /** SAVE-4: the day you have already STARTED. `dailyDay` cannot do this job —
       bankDaily derives the streak from it being YESTERDAY, so stamping it early
       would reset every streak to 1. */
@@ -511,6 +519,7 @@ type SaveData = {
   arch?: number; loadouts?: string[][]; book?: Record<string, LogEntry>; bestCircuit?: number
   ticked?: string[]; established?: Established[]; hints?: boolean; grades?: GradeScale
   tweak?: Tweak | null
+  larder?: string[]; titles?: string[]; graceWeek?: string
   dailyDay?: string; dailyTried?: string; dailyScore?: number; dailyBest?: number; dailyStreak?: number
   weekId?: string; weekScore?: number; weekBest?: number
   mutators?: string[]
@@ -547,6 +556,7 @@ export function saveGame(s: GameState) {
       style: s.style, styleMax: s.styleMax, seen: s.seen, coaching: s.coaching, sound: s.sound, haptics: s.haptics, assist: s.assist, cbSafe: s.cbSafe,
       tutorialDone: s.tutorialDone, motion: s.motion, textScale: s.textScale, reach: s.reach,
       arch: s.arch, loadouts: s.loadouts, book: s.book, bestCircuit: s.bestCircuit, ticked: s.ticked, established: s.established, hints: s.hints, grades: s.grades, tweak: s.tweak,
+      larder: s.larder, titles: s.titles, graceWeek: s.graceWeek,
       dailyDay: s.dailyDay, dailyTried: s.dailyTried, dailyScore: s.dailyScore, dailyBest: s.dailyBest, dailyStreak: s.dailyStreak,
       weekId: s.weekId, weekScore: s.weekScore, weekBest: s.weekBest,
       mutators: s.mutators,
@@ -652,6 +662,7 @@ export function loadGame(slot = 0): Partial<GameState> | null {
       book: d.book ?? {}, bestCircuit: d.bestCircuit ?? 0, mutators: d.mutators ?? [],
       ticked: d.ticked ?? [], established: d.established ?? [], hints: d.hints ?? true,
       grades: d.grades ?? 'v', tweak: d.tweak ?? null,
+      larder: d.larder ?? [], titles: d.titles ?? [], graceWeek: d.graceWeek ?? '',
       dailyDay: d.dailyDay ?? '', dailyTried: d.dailyTried ?? '', dailyScore: d.dailyScore ?? 0,
       dailyBest: d.dailyBest ?? 0, dailyStreak: d.dailyStreak ?? 0,
       weekId: d.weekId ?? '', weekScore: d.weekScore ?? 0, weekBest: d.weekBest ?? 0,
@@ -3317,6 +3328,7 @@ export function carryOver(s: GameState): Partial<GameState> {
     coaching: s.coaching, hints: s.hints, topRope: s.topRope, grades: s.grades,
     dailyDay: s.dailyDay, dailyScore: s.dailyScore,
     dailyBest: s.dailyBest, dailyStreak: s.dailyStreak,
+    larder: s.larder, titles: s.titles, graceWeek: s.graceWeek,
     weekId: s.weekId, weekScore: s.weekScore, weekBest: s.weekBest,
   }
 }
@@ -3359,6 +3371,7 @@ export function freshRun(routeIdx: number, deckTier: number, seed: number): Game
     tutorialDone: false,
     fxLane: ['', '', ''], fxTick: 0, gear: [], boons: [], gearOffers: [], savedBlow: false, peakPump: 0, clipped: false, bonusUsed: false, line: 0, rerolls: 0, mutators: [], seq: null, readAhead: 0, order: [], routeMove: null, arch: 0,
     loadouts: ARCHETYPES.map(a => a.loadout.slice()), reroll: 0, book: {}, ticked: [], hints: true, grades: 'v',
+    larder: [], titles: [], graceWeek: '',
     dailyDay: '', dailyTried: '', dailyScore: 0, dailyBest: 0, dailyStreak: 0, weekId: '', weekScore: 0, weekBest: 0, daily: false, trail: [],
     shoppedAt: [], tweak: null, eventChose: [], vanRaided: [], established: [],
   }
@@ -3376,19 +3389,52 @@ export function freshRun(routeIdx: number, deckTier: number, seed: number): Game
 export const dailyUsed = (s: GameState, key = dayKey()) =>
   s.dailyDay === key || s.dailyTried === key
 
+/* DAILY-1: a streak was a number with one deed on it — nothing to earn and nothing
+   to protect. It pays on a ladder now, and it forgives one missed day a week,
+   because a streak that punishes a single bad day makes people give up rather than
+   come back; the habit is the point, not the punishment.
+   Every rung is KIT or a TITLE, never a draftable card and never cash: CARD-14
+   established that consumables ride their own shop line and inventory and that the
+   drafting sim never touches them, so this provably cannot move the pinned band.
+   The larder is handed over by the App at run start — the harness calls `newRun`
+   directly, so it never receives any of it. */
+export const STREAK_REWARDS: { at: number; kit?: string; title?: string; text: string }[] = [
+  { at: 3, kit: 'chalkshot', text: 'Three days on the trot. Somebody left a chalk shot in your bag.' },
+  { at: 7, kit: 'skinsalve', text: 'A week straight. Your skin has opinions about it; the salve helps.' },
+  { at: 14, kit: 'secondwind', title: 'Regular', text: 'Two weeks without missing. The locals know your van now.' },
+  { at: 30, kit: 'tickstick', title: 'Local', text: 'A month. Thirty days. This is your crag.' },
+]
+export const streakReward = (n: number) => STREAK_REWARDS.find(r => r.at === n) ?? null
+/** The next rung and how far off it is, for the menu to show. */
+export function nextStreakReward(n: number) {
+  const r = STREAK_REWARDS.find(x => x.at > n)
+  return r ? { at: r.at, away: r.at - n } : null
+}
+
 export function bankDaily(s: GameState): GameState {
   if (!s.daily) return s
   const key = dayKey()
   const score = dailyScore(s)
   // a streak is consecutive days, so yesterday must have been the last one
   const y = new Date(); y.setUTCDate(y.getUTCDate() - 1)
-  const kept = s.dailyDay === dayKey(y) ? s.dailyStreak : 0
+  const wk0 = weekKey()
+  /* DAILY-1: yesterday keeps the streak outright. The day BEFORE yesterday keeps
+     it too, once per week — one forgiven miss, then it is gone. */
+  const d2 = new Date(); d2.setUTCDate(d2.getUTCDate() - 2)
+  const onTime = s.dailyDay === dayKey(y)
+  const forgiven = !onTime && s.dailyDay === dayKey(d2) && s.graceWeek !== wk0
+  const kept = onTime || forgiven ? s.dailyStreak : 0
   // SKIRM-3: add today onto this week's ladder, or start the week fresh. Runs
   // exactly once per day — the `!s.daily` guard above makes bankDaily idempotent.
   const wk = weekKey()
   const weekScore = s.weekId === wk ? s.weekScore + score : score
+  const streak = kept + 1
+  const rw = streakReward(streak)
   return { ...s, daily: false, dailyDay: key, dailyScore: score,
-    dailyBest: Math.max(s.dailyBest, score), dailyStreak: kept + 1,
+    dailyBest: Math.max(s.dailyBest, score), dailyStreak: streak,
+    graceWeek: forgiven ? wk0 : s.graceWeek,
+    larder: rw?.kit ? [...s.larder, rw.kit] : s.larder,
+    titles: rw?.title && !s.titles.includes(rw.title) ? [...s.titles, rw.title] : s.titles,
     weekId: wk, weekScore, weekBest: Math.max(s.weekBest, weekScore) }
 }
 

@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.6 — UI-4: the map says what each stage ahead of you is — the
-//   boss reads from a distance, and camps, posts and events stop being circles
+// SANDBAGGED v10.7 — DAILY-1: coming back day after day now pays a ladder — kit
+//   into a larder you carry to the next trip, titles, and one forgiven miss a week
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -33,6 +33,7 @@ import {
   slotSummary, slotsUsed, spawn, specFromEstablished, specOf, startBurn, stockShop, windowNear, windowOf,
   styleMods, tagCounts, tagOf, takeOfferStep, takeTwoStep, vanOpen, walkAwayStep, weekKey,
   wipeSlot, xpForSend, xpMult, xpToNext,
+  nextStreakReward,
 } from './engine'
 
 /* ============================== UI ================================= */
@@ -926,8 +927,14 @@ export default function App() {
   function startLostLine() {
     if (st.inRun && st.runDeck.length) { setSt(s => ({ ...s, phase: 'map' })); return }
     if (!archUnlocked(ARCHETYPES[st.arch], st)) return
+    /* DAILY-1: the streak larder is handed over HERE rather than inside newRun, so
+       the balance harness — which calls newRun directly — never receives it, and
+       the pinned band cannot feel a streak reward. Kit is capped, so anything that
+       does not fit stays banked for the next trip. */
     const r = newRun(pickSeed(), st.loadouts[st.arch], st.style, st.arch, st.mutators)
-    setSt({ ...r, ...carryOver(st), runs: st.runs + 1 })
+    const take = st.larder.slice(0, KIT_MAX)
+    setSt({ ...r, ...carryOver(st), runs: st.runs + 1,
+      kit: take, larder: st.larder.slice(take.length) })
   }
 function startTutorial() {
     const idx = ROUTES.findIndex(r => r.tutorial)
@@ -1122,7 +1129,7 @@ function startTutorial() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.6 · RCJ Labs</div>
+          <div className="sfoot">v10.7 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1170,6 +1177,27 @@ function startTutorial() {
               sub="One warm-up boulder, ten minutes from the car. It teaches as you go."
               onClick={startTutorial} />
           </div>) : null}
+
+        {/* DAILY-1: a streak you can see the point of — the next rung, what is
+            banked for the next trip, and the title if you have one. */}
+        {(() => {
+          const nx = nextStreakReward(st.dailyStreak)
+          if (!st.dailyStreak && !st.larder.length) return null
+          const title = st.titles[st.titles.length - 1]
+          return (
+            <div className="row" style={{ marginTop: 8 }}>
+              <span className="sub">
+                {st.dailyStreak ? `${st.dailyStreak}-day streak` : 'no streak yet'}
+                {title ? ` · ${title.toLowerCase()}` : ''}
+                {st.graceWeek === weekKey() ? ' · rest day used' : ''}
+              </span>
+              <span className="sub" style={{ color: st.larder.length ? 'var(--green)' : undefined }}>
+                {st.larder.length
+                  ? `${st.larder.length} in the bag for next trip`
+                  : nx ? `next reward in ${nx.away}` : ''}
+              </span>
+            </div>)
+        })()}
 
         <div className="lbl" style={{ marginTop: 13 }}>THE EXPEDITION</div>
         <div style={{ marginTop: 5 }}>
@@ -1237,7 +1265,7 @@ function startTutorial() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.6 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.7 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
