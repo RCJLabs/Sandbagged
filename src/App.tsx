@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.2 — SAVE-3/4: reloading is not an exploit — the post, the van
-//   and the daily's one go all survive it now
+// SANDBAGGED v10.3 — DEV-3: an endless run is written down now, and the page can
+//   no longer be pulled away mid-climb by a stray flick
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -117,7 +117,14 @@ export const buzz = (ms: number | number[], on: boolean) => {
 const CSS = `
 :root{--paper:#e8e1d0;--ink:#26221e;--red:#8c3124;--green:#3f5438;--tan:#b8873f;--fade:#5f584a;--blue:#355b72;--card:#f3ede1;--stone:#c8c5bb}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{overflow-x:hidden}
+/* DEV-3: overscroll-behavior existed on exactly one element (the hand scroller,
+   x-axis only). Nothing stopped the VERTICAL chain, so Android pull-to-refresh
+   was live — including in a standalone PWA — and an over-flick of the card
+   scroller, or of an open sheet whose scroll chained to the document, reloaded
+   the app mid-climb. Nothing is saved mid-climb by design, so that ate the
+   boulder. Contain the chain at the document and inside the sheets.
+   (No backticks in here: this comment lives inside a template literal.) */
+html,body{overflow-x:hidden;overscroll-behavior-y:contain}
 body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',serif;color:var(--ink)}
 .wrap{max-width:390px;margin:0 auto;min-height:100vh;overflow-x:hidden;padding:9px 12px 16px;
  background-color:var(--paper);
@@ -266,7 +273,7 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
 .pv.good{color:var(--green)}.pv.bad{color:var(--red)}.pv.mid{color:var(--fade)}
 .sheet{position:fixed;inset:0;background:rgba(30,26,20,.45);display:flex;
  align-items:flex-end;justify-content:center;z-index:50}
-.sheetin{width:100%;max-width:390px;max-height:82vh;overflow-y:auto;padding:12px 12px 16px;
+.sheetin{overscroll-behavior:contain;width:100%;max-width:390px;max-height:82vh;overflow-y:auto;padding:12px 12px 16px;
  background-color:var(--paper);border-top:2px solid var(--ink);
  background-image:radial-gradient(rgba(120,110,90,.05) 1px,transparent 1px);background-size:3px 3px}
 .tap{cursor:pointer;text-decoration:underline;text-decoration-style:dotted}
@@ -883,6 +890,17 @@ function startTutorial() {
     setSt({ ...next, seed: rng.s })
   }
   function startCircuit() {
+    /* DEV-3: an endless run is written down now, so coming back to it must
+       CONTINUE it rather than throw it away. The line is regenerated at the score
+       you were on (that is how it was made in the first place), so you resume at
+       the top of the line you were on, the way the campaign resumes at the top of
+       its stage. */
+    if (st.circuit && st.runDeck.length) {
+      const rng0 = new RNG(st.seed)
+      setSt({ ...startBurn({ ...st, skirmish: circuitRoute(st.circuitScore, rng0),
+        burn: 1, beta: [], worked: [] }, rng0), seed: rng0.s })
+      return
+    }
     const seed = pickSeed()
     const rng = new RNG(seed)
     const base: GameState = { ...st, seed, runSeed: seed, circuit: true, circuitScore: 0, inRun: false,
@@ -1056,7 +1074,7 @@ function startTutorial() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.2 · RCJ Labs</div>
+          <div className="sfoot">v10.3 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1153,8 +1171,11 @@ function startTutorial() {
         <div className="tilerow">
           <Tile half mark={MENU_MARKS.flag} seed={304} name="THE FA"
             sub="Unclimbed. Name it and grade it." onClick={startFA} />
-          <Tile half mark={MENU_MARKS.loop} seed={305} name="THE CIRCUIT"
-            sub={st.bestCircuit ? `Endless. Best ${st.bestCircuit} lines.` : 'Endless. Until the skin goes.'}
+          <Tile half mark={MENU_MARKS.loop} seed={305}
+            name={st.circuit && st.runDeck.length ? 'BACK ON THE CIRCUIT' : 'THE CIRCUIT'}
+            sub={st.circuit && st.runDeck.length
+              ? `${st.circuitScore} lines in · skin ${st.skin}`
+              : st.bestCircuit ? `Endless. Best ${st.bestCircuit} lines.` : 'Endless. Until the skin goes.'}
             onClick={startCircuit} />
         </div>
 
@@ -1168,7 +1189,7 @@ function startTutorial() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.2 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.3 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

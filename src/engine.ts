@@ -528,6 +528,14 @@ type SaveData = {
        were on. */
     shoppedAt?: number[]; vanRaided?: number[]; trail?: string[]
     eventChose?: string[]; reroll?: number; line?: number } | null
+  /* DEV-3: the Circuit sets `inRun: false`, so the `run` block above never
+     covered it and NOT ONE LINE of an endless run was ever written down — a
+     twenty-line streak was pure memory, gone to a reload or an evicted tab, with
+     only `bestCircuit` surviving. It is its own block because it is its own mode:
+     no act, no tier, no map. The route is regenerated from the line count rather
+     than serialised, the way it was generated in the first place. */
+  circuit?: { score: number; deck: string[]; skin: number; psyche: number
+    seed: number; runSeed: number; gear: string[]; boons: string[]; kit: string[] } | null
 }
 const slotKey = (n: number) => `${SAVE_KEY}.${n}`
 
@@ -558,6 +566,11 @@ export function saveGame(s: GameState) {
             runSeed: s.runSeed, eventsSeen: s.eventsSeen,
             shoppedAt: s.shoppedAt, vanRaided: s.vanRaided, trail: s.trail,
             eventChose: s.eventChose, reroll: s.reroll, line: s.line }
+        : null,
+      circuit: s.circuit
+        ? { score: s.circuitScore, deck: s.runDeck.map(c => c.name), skin: s.skin,
+            psyche: s.psyche, seed: s.seed, runSeed: s.runSeed,
+            gear: s.gear, boons: s.boons, kit: s.kit }
         : null,
     }
     localStorage.setItem(slotKey(s.slot), JSON.stringify(d))
@@ -662,6 +675,17 @@ export function loadGame(slot = 0): Partial<GameState> | null {
         shoppedAt: d.run.shoppedAt ?? [], vanRaided: d.run.vanRaided ?? [],
         trail: d.run.trail ?? [], eventChose: d.run.eventChose ?? [],
         reroll: d.run.reroll ?? 0, line: d.run.line ?? 0 } : {}),
+      ...(d.circuit ? (() => {
+        const rng = new RNG(d.circuit.seed ?? 1)
+        return { circuit: true, circuitScore: d.circuit.score ?? 0,
+          runDeck: (d.circuit.deck ?? [])
+            .filter(n => CARDS[n.endsWith('+') ? n.slice(0, -1) : n])
+            .map(n => n.endsWith('+') ? upgrade(spawn(n.slice(0, -1))) : spawn(n)),
+          skin: d.circuit.skin ?? RUN_SKIN, psyche: d.circuit.psyche ?? PSYCHE_MAX,
+          seed: d.circuit.seed ?? 1, runSeed: d.circuit.runSeed ?? 0,
+          gear: d.circuit.gear ?? [], boons: d.circuit.boons ?? [], kit: d.circuit.kit ?? [],
+          skirmish: circuitRoute(d.circuit.score ?? 0, rng) }
+      })() : {}),
     }
   } catch { return null }   // SAVE-1: unreadable, NOT empty — the caller must not overwrite
 }

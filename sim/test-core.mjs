@@ -2670,6 +2670,35 @@ test('GUARD-6: the balance ledger is gated on a release, not on a habit', () => 
     'the header still claims the ledger costs ~20s, which is why it gets skipped')
 })
 
+test('DEV-3: an endless run is written down, and the page cannot be pulled away', () => {
+  /* The Circuit sets `inRun: false`, so saveGame's `run` block never covered it
+     and NOT ONE LINE of an endless run was ever persisted — a twenty-line streak
+     was pure memory, gone to a reload, with only `bestCircuit` surviving. And
+     `overscroll-behavior` existed on exactly one element (the hand scroller,
+     x-axis), so Android pull-to-refresh could reload the app mid-climb. */
+  const deep = { ...E.freshRun(0, 0, 9), slot: 9, circuit: true, circuitScore: 17,
+    inRun: false, runDeck: E.DEFAULT_LOADOUT.map(E.spawn), skin: 5, psyche: 2,
+    kit: ['secondwind'], gear: [], boons: ['longgame'], bestCircuit: 4 }
+  E.saveGame(deep)
+  const back = { ...E.freshRun(0, 0, 1), ...E.loadGame(9) }
+  ok(back.circuit, 'the endless run was not written down at all')
+  eq(back.circuitScore, 17, 'the line count did not survive')
+  eq(back.skin, 5, 'skin did not survive'); eq(back.psyche, 2, 'psyche did not survive')
+  eq(back.runDeck.length, deep.runDeck.length, 'the deck did not survive')
+  eq(JSON.stringify(back.boons), JSON.stringify(['longgame']), 'the boons did not survive')
+  eq(JSON.stringify(back.kit), JSON.stringify(['secondwind']), 'the kit did not survive')
+  ok(back.skirmish, 'there is no line to come back to')
+  // it must not be confused with a campaign run — different mode, no map
+  ok(!back.inRun, 'the resumed circuit claims to be a campaign run')
+  E.wipeSlot(9)
+  // and the document must not chain its scroll into a browser refresh
+  const app = readFileSync('src/App.tsx', 'utf8')
+  ok(/html,body\{[^}]*overscroll-behavior-y:contain/.test(app),
+    'the page still chains its overscroll, so pull-to-refresh can eat a climb')
+  ok(/\.sheetin\{[^}]*overscroll-behavior:contain/.test(app),
+    'an over-flicked sheet still chains its scroll to the document')
+})
+
 test('SAVE-4: reloading does not reopen the post, the van, or the daily', () => {
   /* `shoppedAt` and `vanRaided` are what `postOpen`/`vanOpen` read — the fields
      behind the code's own "once a stage" and "once a range" — and neither was in
