@@ -447,6 +447,16 @@ export type GameState = {
   weekId: string
   weekScore: number
   weekBest: number
+  /* DAILY-3: the season. The weekly ladder reset into a void every seven days —
+     nothing accumulated past a week and nothing was ever finished. Four weeks make
+     a season with a board and a title at the end of it. */
+  seasonId: string
+  seasonScore: number
+  seasonBest: number
+  /** Days climbed this season, for the board. */
+  seasonDays: number
+  /** This season's four weekly totals, so the board has something to draw. */
+  seasonWeeks: number[]
   /* BAL-5. A post used to cost you the stage, and a stage of climbing is worth
      more than anything on the shelf — so a rational player skipped every one,
      which the harness did, which is why posts measured 0.4 a run. Forcing the
@@ -532,6 +542,8 @@ type SaveData = {
   larder?: string[]; titles?: string[]; graceWeek?: string; dailyMet?: string[]
   dailyDay?: string; dailyTried?: string; dailyScore?: number; dailyBest?: number; dailyStreak?: number
   weekId?: string; weekScore?: number; weekBest?: number
+  seasonId?: string; seasonScore?: number; seasonBest?: number
+  seasonDays?: number; seasonWeeks?: number[]
   mutators?: string[]
   runs?: number; falls?: number; ending?: string; topRope?: boolean; history?: RunRecord[]
   archWins?: number[]; mutatorWin?: boolean
@@ -569,6 +581,8 @@ export function saveGame(s: GameState) {
       larder: s.larder, titles: s.titles, graceWeek: s.graceWeek, dailyMet: s.dailyMet,
       dailyDay: s.dailyDay, dailyTried: s.dailyTried, dailyScore: s.dailyScore, dailyBest: s.dailyBest, dailyStreak: s.dailyStreak,
       weekId: s.weekId, weekScore: s.weekScore, weekBest: s.weekBest,
+      seasonId: s.seasonId, seasonScore: s.seasonScore, seasonBest: s.seasonBest,
+      seasonDays: s.seasonDays, seasonWeeks: s.seasonWeeks,
       mutators: s.mutators,
       runs: s.runs, falls: s.falls, ending: s.ending, topRope: s.topRope,
       history: s.history.slice(0, HISTORY_MAX), archWins: s.archWins, mutatorWin: s.mutatorWin,
@@ -677,6 +691,9 @@ export function loadGame(slot = 0): Partial<GameState> | null {
       dailyDay: d.dailyDay ?? '', dailyTried: d.dailyTried ?? '', dailyScore: d.dailyScore ?? 0,
       dailyBest: d.dailyBest ?? 0, dailyStreak: d.dailyStreak ?? 0,
       weekId: d.weekId ?? '', weekScore: d.weekScore ?? 0, weekBest: d.weekBest ?? 0,
+      seasonId: d.seasonId ?? '', seasonScore: d.seasonScore ?? 0,
+      seasonBest: d.seasonBest ?? 0, seasonDays: d.seasonDays ?? 0,
+      seasonWeeks: Array.isArray(d.seasonWeeks) ? d.seasonWeeks.map(n => Number(n) || 0) : [],
       runs: d.runs ?? 0, falls: d.falls ?? 0, ending: d.ending ?? '',
       topRope: d.topRope ?? true, history: d.history ?? [],
       archWins: d.archWins ?? [], mutatorWin: d.mutatorWin ?? false,
@@ -3006,6 +3023,61 @@ export function weekKey(d = new Date()): string {
   const day = Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 86400000)
   return `w${Math.floor(day / 7)}`
 }
+/* DAILY-3. The weekly ladder reset into a void. Every seven days the number went
+   back to zero, nothing accumulated past it, and nothing was ever FINISHED — so
+   there was no arc longer than a week and no reason to care about week three.
+
+   A season is four of those weeks. It keeps a running total, a count of the days
+   you showed up, and the four weekly totals so there is a board to look at; when
+   it rolls over, the season that just ended pays a title off what it was worth.
+   The title lands the next time you play rather than at midnight on the last day —
+   there is no clock running in a game with no server, and inventing one would mean
+   lying about when it happened. Stated rather than hidden: a season you never come
+   back from stays unclosed, and closes when you do.
+
+   Titles reuse DAILY-1's list, so a season title and a streak title sit in the same
+   place and the save gained no new shape for it. Off-band: a title is cosmetic and
+   the season total is a leaderboard number no run can spend. */
+export const SEASON_WEEKS = 4
+export function seasonKey(d = new Date()): string {
+  const day = Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 86400000)
+  return `s${Math.floor(day / (7 * SEASON_WEEKS))}`
+}
+/** Which week of the season this is, 0-3 — the column the board fills in. */
+export function seasonWeekOf(d = new Date()): number {
+  const day = Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 86400000)
+  return Math.floor(day / 7) % SEASON_WEEKS
+}
+/* The ladder is pinned to what a day is actually worth: a strong daily banks around
+   550-600 with both objectives met (DAILY-2), so a 28-day season tops out near
+   16,000. The rungs below are roughly 3, 7, 14 and 23 days of good climbing. */
+export const SEASON_TITLES: { at: number; title: string; text: string }[] = [
+  { at: 1500, title: 'Weekender', text: 'You got out. That is more than most managed.' },
+  { at: 4000, title: 'Committed', text: 'Four weeks and you kept turning up.' },
+  { at: 8000, title: 'Season Local', text: 'Half the season on the wall. People know your car.' },
+  { at: 13000, title: 'Crag Rat', text: 'You basically lived here. Go home.' },
+]
+/** What a finished season was worth, or null if it was not worth a title. */
+export function seasonTitle(score: number) {
+  let out: { at: number; title: string; text: string } | null = null
+  for (const t of SEASON_TITLES) if (score >= t.at) out = t
+  return out
+}
+/** The next rung of the season and how far off it is, for the board to show. */
+export function nextSeasonTitle(score: number) {
+  const t = SEASON_TITLES.find(x => x.at > score)
+  return t ? { ...t, away: t.at - score } : null
+}
+/* DAILY-3. Tomorrow, teased. `dailyRoute` and `dailyForecast` already take a key,
+   so what is coming has been computable all along and was never shown — which is
+   the cheapest come-back hook in the game. The objectives are deliberately NOT
+   revealed: the conditions are what you plan around, the puzzle is what you turn up
+   for. */
+export function tomorrowKey(d = new Date()): string {
+  const t = new Date(d); t.setUTCDate(t.getUTCDate() + 1)
+  return dayKey(t)
+}
+
 /* SOCIAL-1. The share string — the whole feature, and it needs no server. A
    daily result you can paste anywhere, the way people post a Wordle grid: the
    date, a row of squares for the holds you worked, the grade and the conditions
@@ -3347,6 +3419,8 @@ export function carryOver(s: GameState): Partial<GameState> {
     dailyBest: s.dailyBest, dailyStreak: s.dailyStreak,
     larder: s.larder, titles: s.titles, graceWeek: s.graceWeek, dailyMet: s.dailyMet,
     weekId: s.weekId, weekScore: s.weekScore, weekBest: s.weekBest,
+    seasonId: s.seasonId, seasonScore: s.seasonScore, seasonBest: s.seasonBest,
+    seasonDays: s.seasonDays, seasonWeeks: s.seasonWeeks,
   }
 }
 
@@ -3389,7 +3463,9 @@ export function freshRun(routeIdx: number, deckTier: number, seed: number): Game
     fxLane: ['', '', ''], fxTick: 0, gear: [], boons: [], gearOffers: [], savedBlow: false, peakPump: 0, rests: 0, cruxFree: 0, clipped: false, bonusUsed: false, line: 0, rerolls: 0, mutators: [], seq: null, readAhead: 0, order: [], routeMove: null, arch: 0,
     loadouts: ARCHETYPES.map(a => a.loadout.slice()), reroll: 0, book: {}, ticked: [], hints: true, grades: 'v',
     larder: [], titles: [], graceWeek: '', dailyMet: [],
-    dailyDay: '', dailyTried: '', dailyScore: 0, dailyBest: 0, dailyStreak: 0, weekId: '', weekScore: 0, weekBest: 0, daily: false, trail: [],
+    dailyDay: '', dailyTried: '', dailyScore: 0, dailyBest: 0, dailyStreak: 0, weekId: '', weekScore: 0, weekBest: 0,
+    seasonId: '', seasonScore: 0, seasonBest: 0, seasonDays: 0, seasonWeeks: [],
+    daily: false, trail: [],
     shoppedAt: [], tweak: null, eventChose: [], vanRaided: [], established: [],
   }
 }
@@ -3520,12 +3596,32 @@ export function bankDaily(s: GameState, rng = new RNG(dailySeed())): GameState {
   const rw = streakReward(streak)
   const xp = met.reduce((n, g) => n + g.xp, 0)
   const paid = xp > 0 ? gainXp(s, xp, rng) : s
+  /* DAILY-3: the season. A new season closes the last one FIRST — that is when its
+     title is paid, off the total it finished on — and then starts this one at
+     today's score. Within a season, today lands in its own week's column. */
+  const sk = seasonKey()
+  const sameSeason = s.seasonId === sk
+  const closing = sameSeason ? null : (s.seasonId ? seasonTitle(s.seasonScore) : null)
+  const seasonScore = sameSeason ? s.seasonScore + score : score
+  const seasonDays = sameSeason ? s.seasonDays + 1 : 1
+  const wks = sameSeason
+    ? Array.from({ length: SEASON_WEEKS }, (_, i) => s.seasonWeeks[i] ?? 0)
+    : new Array(SEASON_WEEKS).fill(0)
+  const col = seasonWeekOf()
+  wks[col] = (wks[col] ?? 0) + score
+  // both ladders can hand out a title on the same day, so they are applied in turn
+  // rather than either one overwriting the other
+  const withStreak = rw?.title && !s.titles.includes(rw.title) ? [...s.titles, rw.title] : s.titles
+  const titles = closing && !withStreak.includes(closing.title)
+    ? [...withStreak, closing.title] : withStreak
   return { ...paid, daily: false, dailyDay: key, dailyScore: score,
     dailyMet: met.map(g => g.id),
     dailyBest: Math.max(s.dailyBest, score), dailyStreak: streak,
     graceWeek: forgiven ? wk0 : s.graceWeek,
     larder: rw?.kit ? [...s.larder, rw.kit] : s.larder,
-    titles: rw?.title && !s.titles.includes(rw.title) ? [...s.titles, rw.title] : s.titles,
+    titles,
+    seasonId: sk, seasonScore, seasonDays, seasonWeeks: wks,
+    seasonBest: Math.max(s.seasonBest, seasonScore),
     weekId: wk, weekScore, weekBest: Math.max(s.weekBest, weekScore) }
 }
 

@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.8 — DAILY-2: the daily asks for two things now, not just a score
-//   — objectives announced before you tie in, off the day's own seed
+// SANDBAGGED v10.9 — DAILY-3: four weeks make a season that finishes — a board, a
+//   title at the end of it, and tomorrow's conditions posted on the menu
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -21,7 +21,8 @@ import {
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
   campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitZone, claimStep, claimVerdict,
   consumableById, KIT_MAX, useKitStep, secondWindStep,
-  coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyGoals, dailyRoute, dailySeed, dailyShare, dailyUsed, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
+  coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyGoals, dailyRoute, dailySeed, dailyShare, dailyUsed, tomorrowKey,
+  SEASON_WEEKS, seasonKey, seasonWeekOf, seasonTitle, nextSeasonTitle, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
   endSession, endingFor, endingStep, establishedIn, exportSave, exposed, exposureOf,
   faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
   gearMods, gradeLabel, gradeText, gripShown, holdLabel, honestyOf, importSave,
@@ -274,6 +275,15 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
  font-size:calc(11px * var(--fs));line-height:1.6}
 .goals div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .goals .pts{opacity:.65;font-variant-numeric:tabular-nums}
+/* DAILY-3: the season board — one column per week of the four, filled by what you
+   banked in it, with the week you are in outlined. Every week keeps a visible EMPTY
+   track: without one, a season with two weeks left to climb read as a two-week
+   board rather than a four-week one with work still to do. */
+.board{display:flex;gap:5px;align-items:flex-end;height:30px;max-width:230px;margin:8px 0 0 14px}
+.board span{flex:1;display:flex;align-items:flex-end;height:100%;border:1px solid var(--line);
+ background:rgba(31,29,26,.045);border-radius:1px}
+.board span.now{border-color:var(--tan);border-style:dashed}
+.board i{display:block;width:100%;background:var(--tan)}
 /* VIS-5: a hazard you must answer this turn outranks a flavour note — heavier
    rule, a touch more ground, and it sorts to the top of the advisory stack. */
 .spot.urgent{border-left-width:6px;padding-top:8px;padding-bottom:8px;background:rgba(53,91,114,.10)}
@@ -1136,7 +1146,7 @@ function startTutorial() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.8 · RCJ Labs</div>
+          <div className="sfoot">v10.9 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1259,6 +1269,52 @@ function startTutorial() {
                     </div>)
                 })}
               </div>
+              {/* DAILY-3: the season — four weeks of dailies with a board and a
+                  title at the end, so there is an arc longer than a week. */}
+              {(() => {
+                const live = st.seasonId === seasonKey()
+                const total = live ? st.seasonScore : 0
+                const days = live ? st.seasonDays : 0
+                const col = seasonWeekOf()
+                const wks = Array.from({ length: SEASON_WEEKS }, (_, i) => (live ? st.seasonWeeks[i] ?? 0 : 0))
+                const top = Math.max(1, ...wks)
+                const nx = nextSeasonTitle(total)
+                const earned = seasonTitle(total)
+                if (!total && !st.seasonBest) return null
+                return (
+                  <>
+                    <div className="board" title="This season, week by week">
+                      {wks.map((n, i) => (
+                        <span key={i} className={i === col ? 'now' : ''}
+                          title={`Week ${i + 1}${i === col ? ' (this week)' : ''} · ${n}`}>
+                          {n > 0 ? <i style={{ height: `${Math.max(8, Math.round((n / top) * 100))}%` }} /> : null}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="goals sub" style={{ borderLeftColor: 'transparent' }}>
+                      <div>
+                        Season {total} · {days} {days === 1 ? 'day' : 'days'}
+                        {earned ? ` · ${earned.title.toLowerCase()}` : ''}
+                      </div>
+                      <div style={{ opacity: .8 }}>
+                        {nx ? `${nx.away} more for ${nx.title}` : 'Nothing left to prove this season.'}
+                        {st.seasonBest > total ? ` · best ${st.seasonBest}` : ''}
+                      </div>
+                    </div>
+                  </>)
+              })()}
+              {/* DAILY-3: what is coming. The conditions you can plan around; the
+                  objectives you turn up for. */}
+              {done ? (() => {
+                const tk = tomorrowKey()
+                const tr = dailyRoute(tk), tf = dailyForecast(tk)
+                return (
+                  <div className="goals sub" style={{ marginTop: 4 }}>
+                    <div>Tomorrow · {tr.name} · {gradeText(tr.grade, st.grades)} ·{' '}
+                      <span style={{ color: 'var(--blue)' }}>{WEATHER[tf.weather].name} on {ROCK[tf.rock].name}</span>
+                    </div>
+                  </div>)
+              })() : null}
             </>)
         })()}
 
@@ -1283,7 +1339,7 @@ function startTutorial() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.8 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.9 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

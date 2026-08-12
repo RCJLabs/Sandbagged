@@ -880,6 +880,146 @@ test('the daily surfaces its conditions and stacks a weekly ladder (SKIRM-3)', (
   E.saveGame({ ...base, slot: 1, weekId: 'w123', weekScore: 700, weekBest: 900 })
   eq(E.loadGame(1).weekScore, 700, 'the weekly ladder did not survive a save')
 })
+test('four weeks make a season that finishes, and tomorrow is on the board (DAILY-3)', () => {
+  /* DAILY-3. The weekly ladder reset into a void: every seven days the number went
+     to zero, nothing accumulated past a week, and nothing was ever FINISHED. A
+     season is four weeks with a board and a title at the end. The two things worth
+     guarding are the boundary arithmetic (a season must be exactly four weeks, and
+     the day must land in the right column) and the close — the title is paid off
+     the total the season ENDED on, not the one starting. */
+  const d = k => new Date(`${k}T00:00:00Z`)
+  const plus = (dt, n) => { const t = new Date(dt); t.setUTCDate(t.getUTCDate() + n); return t }
+  /* Seasons are aligned to the epoch, not to any date a test happens to pick — the
+     first version of this guard assumed 2026-01-05 started one and failed for its own
+     reason rather than the code's. So the boundary is DERIVED: step back to the first
+     day of whatever season contains that date, then walk it. */
+  eq(E.SEASON_WEEKS, 4, 'a season is no longer four weeks')
+  const span = 7 * E.SEASON_WEEKS
+  const s0 = new Date(Math.floor(d('2026-01-05').getTime() / 86400000 / span) * span * 86400000)
+  eq(E.seasonWeekOf(s0), 0, 'the derived season start is not the start of a season')
+  eq(E.seasonKey(s0), E.seasonKey(plus(s0, 6)), 'day 1 and day 7 fell in different seasons')
+  eq(E.seasonKey(s0), E.seasonKey(plus(s0, span - 1)), 'a season ended before its last day')
+  ok(E.seasonKey(s0) !== E.seasonKey(plus(s0, span)), 'a season ran past its last day')
+  ok(E.seasonKey(s0) !== E.seasonKey(plus(s0, -1)), 'a season started before its first day')
+  // the column walks 0,1,2,3 and wraps with the season
+  eq(E.seasonWeekOf(s0), E.seasonWeekOf(plus(s0, 6)), 'one week spanned two columns')
+  const cols = [0, 7, 14, 21].map(n => E.seasonWeekOf(plus(s0, n)))
+  eq(cols.join(','), '0,1,2,3', `the four weeks of a season are not columns 0-3: ${cols}`)
+  eq(E.seasonWeekOf(plus(s0, span)), 0, 'a new season did not start a new board')
+  // and the whole season is covered — no day falls outside it or outside a column
+  for (let i = 0; i < span; i++) {
+    const t = plus(s0, i)
+    const c = E.seasonWeekOf(t)
+    eq(c, Math.floor(i / 7), `day ${i} of a season sits in column ${c}`)
+    eq(E.seasonKey(t), E.seasonKey(s0), `day ${i} of a season fell out of it`)
+    eq(E.weekKey(t), E.weekKey(plus(s0, Math.floor(i / 7) * 7)),
+      `day ${i} does not sit in the week its column claims`)
+  }
+
+  // the title ladder rises, and every rung says something
+  const ats = E.SEASON_TITLES.map(t => t.at)
+  eq(JSON.stringify(ats), JSON.stringify([...ats].sort((a, b) => a - b)), 'the season ladder is out of order')
+  eq(new Set(E.SEASON_TITLES.map(t => t.title)).size, E.SEASON_TITLES.length, 'two season rungs share a title')
+  for (const t of E.SEASON_TITLES) ok(t.text.length > 10 && t.title.length > 2, `${t.title} is not a rung`)
+  // seasonTitle pays the HIGHEST rung reached, not the first one passed
+  eq(E.seasonTitle(0), null, 'a season worth nothing paid a title')
+  eq(E.seasonTitle(ats[0] - 1), null, 'a season under the first rung paid a title')
+  eq(E.seasonTitle(ats[0]).title, E.SEASON_TITLES[0].title, 'the first rung did not pay on the nose')
+  eq(E.seasonTitle(ats[ats.length - 1] * 10).title, E.SEASON_TITLES[E.SEASON_TITLES.length - 1].title,
+    'a huge season paid a lesser title than a smaller one')
+  for (const t of E.SEASON_TITLES) eq(E.seasonTitle(t.at).title, t.title, `${t.at} did not pay ${t.title}`)
+  eq(E.nextSeasonTitle(0).at, ats[0], 'the next rung from nothing is not the first one')
+  eq(E.nextSeasonTitle(ats[0]).at, ats[1], 'the next rung after the first is not the second')
+  eq(E.nextSeasonTitle(ats[ats.length - 1]), null, 'there is a rung past the top of the season')
+  ok(E.nextSeasonTitle(ats[0] - 100).away === 100, 'the distance to the next season rung is wrong')
+
+  // banking accumulates the season and fills this week's column
+  const base = { ...E.freshRun(0, 0, 1), daily: true, result: 'send', cleared: 10,
+    turn: 20, peakPump: 5, skirmish: E.dailyRoute(), dailyDay: '', dailyBest: 0,
+    dailyStreak: 0, rests: 0, cruxFree: 1, dailyMet: [],
+    seasonId: '', seasonScore: 0, seasonBest: 0, seasonDays: 0, seasonWeeks: [] }
+  const sk = E.seasonKey()
+  const col = E.seasonWeekOf()
+  const first = E.bankDaily(base)
+  eq(first.seasonId, sk, 'the day was not filed under this season')
+  eq(first.seasonScore, first.dailyScore, 'the season did not start on what the day scored')
+  eq(first.seasonDays, 1, 'a first day is not one day of a season')
+  eq(first.seasonWeeks.length, E.SEASON_WEEKS, 'the board is not four weeks wide')
+  eq(first.seasonWeeks[col], first.dailyScore, "the day did not land in this week's column")
+  eq(first.seasonWeeks.reduce((a, b) => a + b, 0), first.seasonScore,
+    'the board does not add up to the season')
+  // a second day in the same season stacks onto both
+  const second = E.bankDaily({ ...base, seasonId: sk, seasonScore: 900, seasonDays: 3,
+    seasonWeeks: Array.from({ length: E.SEASON_WEEKS }, (_, i) => (i === col ? 900 : 0)) })
+  eq(second.seasonScore, 900 + second.dailyScore, 'the season did not stack the day')
+  eq(second.seasonDays, 4, 'the day was not counted onto the season')
+  eq(second.seasonWeeks[col], 900 + second.dailyScore, 'the column did not stack the day')
+  eq(second.seasonBest, 900 + second.dailyScore, 'the season best did not follow the running total')
+
+  // A NEW SEASON CLOSES THE OLD ONE: the title is paid off the total it ENDED on
+  const rung = E.SEASON_TITLES[1]
+  const rolled = E.bankDaily({ ...base, seasonId: 's-old', seasonScore: rung.at, seasonDays: 20,
+    seasonWeeks: [rung.at, 0, 0, 0] })
+  ok(rolled.titles.includes(rung.title), `a season worth ${rung.at} did not pay ${rung.title}`)
+  eq(rolled.seasonId, sk, 'the new season did not start')
+  eq(rolled.seasonScore, rolled.dailyScore, "the new season inherited the old one's total")
+  eq(rolled.seasonDays, 1, "the new season inherited the old one's days")
+  eq(rolled.seasonWeeks.filter(n => n > 0).length, 1, 'the new season inherited the old board')
+  // the title is the OLD total's, never the new day's
+  eq(E.seasonTitle(rolled.dailyScore), null, 'this fixture cannot tell the two totals apart')
+  // a season under the first rung closes with nothing, and closing is idempotent
+  const poor = E.bankDaily({ ...base, seasonId: 's-old', seasonScore: 10, seasonDays: 1,
+    seasonWeeks: [10, 0, 0, 0] })
+  eq(poor.titles.length, 0, 'a season worth nothing paid a title anyway')
+  // there was no previous season to close on a very first day
+  eq(first.titles.length, 0, 'the first day of the first season closed a season that never was')
+  // and a season title never doubles up
+  const twice = E.bankDaily({ ...base, seasonId: 's-old', seasonScore: rung.at,
+    seasonWeeks: [rung.at, 0, 0, 0], titles: [rung.title] })
+  eq(twice.titles.filter(t => t === rung.title).length, 1, 'the season title was handed out twice')
+  // a streak rung and a season close can land on the same day; both must survive
+  const y = new Date(); y.setUTCDate(y.getUTCDate() - 1)
+  const both = E.bankDaily({ ...base, seasonId: 's-old', seasonScore: rung.at,
+    seasonWeeks: [rung.at, 0, 0, 0], dailyDay: E.dayKey(y), dailyStreak: 13 })
+  ok(both.titles.includes(rung.title), 'the streak title displaced the season title')
+  ok(both.titles.includes('Regular'), 'the season title displaced the streak title')
+  // banking twice pays once, seasons included
+  eq(JSON.stringify(E.bankDaily(first)), JSON.stringify(first), 'a second bank moved the season')
+
+  // TOMORROW is the day after today, and it is a real problem you can read
+  eq(E.tomorrowKey(d('2026-03-31')), '2026-04-01', 'tomorrow did not cross a month')
+  eq(E.tomorrowKey(d('2026-12-31')), '2027-01-01', 'tomorrow did not cross a year')
+  eq(E.tomorrowKey(d('2028-02-28')), '2028-02-29', 'tomorrow did not know it was a leap year')
+  const tk = E.tomorrowKey()
+  ok(tk !== E.dayKey(), 'tomorrow is today')
+  const tr = E.dailyRoute(tk), tf = E.dailyForecast(tk)
+  ok(tr.name.length > 2 && tr.clear > 0 && tr.grade > 0, 'tomorrow has no problem on it')
+  ok(tf.weather >= 0 && tf.weather < E.WEATHER.length, 'tomorrow has no weather')
+  ok(tf.rock >= 0 && tf.rock < E.ROCK.length, 'tomorrow has no rock')
+  eq(JSON.stringify(E.dailyRoute(tk)), JSON.stringify(tr), 'tomorrow read differently twice')
+  // the tease shows conditions, and deliberately does NOT spoil the objectives
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const tease = app.slice(app.indexOf('DAILY-3: what is coming'), app.indexOf('<div className="tilerow">'))
+  ok(tease.length > 200, "tomorrow's tease moved out from under this guard")
+  ok(/dailyForecast\(tk\)/.test(tease), 'the tease does not show the conditions')
+  ok(!/dailyGoals\(tk\)/.test(tease), "the tease gives away tomorrow's objectives")
+
+  // the season survives a save, board and all
+  E.saveGame({ ...base, slot: 1, seasonId: 's99', seasonScore: 4321, seasonBest: 9999,
+    seasonDays: 12, seasonWeeks: [1000, 2000, 1321, 0] })
+  const back = E.loadGame(1)
+  eq(back.seasonId, 's99', 'the season did not survive a save')
+  eq(back.seasonScore, 4321, 'the season total did not survive a save')
+  eq(back.seasonBest, 9999, 'the best season did not survive a save')
+  eq(back.seasonDays, 12, 'the days climbed did not survive a save')
+  eq(back.seasonWeeks.join(','), '1000,2000,1321,0', 'the board did not survive a save')
+  // OFF-BAND: a season pays a cosmetic title and a number no run can spend
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  ok(!/(cash|skin|psyche|pump|grip)[^\n]*\bseasonScore\b/.test(eng),
+    'a run resource is now computed from the season total')
+  const sim = readFileSync('sim/run.mjs', 'utf8')
+  ok(!/season/i.test(sim), 'the balance harness now knows about seasons')
+})
 test('the daily asks for two objectives, off its own seed (DAILY-2)', () => {
   /* DAILY-2. The daily was a score and nothing else, so the optimal line was the
      optimal line every day forever. Two objectives give the shared problem a shape.
