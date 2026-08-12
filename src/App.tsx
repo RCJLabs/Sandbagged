@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.4 — DEV-2: the service worker cannot pin a stale or broken build,
-//   and an update reaches an open page — but never mid-climb
+// SANDBAGGED v10.5 — DEV-1: content is inset past the notch and the home
+//   indicator — one-handed COMMIT is out of the OS swipe-up zone at last
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -126,7 +126,14 @@ const CSS = `
    (No backticks in here: this comment lives inside a template literal.) */
 html,body{overflow-x:hidden;overscroll-behavior-y:contain}
 body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',serif;color:var(--ink)}
-.wrap{max-width:390px;margin:0 auto;min-height:100vh;overflow-x:hidden;padding:9px 12px 16px;
+/* DEV-1: index.html sets viewport-fit=cover, which is an explicit opt-OUT of the
+   browser insetting content for the notch and the home indicator — and nothing
+   padded it back in, so the bottom of every screen sat under the gesture bar. The
+   new splash had learned dvh; this had not, so the page was also taller than the
+   visible viewport on mobile Safari. Both fixed here, and env() degrades to 0 on
+   a browser that does not know it. */
+.wrap{max-width:390px;margin:0 auto;min-height:100dvh;overflow-x:hidden;
+ padding:calc(9px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
  background-color:var(--paper);
  background-image:
   repeating-linear-gradient(to bottom,transparent 0 27px,rgba(96,84,60,.05) 27px 28px),
@@ -273,7 +280,9 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
 .pv.good{color:var(--green)}.pv.bad{color:var(--red)}.pv.mid{color:var(--fade)}
 .sheet{position:fixed;inset:0;background:rgba(30,26,20,.45);display:flex;
  align-items:flex-end;justify-content:center;z-index:50}
-.sheetin{overscroll-behavior:contain;width:100%;max-width:390px;max-height:82vh;overflow-y:auto;padding:12px 12px 16px;
+/* DEV-1: bottom-anchored, so its LAST row is the one in the indicator strip */
+.sheetin{overscroll-behavior:contain;width:100%;max-width:390px;max-height:82dvh;overflow-y:auto;
+ padding:12px 12px calc(16px + env(safe-area-inset-bottom));
  background-color:var(--paper);border-top:2px solid var(--ink);
  background-image:radial-gradient(rgba(120,110,90,.05) 1px,transparent 1px);background-size:3px 3px}
 .tap{cursor:pointer;text-decoration:underline;text-decoration-style:dotted}
@@ -334,7 +343,9 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
 /* A11Y-5: one-handed reach. The climb's controls drop to a thumb-reachable
    sticky bar at the bottom of the screen; left/right mirrors COMMIT onto the
    working thumb and gives it a bigger target. Layout only. */
-.reach .climb-foot{position:sticky;bottom:6px;z-index:5;margin-top:8px;
+/* DEV-1: this is the worst of them — A11Y-5 exists to put COMMIT under the thumb,
+   and it was putting it inside the OS swipe-up zone. */
+.reach .climb-foot{position:sticky;bottom:calc(6px + env(safe-area-inset-bottom));z-index:5;margin-top:8px;
  padding:7px 9px 8px;border-radius:12px;background:var(--paper);
  border:1.5px solid var(--ink);box-shadow:0 -3px 14px rgba(0,0,0,.22)}
 .reach-l .commit-bar{flex-direction:row-reverse}
@@ -1082,7 +1093,7 @@ function startTutorial() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.4 · RCJ Labs</div>
+          <div className="sfoot">v10.5 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1197,7 +1208,7 @@ function startTutorial() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.4 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.5 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

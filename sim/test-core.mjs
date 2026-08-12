@@ -2670,6 +2670,33 @@ test('GUARD-6: the balance ledger is gated on a release, not on a habit', () => 
     'the header still claims the ledger costs ~20s, which is why it gets skipped')
 })
 
+test('DEV-1: content is inset past the notch and the home indicator', () => {
+  /* index.html sets viewport-fit=cover — an explicit opt-OUT of the browser
+     insetting content for the notch and the home indicator — and env(safe-area-*)
+     appeared ZERO times, so the bottom of every screen sat in the gesture strip.
+     Worst case was the one-handed COMMIT bar: A11Y-5 exists to put COMMIT under
+     the thumb and it was putting it inside the OS swipe-up zone. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const html = readFileSync('index.html', 'utf8')
+  ok(/viewport-fit=cover/.test(html), 'the viewport no longer opts out — this guard needs rewriting')
+  const rule = name => {
+    const at = app.indexOf(name)
+    ok(at > 0, `${name} is gone — this guard is reading nothing`)
+    return app.slice(at, app.indexOf('}', at))
+  }
+  // the page, the bottom-anchored sheets, and the sticky one-handed COMMIT bar
+  ok(/env\(safe-area-inset-bottom\)/.test(rule('.wrap{max-width')),
+    'the page is not padded past the home indicator')
+  ok(/env\(safe-area-inset-bottom\)/.test(rule('.sheetin{')),
+    'a bottom-anchored sheet still ends inside the indicator strip')
+  ok(/env\(safe-area-inset-bottom\)/.test(rule('.reach .climb-foot{')),
+    'one-handed COMMIT still sits in the OS swipe-up zone')
+  // and the viewport unit must be the dynamic one on a phone
+  ok(/\.wrap\{[^}]*min-height:100dvh/.test(app),
+    'the page is still sized in vh, so it is taller than the visible viewport')
+  ok(!/max-height:82vh/.test(app), 'a sheet is still sized in vh rather than dvh')
+})
+
 test('DEV-2: the service worker cannot pin a stale or broken build', () => {
   /* Nineteen lines with three defects, all of which end in "the player is stuck
      on a build they cannot get off". The generator is the source of truth, so
