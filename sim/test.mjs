@@ -1904,39 +1904,48 @@ if (SLOW) {
       `a line is a trap: guide ${guide}, direct ${direct}, traverse ${traverse}`)
   })
   test('CARD-9: a bought-and-spent Second Wind helps, but never buys the campaign', () => {
-    /* The carve-out was that this consumable can only be judged by a harness
-       that BUYS and SPENDS it — a shop line the drafter ignores tells you
-       nothing about a burn. So this runs the same campaign twice: the default
-       (KIT_BURN off, the drafter never touches kit — this is why the pinned
-       47% band above is unmoved) and a player who buys a Second Wind at every
-       post and spends it at the last fall. The lift proves the buy-and-spend
-       path is real; the ceiling proves an extra burn is a leg-up, not a skip. */
-    /* 300 runs, not 200: once RUN-10 lowered the baseline the lift needed a
-       bigger sample to read cleanly (at 200 the delta swung as low as 0.5 on
-       noise; at 300 it is a steady ~3 points).
-       v9.96 (BAL-15): this ceiling is what stopped ROUTE-13 from shipping, and
-       the reason turned out to be the ITEM, not the guard. A Second Wind's retry
-       started on an empty clock — a complete extra attempt carrying the beta you
-       had just banked — worth +6.0 points (50.3 → 56.3), which is the "skip" this
-       ceiling exists to forbid. A wind burn now starts part-pumped (WIND_PUMP),
-       the lift fell to ~2, and the clearance under 58 went 1.7 → 5.7.
-       v9.98 (ROUTE-13): the named holds spent some of that back — a distinctive
-       hold is exactly what a bought burn beats on the retry. Now reads base 52.7
-       / wind 56.3 at n=300 (and 53.3 / 54.8 at n=600, where the lift settles to
-       ~1.5, so most of the n=300 delta is sample noise). NOTE THE MARGIN: ~1.7
-       under the ceiling. The harness is deterministic, so this will not flake —
-       but the next change that lifts the base band will hit THIS guard before it
-       hits the drift band, and the answer is to look at what is inflating the
-       retry, not to move the 58. */
-    const full = env => {
-      // GUARD-6: one band, not three — this guard reads only the full journal
-      const out = execSync(`PAGES=14 ${env} SHARP_AT=99 node sim/run.mjs campaign 300`, { encoding: 'utf8' })
-      const pcts = [...out.matchAll(/completion\s+([\d.]+)%/g)].map(m => Number(m[1]))
-      return pcts[pcts.length - 1]
+    /* The carve-out was that this consumable can only be judged by a harness that
+       BUYS and SPENDS it — a shop line the drafter ignores tells you nothing.
+       GUARD-1 (v10.1) rebuilt HOW it is judged, because the old form was gated
+       inside its own noise and could fail for the wrong reason:
+         · it asserted `wind < 58`, an ABSOLUTE. But `wind` contains the base
+           band, so the guard tripped when the GAME GOT EASIER rather than when
+           the ITEM got stronger — two failures that need different fixes, made
+           indistinguishable. ROUTE-13 hit exactly that at v9.94. It asserts the
+           LIFT now, which is the property the ticket actually states: "an extra
+           burn is a leg-up, not a skip."
+         · it inferred "the harness is really spending it" from `wind > base + 0.5`
+           — a 0.5-pt threshold under a difference of two proportions whose point
+           estimate has read 0.5, +6.0, +3.6 and ~1.5 on sample size alone. The
+           harness now REPORTS the winds it spends, so that is a deterministic
+           integer instead of a signal buried in noise.
+         · the sample tripled (300 → 900) at no cost, spending the runs GUARD-6
+           freed by dropping the two journal bands nothing here reads.
+       Where the threshold comes from: BAL-15 measured the unfixed item at +6.0
+       and called that the skip this ceiling exists to forbid; the fixed item
+       measures ~2.4 at n=900. A ceiling of 4 sits between the two, so it still
+       catches the behaviour it was written for — negative-tested by reverting
+       WIND_PUMP, which takes the lift back over it. */
+    const arm = env => {
+      const out = execSync(`PAGES=14 ${env} SHARP_AT=99 node sim/run.mjs campaign 900`,
+        { encoding: 'utf8' })
+      const pct = [...out.matchAll(/completion\s+([\d.]+)%/g)].map(m => Number(m[1])).pop()
+      const winds = Number(/winds (\d+)/.exec(out)?.[1] ?? -1)
+      ok(pct !== undefined && winds >= 0, 'the harness stopped reporting completion or winds')
+      return { pct, winds }
     }
-    const base = full(''), wind = full('KIT_BURN=1')
-    ok(wind > base + 0.5, `a bought-and-spent Second Wind moved completion ${(wind - base).toFixed(1)} pts — the harness is not really spending it`)
-    ok(wind < 58, `a Second Wind takes completion to ${wind}% — an extra burn is buying the campaign, not a leg-up`)
+    const base = arm(''), wind = arm('KIT_BURN=1')
+    /* The pinned band is measured on the DEFAULT arm, and the whole reason it is
+       unmoved by kit is that the drafter never touches it. That was a prose claim
+       in this ledger for four versions; it is an assertion now. */
+    eq(base.winds, 0, 'the default arm spent a Second Wind — the pinned band is not kit-free')
+    ok(wind.winds > 100,
+      `only ${wind.winds} winds were spent across 900 runs — the buy-and-spend path is not being exercised`)
+    const lift = wind.pct - base.pct
+    ok(lift > 0,
+      `a bought-and-spent Second Wind moved completion ${lift.toFixed(1)} pts — it is not helping at all`)
+    ok(lift < 4,
+      `a Second Wind is worth ${lift.toFixed(1)} pts of completion (${base.pct}% → ${wind.pct}%) — an extra burn is buying the campaign, not a leg-up`)
   })
 }
 

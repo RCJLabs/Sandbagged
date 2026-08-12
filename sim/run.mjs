@@ -122,7 +122,7 @@ function runOnce(seed) {
     // NARR-11: was hardcoded [1..6], so it could never grant a page above 6
     if (JOURNAL_PAGES) s = { ...s, journal: E.JOURNAL.filter(j => j.id !== 7)
       .map(j => j.id).slice(0, JOURNAL_PAGES) }
-    let turns = 0, climbs = 0, events = 0, talks = 0, projects = 0, shops = 0, fas = 0, rests = 0, guard = 0, skinAtBoss = -1, reachedBoss = false
+    let turns = 0, climbs = 0, events = 0, talks = 0, projects = 0, shops = 0, fas = 0, rests = 0, winds = 0, guard = 0, skinAtBoss = -1, reachedBoss = false
     const ACTS_LAST = E.ACTS.length - 1   // "reached the boss" must mean the LAST one
     while (s.phase !== 'runEnd' && guard++ < 400) {
       if (s.phase === 'map') {
@@ -301,8 +301,10 @@ function runOnce(seed) {
         // CARD-9: out of burns but carrying a Second Wind and still on your feet?
         // Spend it — it raises the cap, so the check below lets the retry run.
         if (KIT_BURN && s.burn >= E.attemptsFor(s) && skin > 0
-            && s.kit.some(id => E.consumableById(id)?.burn))
+            && s.kit.some(id => E.consumableById(id)?.burn)) {
           s = E.secondWindStep(s, s.kit.find(id => E.consumableById(id)?.burn))
+          winds++   // GUARD-1: report the mechanism, not just its shadow on the band
+        }
         if (s.burn >= E.attemptsFor(s) || skin <= 0) { s = E.endSession({ ...s, beta, skin }, rng); continue }
         s = E.startBurn({ ...s, beta, skin, burn: s.burn + 1 }, rng); continue
       }
@@ -341,6 +343,7 @@ function runOnce(seed) {
     return { won: s.phase === 'runEnd' && s.result === 'send', tier: s.tier, act: s.act, turns, climbs,
       deck: s.runDeck.length, skin: s.skin, skinAtBoss, reachedBoss, events, gear: s.gear.length,
       trail: s.trail.length, journal: s.journal.length, talks, projects, shops, fas, rests, faSent: s.faSent ?? 0,
+      winds,
       cash: s.cash, psyche: s.psyche,
       held: s.gear.length + s.boons.length,
       killedBy: s.result === 'send' ? 'won' : (s.psyche <= 0 ? 'psyche' : s.skin <= 0 ? 'skin' : 'route'),
@@ -486,7 +489,7 @@ if (mode === 'campaign') {
     ? [Number(process.env.PAGES)] : [0, 7, 14]
   for (const pages of BANDS) {
     JOURNAL_PAGES = pages
-    let won = 0, turns = 0, talksT = 0, pagesT = 0, restsT = 0
+    let won = 0, turns = 0, talksT = 0, pagesT = 0, restsT = 0, windsT = 0
     const diedAct = [0, 0, 0]
     const rng = new E.RNG(777)
     for (let i = 0; i < N; i++) {
@@ -494,11 +497,13 @@ if (mode === 'campaign') {
       if (r.won) won++; else diedAct[r.act]++
       turns += r.turns; talksT += r.talks; pagesT += r.journal
  restsT += r.rests ?? 0
+      windsT += r.winds ?? 0
     }
     console.log(`  journal ${pages}/14 → completion ${(100 * won / N).toFixed(1).padStart(5)}%` +
       `   turns ${(turns / N).toFixed(0).padStart(3)} (~${(turns / N * 12 / 60).toFixed(0)} min)` +
       `   died: act1 ${(100 * diedAct[0] / N).toFixed(0)}% act2 ${(100 * diedAct[1] / N).toFixed(0)}% act3 ${(100 * diedAct[2] / N).toFixed(0)}%` +
-      `   talks ${(talksT / N).toFixed(1)} rests ${(restsT / N).toFixed(1)} pages ${(pagesT / N).toFixed(1)}`)
+      `   talks ${(talksT / N).toFixed(1)} rests ${(restsT / N).toFixed(1)} pages ${(pagesT / N).toFixed(1)}` +
+      `   winds ${windsT}`)
   }
   JOURNAL_PAGES = 0
 }
@@ -515,7 +520,8 @@ if (mode === 'arch') {
     for (let i = 0; i < N; i++) {
       const r = runOnce(Math.floor(rng.next() * 2 ** 31))
       if (r.won) won++; turns += r.turns; sh += r.sharpened; pj += r.projects
-      cashLeft += r.cash; shopsT += r.shops; heldT += r.held; restsT += r.rests ?? 0; kill[r.killedBy]++
+      cashLeft += r.cash; shopsT += r.shops; heldT += r.held; restsT += r.rests ?? 0
+      kill[r.killedBy]++
     }
     console.log(`${E.ARCHETYPES[a].name.padEnd(16)}${E.ARCHETYPES[a].sig.padEnd(15)}` +
       `${(100 * won / N).toFixed(1).padStart(10)}%${(turns / N).toFixed(0).padStart(8)}` +
