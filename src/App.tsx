@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.3 — DEV-3: an endless run is written down now, and the page can
-//   no longer be pulled away mid-climb by a stray flick
+// SANDBAGGED v10.4 — DEV-2: the service worker cannot pin a stale or broken build,
+//   and an update reaches an open page — but never mid-climb
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -743,6 +743,14 @@ export default function App() {
     if (st.saveBlocked) return
     if (st.phase !== 'climb' && st.phase !== 'burnEnd') saveGame(st)
   }, [st])
+  /* DEV-2: tell the service-worker update path when it is unsafe to reload. A new
+     build reaching the player is worth having, but not at the price of the climb
+     they are in the middle of — mid-climb state is deliberately not saved, so a
+     reload there would throw the boulder away. Same two phases the save skips. */
+  useEffect(() => {
+    ;(window as unknown as { __SB_BUSY__?: boolean }).__SB_BUSY__ =
+      st.phase === 'climb' || st.phase === 'burnEnd'
+  }, [st.phase])
   const weather = WEATHER[st.weather], rock = ROCK[st.rock]
   const sel = useMemo(() => st.piles.hand.find(c => c.uid === st.selected) ?? null,
     [st.piles.hand, st.selected])
@@ -1074,7 +1082,7 @@ function startTutorial() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.3 · RCJ Labs</div>
+          <div className="sfoot">v10.4 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1189,7 +1197,7 @@ function startTutorial() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.3 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.4 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

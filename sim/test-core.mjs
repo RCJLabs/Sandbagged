@@ -2670,6 +2670,33 @@ test('GUARD-6: the balance ledger is gated on a release, not on a habit', () => 
     'the header still claims the ledger costs ~20s, which is why it gets skipped')
 })
 
+test('DEV-2: the service worker cannot pin a stale or broken build', () => {
+  /* Nineteen lines with three defects, all of which end in "the player is stuck
+     on a build they cannot get off". The generator is the source of truth, so
+     assert against it AND against the emitted worker. */
+  const gen = readFileSync('scripts/build-html.mjs', 'utf8')
+  const sw = readFileSync('docs/sw.js', 'utf8')
+  for (const [name, src] of [['generator', gen], ['emitted sw.js', sw]]) {
+    // 1. precache must bypass the HTTP cache, or it can store the PREVIOUS build
+    ok(/cache: *'reload'/.test(src),
+      `${name}: addAll can precache the previous build's HTML under the new cache name`)
+    // 2. never write a non-OK response into a cache that is then served first
+    ok(/res\.ok/.test(src),
+      `${name}: a 404 or captive-portal page can be cached permanently and bricks the install`)
+  }
+  // 3. an update has to reach an open page — but never mid-climb
+  ok(/controllerchange/.test(gen), 'a new build never reaches an already-open page')
+  ok(/__SB_BUSY__/.test(gen), 'the update path can reload mid-climb and eat the boulder')
+  ok(/had *= *!!navigator\.serviceWorker\.controller|var had=!!navigator\.serviceWorker\.controller/.test(gen),
+    'a first install would bounce the page, because nothing checks for a prior controller')
+  const app = readFileSync('src/App.tsx', 'utf8')
+  ok(/__SB_BUSY__/.test(app), 'the app never publishes whether it is safe to reload')
+  ok(/__SB_BUSY__[\s\S]{0,220}phase === 'climb'/.test(app),
+    'the busy flag is not tied to being mid-climb')
+  // the cache name must still be per-release, or an update cannot displace the old one
+  ok(/const CACHE = 'sandbagged-v[\d.]+'/.test(sw), 'the cache name is not versioned')
+})
+
 test('DEV-3: an endless run is written down, and the page cannot be pulled away', () => {
   /* The Circuit sets `inRun: false`, so saveGame's `run` block never covered it
      and NOT ONE LINE of an endless run was ever persisted — a twenty-line streak

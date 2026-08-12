@@ -78,7 +78,14 @@ for (const f of ['icon-192.png', 'icon-512.png']) copyFileSync(join('public', f)
 const sw = `const CACHE = 'sandbagged-v${VERSION}'
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png']
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()))
+  // DEV-2: {cache:'reload'} bypasses the HTTP cache. Without it, an install that
+  // happens soon after a previous visit can precache the PREVIOUS build's HTML
+  // under the NEW cache name — and because the fetch handler is cache-first with
+  // no revalidation, that stale page is then served forever. That is the whole
+  // "the update never reaches the player" failure.
+  e.waitUntil(caches.open(CACHE)
+    .then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()))
 })
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys()
@@ -89,8 +96,14 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return
   e.respondWith(caches.match(e.request, { ignoreSearch: true })
     .then(hit => hit || fetch(e.request).then(res => {
-      const copy = res.clone()
-      caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {})
+      // DEV-2: only store a response that is actually the thing. There was no ok
+      // check, so a captive-portal login page or a Pages 404 during a deploy was
+      // written into the versioned cache and then served cache-first for good —
+      // and since the game is one inlined HTML file, that bricked the install.
+      if (res && res.ok && res.type === 'basic') {
+        const copy = res.clone()
+        caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {})
+      }
       return res
     }).catch(() => caches.match('./index.html'))))
 })
@@ -102,8 +115,21 @@ const head = `<link rel="manifest" href="./manifest.webmanifest">` +
   `<meta name="apple-mobile-web-app-capable" content="yes">` +
   `<meta name="apple-mobile-web-app-status-bar-style" content="default">` +
   `<meta name="apple-mobile-web-app-title" content="Sandbagged">`
+/* DEV-2: registration was fire-and-forget. skipWaiting()+clients.claim() do NOT
+   reload an open page, so a new build landed a whole app relaunch late — or never,
+   on an installed iOS PWA that is rarely cold-started. This reloads when the
+   controller is replaced, but ONLY once, only when there was already a controller
+   (so a first install does not bounce), and only when the game is not mid-climb —
+   nothing is saved mid-climb, so an eager reload would eat the boulder it was
+   trying to update. The app publishes that state on window.__SB_BUSY__. */
 const reg = `<script>if('serviceWorker' in navigator){` +
-  `addEventListener('load',function(){navigator.serviceWorker.register('./sw.js').catch(function(){})})}<\/script>`
+  `addEventListener('load',function(){` +
+  `var had=!!navigator.serviceWorker.controller,done=false;` +
+  `navigator.serviceWorker.addEventListener('controllerchange',function(){` +
+  `if(!had||done)return;done=true;` +
+  `var t=setInterval(function(){if(!window.__SB_BUSY__){clearInterval(t);location.reload()}},4000);` +
+  `if(!window.__SB_BUSY__){clearInterval(t);location.reload()}});` +
+  `navigator.serviceWorker.register('./sw.js').catch(function(){})})}<\/script>`
 html = html.replace('</head>', () => head + '</head>')
 html = html.replace('</body>', () => reg + '</body>')
 
