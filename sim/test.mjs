@@ -1778,9 +1778,14 @@ if (SLOW) {
        guide — and the Onsighter sank to 4.8% under its floor — bought back with
        `firstTurnPower 2→3` to 8.8%. Floor raised 40→44 below to defend the new
        pin: a drift back toward the old thin-pool ~44 is now caught, not waved
-       through. */
+       through.
+       v9.98 (ROUTE-13): 25 routes got their named feature. A signature REPLACES
+       an ordinary hold, so mild ones make routes easier — pitched at dGrip 2–3
+       they land the band at n=300 52.7 / n=600 53.3, still on the ~52 pin. The
+       binding constraint on the way up is no longer this guard but CARD-9's
+       ceiling (~1.7 clear); read its comment before lifting the base again. */
     ok(full > 44 && full < 58,
-      `the campaign completes ${full}% with a full journal — ~52 (n=300 ~49), re-pinned at v9.89 (CARD-15)`)
+      `the campaign completes ${full}% with a full journal — ~52-53, held at v9.98 (ROUTE-13)`)
     ok(pcts[0] < full - 5, `reading his journal is worth ${(full - pcts[0]).toFixed(1)} points`)
   })
   test('the acts get deadlier in order', () => {
@@ -1842,9 +1847,23 @@ if (SLOW) {
        47% band above is unmoved) and a player who buys a Second Wind at every
        post and spends it at the last fall. The lift proves the buy-and-spend
        path is real; the ceiling proves an extra burn is a leg-up, not a skip. */
-    // 300 runs, not 200: once RUN-10 lowered the baseline the lift needed a
-    // bigger sample to read cleanly (at 200 the delta swung as low as 0.5 on
-    // noise; at 300 it is a steady ~3 points).
+    /* 300 runs, not 200: once RUN-10 lowered the baseline the lift needed a
+       bigger sample to read cleanly (at 200 the delta swung as low as 0.5 on
+       noise; at 300 it is a steady ~3 points).
+       v9.96 (BAL-15): this ceiling is what stopped ROUTE-13 from shipping, and
+       the reason turned out to be the ITEM, not the guard. A Second Wind's retry
+       started on an empty clock — a complete extra attempt carrying the beta you
+       had just banked — worth +6.0 points (50.3 → 56.3), which is the "skip" this
+       ceiling exists to forbid. A wind burn now starts part-pumped (WIND_PUMP),
+       the lift fell to ~2, and the clearance under 58 went 1.7 → 5.7.
+       v9.98 (ROUTE-13): the named holds spent some of that back — a distinctive
+       hold is exactly what a bought burn beats on the retry. Now reads base 52.7
+       / wind 56.3 at n=300 (and 53.3 / 54.8 at n=600, where the lift settles to
+       ~1.5, so most of the n=300 delta is sample noise). NOTE THE MARGIN: ~1.7
+       under the ceiling. The harness is deterministic, so this will not flake —
+       but the next change that lifts the base band will hit THIS guard before it
+       hits the drift band, and the answer is to look at what is inflating the
+       retry, not to move the 58. */
     const full = env => {
       const out = execSync(`${env} SHARP_AT=99 node sim/run.mjs campaign 300`, { encoding: 'utf8' })
       const pcts = [...out.matchAll(/completion\s+([\d.]+)%/g)].map(m => Number(m[1]))

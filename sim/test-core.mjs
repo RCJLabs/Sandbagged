@@ -430,7 +430,11 @@ test('RUN-11: Sustained changes the texture — the hand carries, and it is smal
   ok(sus.xp > 0, 'Sustained pays no XP')
   const burn = muts => {
     const rng = new E.RNG(9)
-    let b = E.startBurn({ ...E.freshRun(6, 0, 5), inRun: true, skirmish: null,
+    /* The route is incidental here — this tests the Sustained HAND, not a climb.
+       ROUTE-13 gave the old fixture route (idx 6, Deer Tick) a signature hard
+       enough to end the burn in one turn; the finale (idx 29) stays
+       signature-less by design and reliably leaves an unplayed card mid-climb. */
+    let b = E.startBurn({ ...E.freshRun(29, 0, 5), inRun: true, skirmish: null,
       weather: 1, rock: 0, mutators: muts, runDeck: E.DEFAULT_LOADOUT.map(E.spawn) }, rng)
     const open = b.piles.hand.length
     const before = new Set(b.piles.hand.map(c => c.uid))
@@ -1127,6 +1131,41 @@ test('the meter shows where the turn takes you', () => {
       ok(Math.min(E.PUMP_MAX, after) <= E.PUMP_MAX, 'the meter would draw past its own end')
       s = E.resolve(s, rng)
     }
+  }
+})
+
+test('ROUTE-13: the guidebook is named, and what stays plain stays plain on purpose', () => {
+  /* ROUTE-5 gave eleven routes a named feature and stopped; the other 25 were
+     stat blocks. They are named now — but four routes and the finale are
+     deliberately left plain, and that list is the point of this guard:
+       · the first four boulders teach the rules, and a named feature there is
+         noise while you are still learning what a crux is;
+       · THE LOST LINE is the line NOBODY has named. Giving it a named hold would
+         contradict the whole premise, so it keeps its anonymity;
+       · the tutorial authors its holds outright and has no signature slot.
+     Anything else added later must be named, or say here why not. */
+  const PLAIN = ['Warm-Up Rail', 'The Sit Start', 'Mossback', 'Peeler', 'The Lost Line']
+  const named = E.ROUTES.filter(r => r.signature)
+  ok(named.length >= 30, `only ${named.length} of ${E.ROUTES.length} routes have a named feature`)
+  for (const r of E.ROUTES) {
+    if (r.tutorial) continue
+    if (PLAIN.includes(r.name)) {
+      ok(!r.signature, `${r.name} is on the deliberately-plain list but carries a signature`)
+      continue
+    }
+    ok(r.signature, `${r.name} has no named feature and is not a deliberate exception`)
+  }
+  // the finale's anonymity is load-bearing narrative, so say so twice
+  const finale = E.ROUTES.find(r => r.finale)
+  ok(finale && !finale.signature, 'the unnamed line has been given a named hold')
+  /* Every signature REPLACES an ordinary hold, so a mild one makes its route
+     EASIER — the first pass measured +3 points of completion for exactly that
+     reason. These are pitched at or above their base, inside the range the
+     original table already demonstrated (deathblock, dGrip 3). */
+  for (const r of named) {
+    const s = E.sigById(r.signature)
+    ok(s, `${r.name} points at ${r.signature}, which is not a signature`)
+    ok((s.dGrip ?? 0) <= 3, `${s.id} is dGrip ${s.dGrip}, past anything the table had`)
   }
 })
 
