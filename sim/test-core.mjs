@@ -1130,6 +1130,36 @@ test('the meter shows where the turn takes you', () => {
   }
 })
 
+test('ENG-28: a hold\'s ability is read through abilityOf, never its base type', () => {
+  /* A signature may OVERRIDE the ability of the hold it is built on — The Wet
+     Jug is a jug that is GREASY, not a Rest — and a brushed hold has no ability
+     at all. resolve has always gone through abilityOf; three readers reached for
+     HOLD_STATS[name].ability directly instead, so on Icebox Corner the preview
+     shed a pump the resolution never did and the spotter shouted the wrong beta.
+     The tripwire is structural: only abilityOf may look an ability up by name. */
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  const direct = eng.match(/(?:HOLD_STATS|FEET_STATS)\[[^\]]+\]\?\.ability/g) ?? []
+  eq(direct.length, 2, `${direct.length} base-ability lookups — only the two inside abilityOf are allowed`)
+  const fn = eng.slice(eng.indexOf('export const abilityOf'), eng.indexOf('/** What a hold is called'))
+  eq((fn.match(/(?:HOLD_STATS|FEET_STATS)\[[^\]]+\]\?\.ability/g) ?? []).length, 2,
+    'the allowed base-ability lookups are not the ones inside abilityOf')
+  // and the behaviour: an overriding signature must read the same to both sides
+  const sig = E.SIGNATURES.find(s => s.ability && E.HOLD_STATS[s.base]
+    && E.HOLD_STATS[s.base].ability !== s.ability)
+  ok(sig, 'no signature overrides its base ability, so this cannot be tested')
+  const base = { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null, phase: 'climb',
+    gear: [], boons: [], mutators: [], weather: 1, rock: 0, turn: 1, flow: 0, pump: 4,
+    holdDeck: [], worked: [], order: [0], fxLane: ['', '', ''],
+    piles: { draw: [], discard: [], exhaust: [], hand: [] } }
+  // the overriding hold, set to clear this turn: resolve fires its REAL ability
+  const hold = { uid: 1, name: sig.base, bite: 1, grip: 1, crux: false, clean: false, sig: sig.id }
+  eq(E.abilityOf(hold), sig.ability, 'abilityOf ignored the signature override')
+  const st = { ...base, boardH: [hold, null, null], boardP: [E.spawn('Lock Off'), null, null] }
+  const lanes = [0, 1, 2].map(i => E.previewLane(st, i))
+  eq(E.previewPump(st, lanes), E.resolve(st, new E.RNG(1)).pump,
+    'the preview and resolve disagree on an ability-overriding signature hold')
+})
+
 test('BAL-15: a Second Wind buys the go, not a fresh body', () => {
   /* The retry a Second Wind bought used to start on an EMPTY clock — a complete
      extra attempt, carrying the beta you had just banked — which measured at +6

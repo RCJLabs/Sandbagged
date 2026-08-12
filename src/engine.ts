@@ -4311,17 +4311,17 @@ export function previewPump(s0: GameState, lanes?: LanePreview[]): number {
     pump += p.biteToPump
     if (p.clears) {
       cleared++
-      // working a jug sheds a pump — Rest fires on the clear, not on contact
-      const h = s.boardH[i]!
-      const ab = h.clean ? '' : (HOLD_STATS[h.name]?.ability ?? FEET_STATS[h.name]?.ability ?? '')
-      if (ab === 'Rest') pump = Math.max(0, pump - 1)
+      /* working a jug sheds a pump — Rest fires on the clear, not on contact.
+         ENG-28: through abilityOf, never the base hold's default. A signature
+         may OVERRIDE its base ability (The Wet Jug is a jug that is Greasy, not
+         a Rest), and resolve has always gone through abilityOf — so reading
+         HOLD_STATS here made the preview shed a pump the resolution never did. */
+      if (abilityOf(s.boardH[i]!) === 'Rest') pump = Math.max(0, pump - 1)
     }
     // Sharp fires on a blow regardless of Anchor; Peel takes precedence over it
     const c = s.boardP[i]
     if (p.blows && s.boardH[i] && c && c.fx !== 'peel' && c.fx !== 'tough') {
-      const ab = HOLD_STATS[s.boardH[i]!.name]?.ability
-        ?? FEET_STATS[s.boardH[i]!.name]?.ability ?? ''
-      if (ab === 'Sharp' && !s.boardH[i]!.clean) pump += 1
+      if (abilityOf(s.boardH[i]!) === 'Sharp') pump += 1
     }
   }
   const restedThis = s.boardP.some(c => c && c.shed > 0)
@@ -4925,7 +4925,10 @@ export function coach(s: GameState): string | null {
   for (const i of [0, 1]) {
     const h = holds[i], c = mine[i]
     if (!h || !c) continue
-    const ab = HOLD_STATS[h.name]?.ability ?? ''
+    // ENG-28: the spotter reads the ability the hold actually HAS — a signature
+    // can override its base (The Wet Jug is Greasy, not a Rest) and a brushed
+    // hold has none at all, so the base lookup shouted the wrong beta.
+    const ab = abilityOf(h)
     if (ab === 'Committing' && powerAgainst(s, c, h, i) < 2)
       return 'A crux needs Power 2 or more. Below that the move does nothing at all.'
     if (ab === 'Greasy' && c.fx !== 'friction' && !mine[2])
