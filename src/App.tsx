@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.94 — FA-1: THE FA is a real first-ascent mode now, and the
-//   grade you claim is an economy — sandbag for XP, spray for cash at the Ego risk
+// SANDBAGGED v9.95 — UI-2: a title card, and the menu rebuilt as tiles — each
+//   mode carries its own caption and one hero leads, so the page has a first read
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -275,6 +275,38 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
  clip:rect(0 0 0 0);white-space:nowrap;border:0}
 [role="button"]:focus-visible,button:focus-visible{outline:2.5px solid var(--red);outline-offset:2px}
 .menu-item{border:1.5px solid var(--ink);border-radius:2px;padding:8px 9px;margin-bottom:6px;background:var(--card)}
+/* UI-2: the menu was a stack of near-identical ink bars with every caption
+   sitting BELOW its button, so nothing on the screen said which line belonged
+   to which action. A mode is a TILE now — its mark, its name and its own
+   description inside one card you tap — and exactly one of them (the climb you
+   are actually on) is ink-filled, so the page has a first read again. */
+.tile{position:relative;display:block;width:100%;text-align:left;border:0;border-radius:3px;
+ background:var(--card);padding:11px 13px;margin:0 0 7px;font-family:inherit;color:var(--ink)}
+.tile .tname{display:flex;align-items:center;gap:8px;
+ font-size:calc(13.5px * var(--fs));font-weight:700;letter-spacing:.5px;line-height:1.1}
+.tile .tsub{font-size:calc(10.5px * var(--fs));color:var(--fade);line-height:1.4;margin-top:4px}
+.tile .tarrow{margin-left:auto;font-weight:700;opacity:.75}
+.tile.hero{background:var(--ink);color:var(--paper);padding:14px 14px 15px}
+.tile.hero .tname{font-size:calc(16.5px * var(--fs))}
+.tile.hero .tsub{color:rgba(232,225,208,.8)}
+.tile:disabled{opacity:.55}
+.tile.quiet{padding:9px 12px}
+.tile.quiet .tname{font-size:calc(12px * var(--fs))}
+.tilerow{display:flex;gap:7px}
+.tilerow .tile{flex:1;min-width:0}
+.tilerow .tname{letter-spacing:.3px}
+/* UI-2: the title card. A game should say its own name before it asks you to
+   read a menu — and the tap that gets you past it is also the gesture browsers
+   require before any audio can play, so the sound bed starts honestly here. */
+.splash{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;
+ width:100%;min-height:88dvh;border:0;background:transparent;font-family:inherit;color:var(--ink);
+ text-align:center;padding:0}
+.splash .stitle{font-size:calc(34px * var(--fs));font-weight:700;letter-spacing:1px;line-height:1}
+.splash .stag{font-size:calc(11.5px * var(--fs));color:var(--fade);margin-top:9px;letter-spacing:.3px}
+.splash .sbegin{font-size:calc(12px * var(--fs));font-weight:700;letter-spacing:2.2px;
+ margin-top:26px;animation:breathe 2.4s ease-in-out infinite}
+.splash .sfoot{font-size:calc(10px * var(--fs));color:var(--fade);margin-top:8px}
+@keyframes breathe{0%,100%{opacity:.42}50%{opacity:1}}
 .big{font-size:calc(15px * var(--fs));font-weight:700}.center{text-align:center}
 .famname{display:flex;align-items:center;gap:6px;min-width:0}
 .deckrow{display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid rgba(122,114,100,.28)}
@@ -381,6 +413,102 @@ function Glyph({ name, size = 22, color = 'var(--ink)' }:
       style={{ flex: '0 0 auto', opacity: 0.85 }}>
       <path d={d} fill="none" stroke={color} strokeWidth="1.7"
         strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/* ---------- UI-2: menu marks. The board and the hand have been scannable by
+   shape since CARD-4; the menu was the one screen where every row looked the
+   same. One ink mark per mode, in the same 24px vocabulary. ---------------- */
+const MENU_MARKS: Record<string, string> = {
+  // a topo line climbing to a summit cross — the expedition
+  route: 'M2,21 Q6,15 9,17 Q12,19 14,10 Q15,6 19,4 M16.5,1.5 L21.5,6.5 M21.5,1.5 L16.5,6.5',
+  // the day's problem: a sun over one boulder
+  day: 'M12,7 A4,4 0 1,1 11.9,7 M12,1.5 V3 M12,11 V12.5 M6.5,7 H5 M19,7 H17.5 M8.1,3.1 L7,2 M15.9,3.1 L17,2 M3,21 Q8,15 12,17.5 Q16,20 21,21',
+  // an unclimbed line: a flag nobody has put up yet
+  flag: 'M6,22 V3 M6,3.5 H18 L15,8 L18,12.5 H6',
+  // endless: a loop that comes back on itself
+  loop: 'M8,7 Q2.5,10 5,14.5 Q7.5,19 13,17 Q19,14.5 17.5,9 Q16,4 10.5,4.5 M8.5,2 L6,7 L11.5,7.5',
+  // before you go: the pack
+  pack: 'M8,7 V4.5 Q8,2 12,2 Q16,2 16,4.5 V7 M5.5,7 H18.5 Q20,7 20,9 V19 Q20,21.5 17.5,21.5 H6.5 Q4,21.5 4,19 V9 Q4,7 5.5,7 M9.5,12 H14.5',
+  // the books
+  book: 'M4,4 Q12,6 12,6 Q12,6 20,4 V19 Q12,17 12,17 Q12,17 4,19 Z M12,6 V17',
+  // the teaching climb
+  teach: 'M12,3.5 A8,8 0 1,1 11.9,3.5 M9.5,9 Q9.5,6.5 12,6.5 Q14.5,6.5 14.5,9 Q14.5,11 12,11.5 V14 M12,17 h0.01',
+}
+function Mark({ d, light = false, size = 17 }: { d: string; light?: boolean; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"
+      style={{ flex: '0 0 auto', opacity: light ? 0.9 : 0.75 }}>
+      <path d={d} fill="none" stroke={light ? 'var(--paper)' : 'var(--ink)'} strokeWidth="1.8"
+        strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+/* A menu mode: the mark, the name and the caption that belongs to it, all
+   inside the one thing you tap. The old menu put the caption underneath the
+   button, which is what made the screen ambiguous. */
+function Tile({ mark, name, sub, onClick, seed, hero, quiet, half, disabled, label }: {
+  mark: string; name: string; sub: React.ReactNode; onClick: () => void; seed: number
+  hero?: boolean; quiet?: boolean; half?: boolean; disabled?: boolean; label?: string
+}) {
+  return (
+    <button className={`tile${hero ? ' hero' : ''}${quiet ? ' quiet' : ''}`}
+      onClick={onClick} disabled={disabled} aria-label={label}>
+      <Ink w={half ? 176 : 366} h={hero ? 76 : quiet ? 44 : 58} seed={seed} deckle={2}
+        sw={hero ? 2 : 1.5} color={hero ? 'var(--paper)' : 'var(--ink)'} />
+      <div className="tname">
+        <Mark d={mark} light={hero} size={hero ? 20 : quiet ? 15 : 17} />
+        <span>{name}</span>
+        {disabled ? null : <span className="tarrow">▸</span>}
+      </div>
+      {sub ? <div className="tsub">{sub}</div> : null}
+    </button>
+  )
+}
+
+/* UI-2: the title card's drawing. The same seeded jitter as every other line in
+   the game — a ridge in ink, the route dashed up it, a red cross on the top. */
+function Ridge({ seed = 21 }: { seed?: number }) {
+  const W = 340, H = 118, f = (n: number) => n.toFixed(1)
+  // the skyline: a rising ridge to a summit at ~72%, then falling away
+  const pts: [number, number][] = []
+  const peak = 0.72
+  for (let i = 0; i <= 16; i++) {
+    const t = i / 16
+    const base = t < peak ? 1 - Math.pow(t / peak, 1.5) : (t - peak) / (1 - peak) * 0.55
+    pts.push([t * W, 18 + base * (H - 42) + jit(seed * 7 + i) * 5])
+  }
+  let sky = `M0,${f(pts[0][1])}`
+  for (let i = 1; i < pts.length; i++) {
+    const [x, y] = pts[i], [px, py] = pts[i - 1]
+    sky += ` Q${f((px + x) / 2 + jit(seed * 13 + i) * 3)},${f((py + y) / 2 + jit(seed * 17 + i) * 4)} ${f(x)},${f(y)}`
+  }
+  const [sx, sy] = pts[Math.round(peak * 16)]
+  // the line up it, dashed the way an unclimbed route is drawn in the book
+  let route = `M${f(W * 0.2)},${f(H - 6)}`
+  for (let i = 1; i <= 5; i++) {
+    const t = i / 5
+    route += ` Q${f(W * 0.2 + (sx - W * 0.2) * (t - 0.1) + jit(seed * 23 + i) * 9)},${f(H - 6 - (H - 6 - sy) * t + jit(seed * 29 + i) * 7)} ${f(W * 0.2 + (sx - W * 0.2) * t)},${f(H - 6 - (H - 6 - sy) * t)}`
+  }
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} aria-hidden="true"
+      style={{ display: 'block', margin: '4px 0 2px', maxWidth: 340 }}>
+      {/* hatched under the skyline rather than filled: a closed fill reads as a
+          grey rectangle, and this is a guidebook page, not a chart */}
+      {Array.from({ length: 13 }, (_, i) => {
+        const x = 8 + i * ((W - 16) / 12)
+        const t = x / W
+        const base = t < peak ? 1 - Math.pow(t / peak, 1.5) : (t - peak) / (1 - peak) * 0.55
+        const top = 18 + base * (H - 42) + jit(seed * 7 + i) * 5
+        return <path key={i} d={`M${f(x)},${f(top + 5)} L${f(x - 4)},${f(H - 2)}`}
+          stroke="var(--fade)" strokeWidth="1" strokeLinecap="round" opacity="0.28" />
+      })}
+      <path d={sky} fill="none" stroke="var(--ink)" strokeWidth="2" strokeLinecap="round" opacity="0.88" />
+      <path d={route} fill="none" stroke="var(--fade)" strokeWidth="1.5" strokeDasharray="5 5"
+        strokeLinecap="round" opacity="0.8" />
+      <path d={`M${f(sx - 5)},${f(sy - 5)} L${f(sx + 5)},${f(sy + 5)} M${f(sx + 5)},${f(sy - 5)} L${f(sx - 5)},${f(sy + 5)}`}
+        stroke="var(--red)" strokeWidth="2" strokeLinecap="round" opacity="0.9" />
     </svg>
   )
 }
@@ -570,6 +698,10 @@ export default function App() {
     `${st.reach !== 'off' ? ` reach reach-${st.reach[0]}` : ''}` +
     `${onRock ? ` wx-${WEATHER[st.weather].name.replace(/ /g, '')}` : ''}`
   const [seedIn, setSeedIn] = useState('')
+  /* UI-2: the title card, shown once per load before anything else. It is not
+     only decoration — a browser will not start an AudioContext until the player
+     has touched the page, so this is the honest place to open one. */
+  const [booted, setBooted] = useState(false)
   // UX-14: fifteen slots out of up to 219 owned cards, and no way to find one
   const [deckFind, setDeckFind] = useState('')
   const [deckOnly, setDeckOnly] = useState<'all' | 'hands' | 'feet' | 'technique' | 'mine'>('all')
@@ -890,6 +1022,30 @@ function startTutorial() {
   function leaveEvent() { setSt(s => leaveEventStep(s)) }
   function takeOffer(c: Card | null) { setSt(s => takeOfferStep(s, c)) }
 
+  /* UI-2: the title card. Shown once per load, in front of every screen — the
+     game says its own name before it hands you a menu, and the tap that dismisses
+     it is the user gesture the Web Audio context needs, so the sound bed comes up
+     legitimately instead of being blocked on the first climb. */
+  if (!booted) {
+    const begin = () => {
+      sfx('lift', st.sound)          // also opens the AudioContext, inside the gesture
+      setBooted(true)
+    }
+    return (
+      <div className={skin}>
+        <button className="splash" onClick={begin} aria-label="Sandbagged. Tap to begin.">
+          <div className="stitle"><Lettered t="SANDBAGGED" seed={5} /></div>
+          <InkRule seed={31} color="var(--ink)" />
+          <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
+          <Ridge seed={21} />
+          <div className="sbegin">TAP TO BEGIN</div>
+          <div className="sfoot">v9.95 · RCJ Labs</div>
+        </button>
+        <style>{CSS}</style>
+      </div>
+    )
+  }
+
   /* The menu asks one question — what are you doing — and puts setup and
      everything else behind one door each. It had grown to twenty controls. */
   if (st.phase === 'menu') {
@@ -911,22 +1067,25 @@ function startTutorial() {
           <span className="sub">{st.sends} sends · {st.wins} wins</span>
         </div>
 
+        {/* UI-2: exactly one tile takes the ink, and it is whatever you are
+            actually in the middle of — a run you can resume outranks everything,
+            then the teaching climb while it is unclimbed, then the expedition. */}
         {!st.tutorialDone ? (
-          <>
-            <button className="btn go" style={{ width: '100%', padding: 14, marginTop: 12 }}
-              onClick={startTutorial}>FIRST TIME? START HERE ▸</button>
-            <div className="sub" style={{ marginTop: 3 }}>
-              One warm-up boulder, ten minutes from the car. It teaches as you go.</div>
-          </>) : null}
+          <div style={{ marginTop: 12 }}>
+            <Tile hero={!resume} mark={MENU_MARKS.teach} seed={301} name="FIRST TIME? START HERE"
+              sub="One warm-up boulder, ten minutes from the car. It teaches as you go."
+              onClick={startTutorial} />
+          </div>) : null}
 
-        <div className="lbl" style={{ marginTop: 14 }}>CLIMB</div>
-        <button className="btn go" style={{ width: '100%', padding: 14, marginTop: 5 }}
-          disabled={!archUnlocked(ARCHETYPES[st.arch], st)} onClick={startLostLine}>
-          {resume ? 'CONTINUE THE LOST LINE ▸' : 'THE LOST LINE ▸'}</button>
-        <div className="sub" style={{ marginTop: 2, marginBottom: 9 }}>
-          {resume
-            ? `${ACT_NAMES[st.act]} · stage ${st.tier + 1}/${ACTS[st.act].length} · skin ${st.skin} · psyche ${st.psyche}`
-            : 'The full expedition. Three acts, about half an hour.'}</div>
+        <div className="lbl" style={{ marginTop: 13 }}>THE EXPEDITION</div>
+        <div style={{ marginTop: 5 }}>
+          <Tile hero={st.tutorialDone || !!resume} mark={MENU_MARKS.route} seed={302}
+            name={resume ? 'CONTINUE THE LOST LINE' : 'THE LOST LINE'}
+            sub={resume
+              ? `${ACT_NAMES[st.act]} · stage ${st.tier + 1} of ${ACTS[st.act].length} · skin ${st.skin} · psyche ${st.psyche}`
+              : 'Three acts, one deck, about half an hour. It ends on a line graded “?”.'}
+            disabled={!archUnlocked(ARCHETYPES[st.arch], st)} onClick={startLostLine} />
+        </div>
 
         {/* SKIRM-2: the same problem for everyone, once a day */}
         {/* INJ-1: carried between trips, and there is nothing to be done about it */}
@@ -944,41 +1103,44 @@ function startTutorial() {
           const wk = st.weekId === weekKey() ? st.weekScore : 0   // this week's ladder
           return (
             <>
-              <button className={`btn${done ? '' : ' go'}`} style={{ width: '100%', padding: 13 }}
-                disabled={done} onClick={startDaily}>
-                {done ? `TODAY'S PROBLEM — DONE · ${st.dailyScore}` : "TODAY'S PROBLEM ▸"}</button>
-              <div className="sub" style={{ marginTop: 2, marginBottom: 9 }}>
-                {r.name} · {gradeText(r.grade, st.grades)} · {r.clear} holds ·{' '}
-                <span style={{ color: 'var(--blue)' }}>{WEATHER[fc.weather].name} on {ROCK[fc.rock].name}</span>.
-                {done
-                  ? ` You scored ${st.dailyScore}. Back tomorrow.`
-                  : ' One go. Everybody in the world is on this one, in these conditions, today.'}
-                {st.dailyStreak > 1 ? ` ${st.dailyStreak} days running.` : ''}
-                {st.dailyBest > 0 ? ` Best ${st.dailyBest}.` : ''}
-                {wk > 0 ? ` This week: ${wk}${st.weekBest > wk ? ` (best ${st.weekBest})` : ''}.` : ''}</div>
+              <div className="lbl" style={{ marginTop: 12 }}>ONE CLIMB, ON ITS OWN</div>
+              <div style={{ marginTop: 5 }}>
+                <Tile mark={MENU_MARKS.day} seed={303} disabled={done}
+                  name={done ? `TODAY'S PROBLEM — DONE · ${st.dailyScore}` : "TODAY'S PROBLEM"}
+                  sub={<>
+                    {r.name} · {gradeText(r.grade, st.grades)} · {r.clear} holds ·{' '}
+                    <span style={{ color: 'var(--blue)' }}>{WEATHER[fc.weather].name} on {ROCK[fc.rock].name}</span>.
+                    {done
+                      ? ` You scored ${st.dailyScore}. Back tomorrow.`
+                      : ' One go, and everybody in the world is on this one today.'}
+                    {st.dailyStreak > 1 ? ` ${st.dailyStreak} days running.` : ''}
+                    {st.dailyBest > 0 ? ` Best ${st.dailyBest}.` : ''}
+                    {wk > 0 ? ` This week ${wk}${st.weekBest > wk ? ` (best ${st.weekBest})` : ''}.` : ''}
+                  </>}
+                  onClick={startDaily} />
+              </div>
             </>)
         })()}
 
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button className="btn" style={{ flex: 1, padding: 13 }} onClick={startFA}>THE FA</button>
-          <button className="btn" style={{ flex: 1, padding: 13 }} onClick={startCircuit}>THE CIRCUIT</button>
-        </div>
-        <div className="row" style={{ marginTop: 2 }}>
-          <span className="sub">an unclimbed line · name it</span>
-          <span className="sub">endless{st.bestCircuit ? ` · best ${st.bestCircuit}` : ''}</span>
+        <div className="tilerow">
+          <Tile half mark={MENU_MARKS.flag} seed={304} name="THE FA"
+            sub="Unclimbed. Name it and grade it." onClick={startFA} />
+          <Tile half mark={MENU_MARKS.loop} seed={305} name="THE CIRCUIT"
+            sub={st.bestCircuit ? `Endless. Best ${st.bestCircuit} lines.` : 'Endless. Until the skin goes.'}
+            onClick={startCircuit} />
         </div>
 
-        <div className="lbl" style={{ marginTop: 14 }}>BEFORE YOU GO</div>
-        <button className="btn" style={{ width: '100%', padding: 12, marginTop: 5 }}
-          onClick={() => setSt(x => ({ ...x, phase: 'prepare' }))}>
-          {ARCHETYPES[st.arch].name.toUpperCase()} · {st.topRope ? 'TOPROPE' : ASCENT[st.style].name.toUpperCase()}
-          {st.mutators.length ? ` · +${mutMods(st.mutators).xp}%` : ''} ▸</button>
-        <div className="sub" style={{ marginTop: 2 }}>
-          climber, ascent style, loadout, seed</div>
-
-        <button className="btn" style={{ width: '100%', padding: 12, marginTop: 10 }}
-          onClick={() => setSt(x => ({ ...x, phase: 'more' }))}>THE BOOKS & SETTINGS ▸</button>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.94 · RCJ Labs</div>
+        <div className="lbl" style={{ marginTop: 12 }}>BEFORE YOU GO</div>
+        <div style={{ marginTop: 5 }}>
+          <Tile quiet mark={MENU_MARKS.pack} seed={306}
+            name={`${ARCHETYPES[st.arch].name.toUpperCase()} · ${st.topRope ? 'TOPROPE' : ASCENT[st.style].name.toUpperCase()}${st.mutators.length ? ` · +${mutMods(st.mutators).xp}%` : ''}`}
+            sub="Climber, ascent style, loadout, seed."
+            onClick={() => setSt(x => ({ ...x, phase: 'prepare' }))} />
+          <Tile quiet mark={MENU_MARKS.book} seed={307} name="THE BOOKS & SETTINGS"
+            sub="The guidebook, his journal, your deeds, the record — and the dials."
+            onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
+        </div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.95 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

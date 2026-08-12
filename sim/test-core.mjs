@@ -1130,6 +1130,56 @@ test('the meter shows where the turn takes you', () => {
   }
 })
 
+test('UI-2: the menu says which caption belongs to which action, and one leads', () => {
+  /* Reported off a phone: the menu was "boring and not clear what goes to what".
+     Both halves of that were structural — every mode was the same full-width ink
+     bar, and each caption sat in a SEPARATE element BELOW its button, so nothing
+     tied a line to the thing it described. A mode is a Tile now: mark, name and
+     caption inside the one element you tap, with exactly one hero taking the ink. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const menu = app.slice(app.indexOf("if (st.phase === 'menu')"),
+    app.indexOf("if (st.phase === 'prepare')"))
+  ok(menu.length > 500, 'could not slice the menu screen')
+  // every mode is a tile, and every tile carries its own caption
+  const tiles = menu.match(/<Tile\b/g) ?? []
+  ok(tiles.length >= 6, `only ${tiles.length} menu modes are tiles`)
+  for (const t of menu.split('<Tile').slice(1))
+    ok(/\bsub=/.test(t.slice(0, 420)), 'a menu tile has no caption of its own')
+  // the caption lives INSIDE the tapped element, not in a sibling below it
+  ok(/\.tile \.tsub\{/.test(app), 'the tile caption has no style of its own')
+  // and the old ambiguous pattern is gone from this screen
+  eq((menu.match(/btn go/g) ?? []).length, 0,
+    'the menu still stacks full-width ink bars, which is what made it unreadable')
+  // exactly one tile may take the ink, and it follows what you are mid-way through
+  ok(/hero=\{st\.tutorialDone \|\| !!resume\}/.test(menu),
+    'the expedition tile does not lead once you are under way')
+  ok(/hero=\{!resume\}/.test(menu), 'the teaching climb leads even with a run to resume')
+  // the marks are what make the rows scannable, so they must all differ
+  const marks = [...app.matchAll(/MENU_MARKS\.(\w+)/g)].map(m => m[1])
+  ok(new Set(marks).size >= 6, `only ${new Set(marks).size} distinct menu marks`)
+  const defs = app.slice(app.indexOf('const MENU_MARKS'), app.indexOf('function Mark('))
+  for (const k of new Set(marks)) ok(new RegExp(`\\b${k}:`).test(defs), `${k} has no mark path`)
+})
+
+test('UI-2: the title card gates the game and opens the audio inside the tap', () => {
+  /* A game should say its own name before it hands you a menu. It also has to:
+     a browser will not start an AudioContext until the player has touched the
+     page, so the tap that dismisses this screen is the only honest place to open
+     one — otherwise the first climb's sound is silently blocked. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  ok(/const \[booted, setBooted\] = useState\(false\)/.test(app), 'nothing gates the game on a first tap')
+  const splash = app.slice(app.indexOf('if (!booted)'), app.indexOf("if (st.phase === 'menu')"))
+  ok(splash.length > 200, 'the title card is not rendered ahead of every screen')
+  ok(/TAP TO BEGIN/.test(splash), 'the title card never says how to get past it')
+  ok(/sfx\(/.test(splash) && /setBooted\(true\)/.test(splash),
+    'the tap does not open the audio context, so the sound bed stays blocked')
+  ok(/<Ridge\b/.test(splash), 'the title card carries no drawing')
+  // it must sit in FRONT of the phase graph, not be a phase of its own — the save
+  // format and the harness's phase walk stay untouched that way
+  ok(app.indexOf('if (!booted)') < app.indexOf("if (st.phase === 'menu')"),
+    'the title card renders after a screen it is meant to gate')
+})
+
 test('the resolve preview sits inside the slot', () => {
   const src = readFileSync('src/App.tsx', 'utf8')
   const m = /\.pv\{[^}]*bottom:(-?\d+)px/.exec(src)
