@@ -863,17 +863,147 @@ test('the daily surfaces its conditions and stacks a weekly ladder (SKIRM-3)', (
   const base = { ...E.freshRun(0, 0, 1), daily: true, result: 'send', cleared: 10,
     turn: 20, peakPump: 5, skirmish: E.dailyRoute(), dailyDay: '', dailyBest: 0, dailyStreak: 0,
     weekId: '', weekScore: 0, weekBest: 0 }
-  const score = E.dailyScore(base)
+  /* v10.8 (DAILY-2): this used to recompute `dailyScore(base)` and expect the week
+     to equal 500 + that. `bankDaily` now adds the day's objective bonus on top of
+     the raw climb, so the recomputed number is no longer what was banked. Asserting
+     against the banked `dailyScore` is the stronger form of the same property — the
+     week stacks exactly what the day scored, whatever the day scored. */
   const sameWeek = E.bankDaily({ ...base, weekId: E.weekKey(), weekScore: 500 })
-  eq(sameWeek.weekScore, 500 + score, "the daily did not stack onto this week's ladder")
-  eq(sameWeek.weekBest, 500 + score, 'the weekly best did not follow the running total')
-  eq(E.bankDaily({ ...base, weekId: 'w0', weekScore: 999 }).weekScore, score,
-    'a new week did not reset the ladder')
+  ok(sameWeek.dailyScore > 0, 'the day banked nothing to stack')
+  eq(sameWeek.weekScore, 500 + sameWeek.dailyScore, "the daily did not stack onto this week's ladder")
+  eq(sameWeek.weekBest, 500 + sameWeek.dailyScore, 'the weekly best did not follow the running total')
+  const newWeek = E.bankDaily({ ...base, weekId: 'w0', weekScore: 999 })
+  eq(newWeek.weekScore, newWeek.dailyScore, 'a new week did not reset the ladder')
   eq(JSON.stringify(E.bankDaily(sameWeek)), JSON.stringify(sameWeek),
     'a second bank moved the weekly ladder')
   // and it survives a save
   E.saveGame({ ...base, slot: 1, weekId: 'w123', weekScore: 700, weekBest: 900 })
   eq(E.loadGame(1).weekScore, 700, 'the weekly ladder did not survive a save')
+})
+test('the daily asks for two objectives, off its own seed (DAILY-2)', () => {
+  /* DAILY-2. The daily was a score and nothing else, so the optimal line was the
+     optimal line every day forever. Two objectives give the shared problem a shape.
+     On the seed, stated correctly after a negative test proved the first version of
+     this comment wrong: reusing `dailySeed(key)` here could NOT change the route,
+     because `dailyRoute` and `dailyForecast` each construct their own RNG and share
+     no mutable stream. What it would do is CORRELATE the goals with the route — the
+     grade and the objectives locked to one number, so every V4 day asks the same two
+     things. So this guard checks two separate properties: the day's problem is
+     snapshotted (a daily that changes what it was is a compatibility break), and the
+     goal pick is pinned to a derived key so the correlation cannot come back. */
+  const key = '2026-07-29'
+  const eng0 = readFileSync('src/engine.ts', 'utf8')
+  /* The route and the conditions for a fixed day, snapshotted at v10.8 BEFORE the
+     goals existed. Anything that touches the daily's RNG stream shows up here as a
+     changed problem — which for a daily is a compatibility break, not a tuning
+     change: everyone who has played 2026-07-29 climbed this. */
+  const spec = E.dailyRoute(key)
+  eq(JSON.stringify(spec),
+    '{"name":"Quiet Crack","grade":4,"style":"crimp ladder","clear":12,"crux":2,"feet":"hard","note":"Today only. Everybody is on this one."}',
+    "the goal seed moved today's problem")
+  eq(JSON.stringify(E.dailyForecast(key)), '{"weather":1,"rock":3}',
+    'the goal seed moved the shared forecast')
+  // and the forecast is still the first two draws of the route's own stream (SKIRM-3)
+  const q = new E.RNG(E.dailySeed(key))
+  eq(JSON.stringify(E.dailyForecast(key)),
+    JSON.stringify({ weather: q.int(E.WEATHER.length), rock: q.int(E.ROCK.length) }),
+    'the forecast is no longer the conditions the daily climbs in')
+  /* the goal pick is pinned to a DERIVED key at the call site. Asserting
+     `dailySeed(key+'#goals') !== dailySeed(key)` would only test the hash function —
+     it stays green when `dailyGoals` is edited to reuse the route seed, which is the
+     bug. So the derivation is asserted where it is written. */
+  const pick = eng0.slice(eng0.indexOf('export function dailyGoals'), eng0.indexOf('export function goalsMet'))
+  ok(pick.length > 100, 'dailyGoals moved out from under this guard')
+  ok(/dailySeed\(`\$\{key\}#goals`\)/.test(pick), 'the goals are picked off the route seed, not a derived one')
+  // and the correlation that would cause: the goals must not track the grade
+  const byGrade = new Map()
+  for (let d = 1; d <= 28; d++) {
+    const k = `2026-10-${String(d).padStart(2, '0')}`
+    const g = E.dailyGoals(k).map(x => x.id).sort().join('+')
+    const gr = E.dailyRoute(k).grade
+    if (!byGrade.has(gr)) byGrade.set(gr, new Set())
+    byGrade.get(gr).add(g)
+  }
+  ok([...byGrade.values()].some(v => v.size > 1),
+    'every route grade always asks for the same objectives — the goals track the route')
+
+  // two goals, deterministic, distinct, and drawn from the real table
+  const gs = E.dailyGoals(key)
+  eq(gs.length, E.GOALS_PER_DAY, 'the day did not ask for two things')
+  eq(gs[0].id === gs[1].id, false, 'the day asked for the same thing twice')
+  eq(JSON.stringify(E.dailyGoals(key)), JSON.stringify(gs), 'the same day asked for two different sets')
+  for (const g of gs) ok(E.goalById(g.id), `the day asked for a goal that is not in the table: ${g.id}`)
+  // and the day is what varies them — over a month they are not all the same pair
+  const seen = new Set()
+  for (let d = 1; d <= 28; d++) seen.add(E.dailyGoals(`2026-09-${String(d).padStart(2, '0')}`).map(g => g.id).sort().join('+'))
+  ok(seen.size >= 5, `a month of dailies only ever asked ${seen.size} different things`)
+  // every goal in the table is reachable, readable and pays something
+  for (const g of E.DAILY_GOALS) {
+    ok(g.pts > 0 && g.xp > 0, `${g.id} pays nothing`)
+    ok(g.text.length > 8 && g.text === g.text.trim(), `${g.id} does not say what it wants`)
+    eq(typeof g.met, 'function', `${g.id} cannot be checked`)
+  }
+
+  // the predicates read the run, and each one can be both met and missed
+  const spc = { clear: 10, crux: 2, grade: 5 }
+  const won = { result: 'send', turn: 15, cleared: 10, peakPump: 2, rests: 0, cruxFree: 1 }
+  const lost = { result: 'fall', turn: 40, cleared: 1, peakPump: E.PUMP_MAX, rests: 4, cruxFree: 0 }
+  for (const g of E.DAILY_GOALS) {
+    eq(g.met(won, spc), true, `${g.id} was not met by a perfect attempt`)
+    eq(g.met(lost, spc), false, `${g.id} was met by falling off the first hold`)
+  }
+  // the "how you climbed" goals are not satisfied by having climbed nothing
+  const nothing = { result: 'fall', turn: 2, cleared: 0, peakPump: 0, rests: 0, cruxFree: 0 }
+  eq(E.goalById('norest').met(nothing, spc), false, 'not resting was satisfied by not climbing')
+  eq(E.goalById('cool').met(nothing, spc), false, 'staying cool was satisfied by not climbing')
+
+  // banking pays the ones met, into the score, the record and xp — and only those
+  const base = { ...E.freshRun(0, 0, 1), daily: true, result: 'send', cleared: 10,
+    turn: 20, peakPump: 5, skirmish: E.dailyRoute(), dailyDay: '', dailyBest: 0,
+    dailyStreak: 0, rests: 0, cruxFree: 1, dailyMet: [] }
+  const banked = E.bankDaily(base)
+  const met = E.goalsMet(base)
+  eq(banked.dailyMet.join(','), met.map(g => g.id).join(','), 'the day did not record what it met')
+  eq(banked.dailyScore, E.dailyScore(base) + met.reduce((n, g) => n + g.pts, 0),
+    'the objective bonus is not in the day-s score')
+  // xp: exactly what the met goals are worth, and it is the ONLY xp bankDaily pays
+  const xpWant = met.reduce((n, g) => n + g.xp, 0)
+  ok(xpWant > 0, 'this fixture met no objective, so the payout is untested')
+  const none = { ...base, result: 'fall', cleared: 0, turn: 40, peakPump: E.PUMP_MAX, rests: 5, cruxFree: 0 }
+  eq(E.goalsMet(none).length, 0, 'a nothing attempt still met an objective')
+  eq(E.bankDaily(none).xp, none.xp, 'a day that met nothing was paid xp anyway')
+  eq(E.bankDaily(none).dailyScore, E.dailyScore(none), 'a day that met nothing was paid a bonus anyway')
+  // banking twice pays once — the same guard the score and the streak ride on
+  eq(JSON.stringify(E.bankDaily(banked)), JSON.stringify(banked), 'a second bank paid the objectives again')
+
+  // the counters are counted where it happens, and cleared by a fresh burn
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  ok(/if \(hold\.crux && feetOff\) cruxFree\+\+/.test(eng), 'a feet-off crux is not counted at the hold')
+  ok(/rests: s\.rests \+ \(restedThis \? 1 : 0\)/.test(eng), 'a rest is not counted off the turn that rested')
+  const burn = eng.slice(eng.indexOf('export function startBurn'), eng.indexOf('const effGrip'))
+  ok(burn.length > 400, 'startBurn moved out from under this guard')
+  ok(/rests: 0, cruxFree: 0/.test(burn), 'a fresh burn does not reset the objective counters')
+  // feet-off reads the board you HANDED IN, not the one resolve has chewed on
+  ok(/const feetOff = !s\.boardP\[2\]/.test(eng), 'feet-off reads the mutated board')
+
+  // OFF-BAND BY CONSTRUCTION: the harness climbs the campaign, never the daily
+  const sim = readFileSync('sim/run.mjs', 'utf8')
+  ok(!/bankDaily|dailyGoals|goalsMet|startDaily/.test(sim), 'the balance harness now plays the daily')
+  // and both new counters are inert outside the daily — nothing else reads them
+  const readers = [...eng.matchAll(/\b(rests|cruxFree)\b/g)].length
+  ok(readers > 0, 'the counters vanished')
+  ok(!/(pump|contact|power|grip|skin|psyche)[^\n]*\b(s\.rests|s\.cruxFree)\b/.test(eng),
+    'a run resource is now computed from an objective counter')
+
+  // the record survives a save, and the share carries the objectives
+  E.saveGame({ ...base, slot: 1, dailyMet: ['flash', 'cool'] })
+  eq(E.loadGame(1).dailyMet.join(','), 'flash,cool', 'the objectives met did not survive a save')
+  const share = E.dailyShare({ ...banked, dailyDay: key, grades: 'v' })
+  const gridLine = share.split('\n')[1]
+  eq((gridLine.match(/[▪▫]/g) || []).length, E.specOf(banked).clear,
+    'the goals line displaced the grid SOCIAL-1 puts on line two')
+  for (const g of E.dailyGoals(key)) ok(share.toLowerCase().includes(g.text.toLowerCase()),
+    `the share does not carry the objective "${g.text}"`)
 })
 test('the streak pays a ladder in kit and titles, and forgives one miss a week (DAILY-1)', () => {
   /* DAILY-1. Coming back every day paid nothing at all before this: `dailyStreak`
@@ -906,11 +1036,18 @@ test('the streak pays a ladder in kit and titles, and forgives one miss a week (
   const at3 = E.bankDaily({ ...base, dailyDay: yest, dailyStreak: 2 })
   eq(at3.dailyStreak, 3, 'three days running is not a streak of three')
   eq(at3.larder.join(','), 'chalkshot', 'the third day paid no kit into the larder')
-  eq(at3.cash, base.cash, 'the ladder paid cash')
-  eq(at3.xp, base.xp, 'the ladder paid xp')
-  eq(at3.level, base.level, 'the ladder paid a level')
+  /* v10.8 (DAILY-2): `bankDaily` now also pays the day's objectives, so comparing a
+     banked state to the UNBANKED one would read that payout as the ladder's. The
+     property is differential and always was: a rung day and an ordinary day differ
+     by the rung and NOTHING else. Same climb, same day, same objectives — so any
+     difference in cash, xp, level or the collection is the ladder's doing. */
+  const ctrl = E.bankDaily({ ...base, dailyDay: yest, dailyStreak: 3 })
+  eq(at3.cash, ctrl.cash, 'the ladder paid cash')
+  eq(at3.xp, ctrl.xp, 'the ladder paid xp')
+  eq(at3.level, ctrl.level, 'the ladder paid a level')
+  eq(at3.owned.length, ctrl.owned.length, 'the ladder paid a card')
+  eq(ctrl.larder.length, 0, 'an ordinary day paid kit into the larder')
   eq(at3.kit.length, 0, 'the ladder put kit straight into your hands')
-  eq(at3.owned.length, base.owned.length, 'the ladder paid a card')
   eq(at3.titles.length, 0, 'the third day handed out a title')
   // a titled rung adds it once and never again
   const at14 = E.bankDaily({ ...base, dailyDay: yest, dailyStreak: 13 })

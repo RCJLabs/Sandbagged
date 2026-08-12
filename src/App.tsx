@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.7 — DAILY-1: coming back day after day now pays a ladder — kit
-//   into a larder you carry to the next trip, titles, and one forgiven miss a week
+// SANDBAGGED v10.8 — DAILY-2: the daily asks for two things now, not just a score
+//   — objectives announced before you tie in, off the day's own seed
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -21,7 +21,7 @@ import {
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
   campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitZone, claimStep, claimVerdict,
   consumableById, KIT_MAX, useKitStep, secondWindStep,
-  coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyRoute, dailySeed, dailyShare, dailyUsed, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
+  coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyGoals, dailyRoute, dailySeed, dailyShare, dailyUsed, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
   endSession, endingFor, endingStep, establishedIn, exportSave, exposed, exposureOf,
   faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
   gearMods, gradeLabel, gradeText, gripShown, holdLabel, honestyOf, importSave,
@@ -267,6 +267,13 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
 .spot{font-size:calc(11px * var(--fs));line-height:1.45;margin-top:8px;padding:7px 9px;border-left:3px solid var(--red);
  background:rgba(158,58,44,.07)}
 .spot b{font-size:calc(9px * var(--fs));letter-spacing:1px;color:var(--red);display:block;margin-bottom:2px}
+/* DAILY-2: today's objectives hang off the bottom of the daily tile rather than
+   floating between tiles — same inset as the tile, a rule down the left so they
+   read as its continuation, and one line each. */
+.goals{margin:0 0 0 14px;padding:6px 0 2px 10px;border-left:1px solid var(--line);
+ font-size:calc(11px * var(--fs));line-height:1.6}
+.goals div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.goals .pts{opacity:.65;font-variant-numeric:tabular-nums}
 /* VIS-5: a hazard you must answer this turn outranks a flavour note — heavier
    rule, a touch more ground, and it sorts to the top of the advisory stack. */
 .spot.urgent{border-left-width:6px;padding-top:8px;padding-bottom:8px;background:rgba(53,91,114,.10)}
@@ -1129,7 +1136,7 @@ function startTutorial() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.7 · RCJ Labs</div>
+          <div className="sfoot">v10.8 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1241,6 +1248,17 @@ function startTutorial() {
                   </>}
                   onClick={startDaily} />
               </div>
+              {/* DAILY-2: the objectives are announced before you tie in — everybody
+                  is solving the same stated puzzle, which is the point of a daily. */}
+              <div className="goals sub">
+                {dailyGoals().map(g => {
+                  const got = done && st.dailyMet.includes(g.id)
+                  return (
+                    <div key={g.id} style={{ color: got ? 'var(--green)' : undefined }}>
+                      {done ? (got ? '✓' : '✗') : '▸'} {g.text} <span className="pts">+{g.pts}</span>
+                    </div>)
+                })}
+              </div>
             </>)
         })()}
 
@@ -1265,7 +1283,7 @@ function startTutorial() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.7 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.8 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2851,6 +2869,16 @@ function startTutorial() {
             {st.dailyScore >= st.dailyBest ? 'Your best on a daily yet. ' : `Your best is ${st.dailyBest}. `}
             {st.dailyStreak > 1 ? `${st.dailyStreak} days running. ` : 'Come back tomorrow and keep it going. '}
             {st.weekScore > 0 ? `This week: ${st.weekScore}${st.weekScore >= st.weekBest ? ' — your best week' : ` (best ${st.weekBest})`}.` : ''}
+            {/* DAILY-2: the same two objectives, now settled */}
+            <div style={{ marginTop: 6 }}>
+              {dailyGoals().map(g => {
+                const got = st.dailyMet.includes(g.id)
+                return (
+                  <div key={g.id} style={{ color: got ? 'var(--green)' : 'var(--dim)' }}>
+                    {got ? '✓' : '✗'} {g.text}{got ? ` +${g.pts} · ${g.xp} xp` : ''}
+                  </div>)
+              })}
+            </div>
             {/* SOCIAL-1: paste your result anywhere, no server */}
             <button className="btn" style={{ width: '100%', marginTop: 8, padding: 10 }}
               {...tap(() => { try { void navigator.clipboard?.writeText(dailyShare(st)) } catch { /* blocked */ } setShared(true) },

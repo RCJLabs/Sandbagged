@@ -394,6 +394,14 @@ export type GameState = {
   /** How close it got. Kept per burn so the screen at the end has something
       to tell you beyond "that is a send". */
   peakPump: number
+  /* DAILY-2: two more per-burn readings, so an objective can ask you to climb a
+     particular WAY rather than just score. Both are counted where the thing
+     actually happens in `resolve` and cleared by `startBurn` alongside `cleared`
+     and `peakPump` — they describe this burn, never the career. */
+  /** Turns you shook out on. */
+  rests: number
+  /** Crux holds taken with nothing in the feet lane. */
+  cruxFree: number
   /** You just clipped. You are above a bomber piece and you can go for it. */
   clipped: boolean
   bonusUsed: boolean
@@ -418,6 +426,8 @@ export type GameState = {
   hints: boolean
   /** SKIRM-2: which day you last played, and what you got. */
   dailyDay: string
+  /** DAILY-2: which of today's objectives the attempt met, by id. */
+  dailyMet: string[]
   /** DAILY-1: consumables earned from a streak, waiting for your next trip. Kept
       out of `newRun` on purpose — the App hands them over, so the balance harness
       never receives them. */
@@ -519,7 +529,7 @@ type SaveData = {
   arch?: number; loadouts?: string[][]; book?: Record<string, LogEntry>; bestCircuit?: number
   ticked?: string[]; established?: Established[]; hints?: boolean; grades?: GradeScale
   tweak?: Tweak | null
-  larder?: string[]; titles?: string[]; graceWeek?: string
+  larder?: string[]; titles?: string[]; graceWeek?: string; dailyMet?: string[]
   dailyDay?: string; dailyTried?: string; dailyScore?: number; dailyBest?: number; dailyStreak?: number
   weekId?: string; weekScore?: number; weekBest?: number
   mutators?: string[]
@@ -556,7 +566,7 @@ export function saveGame(s: GameState) {
       style: s.style, styleMax: s.styleMax, seen: s.seen, coaching: s.coaching, sound: s.sound, haptics: s.haptics, assist: s.assist, cbSafe: s.cbSafe,
       tutorialDone: s.tutorialDone, motion: s.motion, textScale: s.textScale, reach: s.reach,
       arch: s.arch, loadouts: s.loadouts, book: s.book, bestCircuit: s.bestCircuit, ticked: s.ticked, established: s.established, hints: s.hints, grades: s.grades, tweak: s.tweak,
-      larder: s.larder, titles: s.titles, graceWeek: s.graceWeek,
+      larder: s.larder, titles: s.titles, graceWeek: s.graceWeek, dailyMet: s.dailyMet,
       dailyDay: s.dailyDay, dailyTried: s.dailyTried, dailyScore: s.dailyScore, dailyBest: s.dailyBest, dailyStreak: s.dailyStreak,
       weekId: s.weekId, weekScore: s.weekScore, weekBest: s.weekBest,
       mutators: s.mutators,
@@ -663,6 +673,7 @@ export function loadGame(slot = 0): Partial<GameState> | null {
       ticked: d.ticked ?? [], established: d.established ?? [], hints: d.hints ?? true,
       grades: d.grades ?? 'v', tweak: d.tweak ?? null,
       larder: d.larder ?? [], titles: d.titles ?? [], graceWeek: d.graceWeek ?? '',
+      dailyMet: d.dailyMet ?? [],
       dailyDay: d.dailyDay ?? '', dailyTried: d.dailyTried ?? '', dailyScore: d.dailyScore ?? 0,
       dailyBest: d.dailyBest ?? 0, dailyStreak: d.dailyStreak ?? 0,
       weekId: d.weekId ?? '', weekScore: d.weekScore ?? 0, weekBest: d.weekBest ?? 0,
@@ -3011,6 +3022,12 @@ export function dailyShare(s: GameState): string {
     `${grid} ${holds}/${spec.clear} · ${gradeText(spec.grade, s.grades)}${wx ? ` · ${wx}` : ''}`,
     `${s.dailyScore} pts${s.result === 'send' ? ' · flashed it' : ''}`,
   ]
+  /* DAILY-2: the objectives are the part worth comparing — two people can both
+     score well and only one of them kept off the rests. Appended, so SOCIAL-1's
+     line order (and the guard that reads the grid off line 2) is unchanged. */
+  const goals = dailyGoals(s.dailyDay || undefined)
+  if (goals.length) lines.push(goals.map(g =>
+    `${s.dailyMet.includes(g.id) ? '✓' : '✗'} ${g.text.toLowerCase()}`).join(' · '))
   const tail: string[] = []
   if (s.dailyStreak > 1) tail.push(`${s.dailyStreak}-day streak`)
   if (s.weekScore > 0) tail.push(`week ${s.weekScore}`)
@@ -3328,7 +3345,7 @@ export function carryOver(s: GameState): Partial<GameState> {
     coaching: s.coaching, hints: s.hints, topRope: s.topRope, grades: s.grades,
     dailyDay: s.dailyDay, dailyScore: s.dailyScore,
     dailyBest: s.dailyBest, dailyStreak: s.dailyStreak,
-    larder: s.larder, titles: s.titles, graceWeek: s.graceWeek,
+    larder: s.larder, titles: s.titles, graceWeek: s.graceWeek, dailyMet: s.dailyMet,
     weekId: s.weekId, weekScore: s.weekScore, weekBest: s.weekBest,
   }
 }
@@ -3369,9 +3386,9 @@ export function freshRun(routeIdx: number, deckTier: number, seed: number): Game
     shopCards: [], shopGear: [], shopKit: [], kit: [], bought: [],
     coaching: true, sound: true, haptics: true, assist: false, cbSafe: false, motion: true, textScale: 0, reach: 'off',
     tutorialDone: false,
-    fxLane: ['', '', ''], fxTick: 0, gear: [], boons: [], gearOffers: [], savedBlow: false, peakPump: 0, clipped: false, bonusUsed: false, line: 0, rerolls: 0, mutators: [], seq: null, readAhead: 0, order: [], routeMove: null, arch: 0,
+    fxLane: ['', '', ''], fxTick: 0, gear: [], boons: [], gearOffers: [], savedBlow: false, peakPump: 0, rests: 0, cruxFree: 0, clipped: false, bonusUsed: false, line: 0, rerolls: 0, mutators: [], seq: null, readAhead: 0, order: [], routeMove: null, arch: 0,
     loadouts: ARCHETYPES.map(a => a.loadout.slice()), reroll: 0, book: {}, ticked: [], hints: true, grades: 'v',
-    larder: [], titles: [], graceWeek: '',
+    larder: [], titles: [], graceWeek: '', dailyMet: [],
     dailyDay: '', dailyTried: '', dailyScore: 0, dailyBest: 0, dailyStreak: 0, weekId: '', weekScore: 0, weekBest: 0, daily: false, trail: [],
     shoppedAt: [], tweak: null, eventChose: [], vanRaided: [], established: [],
   }
@@ -3388,6 +3405,69 @@ export function freshRun(routeIdx: number, deckTier: number, seed: number): Game
    on when the alternative is a farmable ladder. */
 export const dailyUsed = (s: GameState, key = dayKey()) =>
   s.dailyDay === key || s.dailyTried === key
+
+/* DAILY-2. The daily was a score and nothing else, so there was no reason to climb
+   it a particular WAY — the optimal line was the optimal line, every day, forever.
+   Two objectives a day, off the same seed everybody else gets, give the one shared
+   problem a shape: today it wants a flash and a cool head, tomorrow it wants you
+   to keep off the rests. They are announced BEFORE you tie in (that is the whole
+   point — everyone is solving the same stated puzzle) and they pay in daily score
+   and XP.
+
+   THE SEED IS DERIVED, NOT SHARED — and the reason is correlation, not corruption.
+   `dailyRoute` and `dailyForecast` each construct their OWN `RNG(dailySeed(key))`,
+   so reusing that seed here could not have changed the route (nothing shares a
+   mutable stream). What it WOULD do is lock the objectives to the same number the
+   route came from: the grade and the goals would move together forever, so every
+   V4 day would ask the same two things and a month of dailies would read as a
+   short loop. Hashing `key#goals` makes the two independent. A snapshot test pins
+   the route and the forecast for a fixed day regardless, because a daily that
+   changes what it was is a compatibility break rather than a tuning change.
+
+   Off-band by construction: the score is a leaderboard number no run can spend,
+   and the XP is paid on the daily, which the balance harness never plays (it calls
+   `newRun` and climbs the campaign). Nothing here reaches the guide line. */
+export type DailyGoal = {
+  id: string
+  /** What it asks, in the imperative — this is what the menu prints. */
+  text: string
+  /** Added to the day's score. */
+  pts: number
+  xp: number
+  met: (s: GameState, spec: RouteSpec) => boolean
+}
+export const GOALS_PER_DAY = 2
+export const DAILY_GOALS: DailyGoal[] = [
+  { id: 'flash', text: 'Top it out', pts: 120, xp: 8,
+    met: s => s.result === 'send' },
+  { id: 'quick', text: 'Top it out inside 22 turns', pts: 150, xp: 10,
+    met: s => s.result === 'send' && s.turn <= 22 },
+  // half the route is the floor on the "how you climbed" goals, so falling off the
+  // first hold cannot satisfy them by having done nothing at all
+  { id: 'norest', text: 'Past halfway without shaking out', pts: 130, xp: 9,
+    met: (s, spec) => s.rests === 0 && s.cleared * 2 >= spec.clear },
+  { id: 'cool', text: 'Past halfway and never over half pumped', pts: 110, xp: 8,
+    met: (s, spec) => s.peakPump <= Math.floor(PUMP_MAX / 2) && s.cleared * 2 >= spec.clear },
+  { id: 'cruxfree', text: 'Take a crux with your feet off', pts: 100, xp: 7,
+    met: s => s.cruxFree > 0 },
+  { id: 'deep', text: 'Reach the last two holds', pts: 90, xp: 6,
+    met: (s, spec) => s.cleared >= spec.clear - 2 },
+]
+export const goalById = (id: string) => DAILY_GOALS.find(g => g.id === id) ?? null
+/** Today's two, deterministic and the same for everyone. */
+export function dailyGoals(key = dayKey()): DailyGoal[] {
+  // a separate hash of the same day, so the route's stream is left alone
+  const rng = new RNG(dailySeed(`${key}#goals`))
+  const pool = DAILY_GOALS.slice()
+  const out: DailyGoal[] = []
+  for (let i = 0; i < GOALS_PER_DAY && pool.length; i++) out.push(pool.splice(rng.int(pool.length), 1)[0])
+  return out
+}
+/** Which of today's objectives the attempt actually met. */
+export function goalsMet(s: GameState, key = dayKey()): DailyGoal[] {
+  const spec = specOf(s)
+  return dailyGoals(key).filter(g => g.met(s, spec))
+}
 
 /* DAILY-1: a streak was a number with one deed on it — nothing to earn and nothing
    to protect. It pays on a ladder now, and it forgives one missed day a week,
@@ -3411,10 +3491,18 @@ export function nextStreakReward(n: number) {
   return r ? { at: r.at, away: r.at - n } : null
 }
 
-export function bankDaily(s: GameState): GameState {
+export function bankDaily(s: GameState, rng = new RNG(dailySeed())): GameState {
   if (!s.daily) return s
   const key = dayKey()
-  const score = dailyScore(s)
+  /* DAILY-2: the objectives are paid HERE, in the one funnel a daily attempt has
+     to pass through, so they are banked exactly once for the same reason the score
+     and the streak are — the `!s.daily` guard above. `dailyScore` stays the raw
+     climb (the share and the tests read it), and the objective bonus lands on top
+     of it, so the day, the week and the best all agree on one number.
+     The rng defaults rather than being optional-and-skipped: a missing argument
+     must not silently drop the XP, which is how a feature ships dead. */
+  const met = goalsMet(s, key)
+  const score = dailyScore(s) + met.reduce((n, g) => n + g.pts, 0)
   // a streak is consecutive days, so yesterday must have been the last one
   const y = new Date(); y.setUTCDate(y.getUTCDate() - 1)
   const wk0 = weekKey()
@@ -3430,7 +3518,10 @@ export function bankDaily(s: GameState): GameState {
   const weekScore = s.weekId === wk ? s.weekScore + score : score
   const streak = kept + 1
   const rw = streakReward(streak)
-  return { ...s, daily: false, dailyDay: key, dailyScore: score,
+  const xp = met.reduce((n, g) => n + g.xp, 0)
+  const paid = xp > 0 ? gainXp(s, xp, rng) : s
+  return { ...paid, daily: false, dailyDay: key, dailyScore: score,
+    dailyMet: met.map(g => g.id),
     dailyBest: Math.max(s.dailyBest, score), dailyStreak: streak,
     graceWeek: forgiven ? wk0 : s.graceWeek,
     larder: rw?.kit ? [...s.larder, rw.kit] : s.larder,
@@ -3439,7 +3530,7 @@ export function bankDaily(s: GameState): GameState {
 }
 
 export function endSession(s0: GameState, rng: RNG): GameState {
-  let s = bankDaily(s0)
+  let s = bankDaily(s0, rng)   // DAILY-2: the session's rng, so a daily level-up rolls off the run
   // CARD-6: the consequence arrives here, once, on the way off the boulder
   const cause = s.inRun ? curseEarned(s) : null
   if (cause) s = addCurse(s, cause)
@@ -3601,6 +3692,8 @@ export function startBurn(s: GameState, rng: RNG): GameState {
     flow: 0, cleared: 0, worked: [], turn: 1, phaseSeen: '',
     // the belay is your first piece: on a rope you are never on nothing
     runout: 0, lastPiece: spec.roped ? 0 : -1, pitch: 0, savedBlow: false, peakPump: 0,
+    // DAILY-2: per-burn, like peakPump above it — a fresh go asks the objective again
+    rests: 0, cruxFree: 0,
     clipped: false, seq: null, readAhead: 0,
     // CARD-9: a second wind buys a go on THIS boulder only — clear it when a
     // fresh line begins (burn 1), keep it across a retry on the same line.
@@ -3903,6 +3996,11 @@ export function resolve(s: GameState, rng: RNG): GameState {
   const sMove: GameState = s.routeMove ? { ...s, boardH: boardH.slice() } : s
   const fxLane = ['', '', '']
   let restedThis = false, clearedThis = 0
+  /* DAILY-2: "feet off" is a decision you made when you committed the turn, so it
+     reads the board you handed in — not the mutated one below, where a feet card
+     that blew would look like a choice you never made. */
+  const feetOff = !s.boardP[2]
+  let cruxFree = s.cruxFree
 
   for (const c of boardP) if (c && c.fx === 'cycle') {
     piles = pileDraw(piles, 1, rng); log.push(`${c.name} · dig for the next one.`)
@@ -3991,6 +4089,7 @@ export function resolve(s: GameState, rng: RNG): GameState {
         log.push(`Stuck it — straight past the ${skipped.name}.`)
       }
       if (roped) runout += 1
+      if (hold.crux && feetOff) cruxFree++          // DAILY-2
       // Crux Junkie
       if (bm.cruxDraw && hold.crux) {
         piles = pileDraw(piles, 1, rng)
@@ -4051,7 +4150,11 @@ export function resolve(s: GameState, rng: RNG): GameState {
     log.push(`Second wind. ${cleared} holds in — shed 2.`)
   }
   let out: GameState = { ...s, boardH, boardP, piles, pump, cleared, worked, runout, lastPiece,
-    readAhead, savedBlow, holdDeck: holdDeckLocal, fxLane, fxTick: s.fxTick + 1, log: [...s.log, ...log] }
+    // DAILY-2: `restedThis` is the game's existing definition of having shaken out
+    // (it is what flow and a `norest` sequence already read), so an objective and a
+    // sequence agree about the same turn rather than inventing a second rule.
+    readAhead, savedBlow, cruxFree, rests: s.rests + (restedThis ? 1 : 0),
+    holdDeck: holdDeckLocal, fxLane, fxTick: s.fxTick + 1, log: [...s.log, ...log] }
   // the plan: satisfied, broken, or paid out
   if (out.seq) {
     const q = seqById(out.seq.id)
