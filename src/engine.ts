@@ -418,6 +418,10 @@ export type GameState = {
   hints: boolean
   /** SKIRM-2: which day you last played, and what you got. */
   dailyDay: string
+  /** SAVE-4: the day you have already STARTED. `dailyDay` cannot do this job —
+      bankDaily derives the streak from it being YESTERDAY, so stamping it early
+      would reset every streak to 1. */
+  dailyTried: string
   dailyScore: number
   dailyBest: number
   dailyStreak: number
@@ -507,7 +511,7 @@ type SaveData = {
   arch?: number; loadouts?: string[][]; book?: Record<string, LogEntry>; bestCircuit?: number
   ticked?: string[]; established?: Established[]; hints?: boolean; grades?: GradeScale
   tweak?: Tweak | null
-  dailyDay?: string; dailyScore?: number; dailyBest?: number; dailyStreak?: number
+  dailyDay?: string; dailyTried?: string; dailyScore?: number; dailyBest?: number; dailyStreak?: number
   weekId?: string; weekScore?: number; weekBest?: number
   mutators?: string[]
   runs?: number; falls?: number; ending?: string; topRope?: boolean; history?: RunRecord[]
@@ -516,7 +520,14 @@ type SaveData = {
   motion?: boolean; textScale?: number; reach?: 'off' | 'left' | 'right'
   run: { deck: string[]; tier: number; skin: number; seed: number; act: number
     gear: string[]; boons: string[]; kit?: string[]; cash: number; psyche: number; runSeed: number
-    eventsSeen: string[] } | null
+    eventsSeen: string[]
+    /* SAVE-4: these are run-scoped and were NOT saved, so a reload reopened the
+       trading post and the van (`postOpen`/`vanOpen` read them) — the two things
+       the code calls "once a stage" and "once a range" were farmable by reloading
+       — and lost the trail, the branch you took at each event, and which line you
+       were on. */
+    shoppedAt?: number[]; vanRaided?: number[]; trail?: string[]
+    eventChose?: string[]; reroll?: number; line?: number } | null
 }
 const slotKey = (n: number) => `${SAVE_KEY}.${n}`
 
@@ -528,7 +539,7 @@ export function saveGame(s: GameState) {
       style: s.style, styleMax: s.styleMax, seen: s.seen, coaching: s.coaching, sound: s.sound, haptics: s.haptics, assist: s.assist, cbSafe: s.cbSafe,
       tutorialDone: s.tutorialDone, motion: s.motion, textScale: s.textScale, reach: s.reach,
       arch: s.arch, loadouts: s.loadouts, book: s.book, bestCircuit: s.bestCircuit, ticked: s.ticked, established: s.established, hints: s.hints, grades: s.grades, tweak: s.tweak,
-      dailyDay: s.dailyDay, dailyScore: s.dailyScore, dailyBest: s.dailyBest, dailyStreak: s.dailyStreak,
+      dailyDay: s.dailyDay, dailyTried: s.dailyTried, dailyScore: s.dailyScore, dailyBest: s.dailyBest, dailyStreak: s.dailyStreak,
       weekId: s.weekId, weekScore: s.weekScore, weekBest: s.weekBest,
       mutators: s.mutators,
       runs: s.runs, falls: s.falls, ending: s.ending, topRope: s.topRope,
@@ -544,7 +555,9 @@ export function saveGame(s: GameState) {
         ? { deck: s.runDeck.map(c => c.name),
             tier: Math.min(s.tier, Math.max(0, ACTS[s.act].length - 1)), skin: s.skin, seed: s.seed,
             act: s.act, gear: s.gear, boons: s.boons, kit: s.kit, cash: s.cash, psyche: s.psyche,
-            runSeed: s.runSeed, eventsSeen: s.eventsSeen }
+            runSeed: s.runSeed, eventsSeen: s.eventsSeen,
+            shoppedAt: s.shoppedAt, vanRaided: s.vanRaided, trail: s.trail,
+            eventChose: s.eventChose, reroll: s.reroll, line: s.line }
         : null,
     }
     localStorage.setItem(slotKey(s.slot), JSON.stringify(d))
@@ -626,7 +639,7 @@ export function loadGame(slot = 0): Partial<GameState> | null {
       book: d.book ?? {}, bestCircuit: d.bestCircuit ?? 0, mutators: d.mutators ?? [],
       ticked: d.ticked ?? [], established: d.established ?? [], hints: d.hints ?? true,
       grades: d.grades ?? 'v', tweak: d.tweak ?? null,
-      dailyDay: d.dailyDay ?? '', dailyScore: d.dailyScore ?? 0,
+      dailyDay: d.dailyDay ?? '', dailyTried: d.dailyTried ?? '', dailyScore: d.dailyScore ?? 0,
       dailyBest: d.dailyBest ?? 0, dailyStreak: d.dailyStreak ?? 0,
       weekId: d.weekId ?? '', weekScore: d.weekScore ?? 0, weekBest: d.weekBest ?? 0,
       runs: d.runs ?? 0, falls: d.falls ?? 0, ending: d.ending ?? '',
@@ -644,7 +657,11 @@ export function loadGame(slot = 0): Partial<GameState> | null {
         tier: d.run.tier,
         skin: d.run.skin, seed: d.run.seed, act: d.run.act ?? 0, gear: d.run.gear ?? [],
         cash: d.run.cash ?? 0, boons: d.run.boons ?? [], kit: d.run.kit ?? [], psyche: d.run.psyche ?? PSYCHE_MAX,
-        runSeed: d.run.runSeed ?? 0, eventsSeen: d.run.eventsSeen ?? [] } : {}),
+        runSeed: d.run.runSeed ?? 0, eventsSeen: d.run.eventsSeen ?? [],
+        // SAVE-4: the anti-farm gates and the trip's own record
+        shoppedAt: d.run.shoppedAt ?? [], vanRaided: d.run.vanRaided ?? [],
+        trail: d.run.trail ?? [], eventChose: d.run.eventChose ?? [],
+        reroll: d.run.reroll ?? 0, line: d.run.line ?? 0 } : {}),
     }
   } catch { return null }   // SAVE-1: unreadable, NOT empty — the caller must not overwrite
 }
@@ -3318,13 +3335,23 @@ export function freshRun(routeIdx: number, deckTier: number, seed: number): Game
     tutorialDone: false,
     fxLane: ['', '', ''], fxTick: 0, gear: [], boons: [], gearOffers: [], savedBlow: false, peakPump: 0, clipped: false, bonusUsed: false, line: 0, rerolls: 0, mutators: [], seq: null, readAhead: 0, order: [], routeMove: null, arch: 0,
     loadouts: ARCHETYPES.map(a => a.loadout.slice()), reroll: 0, book: {}, ticked: [], hints: true, grades: 'v',
-    dailyDay: '', dailyScore: 0, dailyBest: 0, dailyStreak: 0, weekId: '', weekScore: 0, weekBest: 0, daily: false, trail: [],
+    dailyDay: '', dailyTried: '', dailyScore: 0, dailyBest: 0, dailyStreak: 0, weekId: '', weekScore: 0, weekBest: 0, daily: false, trail: [],
     shoppedAt: [], tweak: null, eventChose: [], vanRaided: [], established: [],
   }
 }
 
 /** Session over: pay skin, hand out a reward, or end the run. */
 /** Bank today's attempt. Called once, when the burn that used it ends. */
+/* SAVE-4: "One go" is what the menu promises, and it was not true — the day was
+   stamped only when the climb RESOLVED, so quitting mid-daily left it unstamped
+   and you could re-roll until the score was good, which the streak and the weekly
+   ladder (RUN-12) both sit on top of. A go is used when it STARTS now.
+   The accepted cost, stated plainly: a genuine crash or an evicted tab also
+   spends the day. That is the honest reading of one go, and it is the side to err
+   on when the alternative is a farmable ladder. */
+export const dailyUsed = (s: GameState, key = dayKey()) =>
+  s.dailyDay === key || s.dailyTried === key
+
 export function bankDaily(s: GameState): GameState {
   if (!s.daily) return s
   const key = dayKey()

@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.1 — GUARD-1: CARD-9 measures the LIFT and the mechanism now, so
-//   it fails when the ITEM gets stronger, not when the game gets easier
+// SANDBAGGED v10.2 — SAVE-3/4: reloading is not an exploit — the post, the van
+//   and the daily's one go all survive it now
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -21,7 +21,7 @@ import {
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
   campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitZone, claimStep, claimVerdict,
   consumableById, KIT_MAX, useKitStep, secondWindStep,
-  coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyRoute, dailySeed, dailyShare, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
+  coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyRoute, dailySeed, dailyShare, dailyUsed, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
   endSession, endingFor, endingStep, establishedIn, exportSave, exposed, exposureOf,
   faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
   gearMods, gradeLabel, gradeText, gripShown, holdLabel, honestyOf, importSave,
@@ -917,10 +917,13 @@ function startTutorial() {
      rock. One go. */
   function startDaily() {
     const key = dayKey()
-    if (st.dailyDay === key) return          // you have had your go
+    if (dailyUsed(st, key)) return           // you have had your go
+    // SAVE-4: the go is spent the moment it starts, so quitting cannot re-roll it
+    
     const rng = new RNG(dailySeed(key))
     const route = dailyRoute(key)
     const next = startBurn({ ...st, skirmish: route, inRun: false, tier: 0, daily: true,
+      dailyTried: key,
       runDeck: loadoutDeck(st.loadouts[st.arch]), skin: SKIN_MAX, burn: 1, beta: [], worked: [],
       weather: rng.int(WEATHER.length), rock: rng.int(ROCK.length) }, rng)
     setSt({ ...next, seed: rng.s })
@@ -1053,7 +1056,7 @@ function startTutorial() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.1 · RCJ Labs</div>
+          <div className="sfoot">v10.2 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1122,7 +1125,7 @@ function startTutorial() {
             Nothing to be done about it — no camp, no shop, no gear. It goes when it goes.
           </div>) : null}
         {(() => {
-          const done = st.dailyDay === dayKey()
+          const done = dailyUsed(st)
           const r = dailyRoute()
           const fc = dailyForecast()   // SKIRM-3: the conditions everyone shares today
           const wk = st.weekId === weekKey() ? st.weekScore : 0   // this week's ladder
@@ -1165,7 +1168,7 @@ function startTutorial() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.1 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.2 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2740,7 +2743,7 @@ function startTutorial() {
               ? ' Find more of his pages and you get the rest of it.'
               : ''}
           </div>) : null}
-        {st.dailyDay === dayKey() && st.dailyScore > 0 ? (
+        {dailyUsed(st) && st.dailyScore > 0 ? (
           <div className="spot" style={{ borderLeftColor: 'var(--tan)' }}>
             <b style={{ color: 'var(--tan)' }}>TODAY'S PROBLEM · {st.dailyScore}</b>
             {st.dailyScore >= st.dailyBest ? 'Your best on a daily yet. ' : `Your best is ${st.dailyBest}. `}

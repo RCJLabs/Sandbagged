@@ -2670,6 +2670,47 @@ test('GUARD-6: the balance ledger is gated on a release, not on a habit', () => 
     'the header still claims the ledger costs ~20s, which is why it gets skipped')
 })
 
+test('SAVE-4: reloading does not reopen the post, the van, or the daily', () => {
+  /* `shoppedAt` and `vanRaided` are what `postOpen`/`vanOpen` read — the fields
+     behind the code's own "once a stage" and "once a range" — and neither was in
+     SaveData, so reloading reopened both with freshly rolled stock. The daily
+     promised "One go" in the menu copy while stamping the day only when the climb
+     RESOLVED, so quitting mid-daily bought a fresh roll, which the streak and the
+     weekly ladder sit on top of. */
+  const mid = { ...E.freshRun(4, 0, 3), slot: 8, inRun: true, act: 1, tier: 3,
+    runDeck: E.DEFAULT_LOADOUT.map(E.spawn),
+    shoppedAt: [1 * 100 + 3], vanRaided: [1], trail: ['camped', 'the post'],
+    eventChose: ['storm:1'], reroll: 2, line: 1 }
+  ok(!E.postOpen(mid), 'the fixture is wrong — the post should already be used')
+  ok(!E.vanOpen(mid), 'the fixture is wrong — the van should already be raided')
+  E.saveGame(mid)
+  const back = { ...E.freshRun(0, 0, 1), ...E.loadGame(8) }
+  ok(!E.postOpen(back), 'reloading reopened the trading post — the stock is farmable')
+  ok(!E.vanOpen(back), 'reloading reopened the van — it is meant to be once a range')
+  eq(back.trail.length, 2, 'the trip forgot where it had been')
+  eq(back.eventChose.length, 1, 'the run forgot which branch it took')
+  eq(back.reroll, 2, 'the days you waited were not remembered')
+  eq(back.line, 1, 'the line you were climbing was forgotten')
+  E.wipeSlot(8)
+
+  // the daily: a go is used when it STARTS, and that survives a reload
+  const key = E.dayKey()
+  const fresh = { ...E.freshRun(0, 0, 1), slot: 8 }
+  ok(!E.dailyUsed(fresh, key), 'a fresh save has already used today')
+  const started = { ...fresh, daily: true, dailyTried: key }
+  ok(E.dailyUsed(started, key), 'starting the daily did not use the go')
+  E.saveGame(started)
+  ok(E.dailyUsed({ ...E.freshRun(0, 0, 1), ...E.loadGame(8) }, key),
+    'quitting the daily and reloading bought a fresh go at today problem')
+  /* and the streak must NOT be collateral damage: bankDaily reads dailyDay being
+     YESTERDAY, which is exactly why the early stamp needed its own field. */
+  const y = new Date(); y.setUTCDate(y.getUTCDate() - 1)
+  const onStreak = E.bankDaily({ ...started, dailyDay: E.dayKey(y), dailyStreak: 6,
+    skirmish: E.dailyRoute(key), cleared: 3, turns: 9 })
+  eq(onStreak.dailyStreak, 7, 'the early stamp reset a running streak')
+  E.wipeSlot(8)
+})
+
 test('SAVE-5: a save missing xp does not freeze levelling forever', () => {
   /* `level: d.level, xp: d.xp` were the only two fields in loadGame without a
      default, under a comment promising every field had one. Object spread copies
