@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.95 — UI-2: a title card, and the menu rebuilt as tiles — each
-//   mode carries its own caption and one hero leads, so the page has a first read
+// SANDBAGGED v9.96 — BAL-15: a Second Wind buys the go, not a fresh body — the
+//   wind burn starts part-pumped, which opens the headroom the band had run out of
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1039,7 +1039,7 @@ function startTutorial() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v9.95 · RCJ Labs</div>
+          <div className="sfoot">v9.96 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1140,7 +1140,7 @@ function startTutorial() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.95 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.96 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

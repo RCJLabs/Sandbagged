@@ -1130,6 +1130,34 @@ test('the meter shows where the turn takes you', () => {
   }
 })
 
+test('BAL-15: a Second Wind buys the go, not a fresh body', () => {
+  /* The retry a Second Wind bought used to start on an EMPTY clock — a complete
+     extra attempt, carrying the beta you had just banked — which measured at +6
+     points of campaign completion off one cheap consumable. That is the "skip"
+     CARD-9's ceiling exists to forbid, and it had eaten the band's whole
+     headroom. A wind burn starts part-pumped now (WIND_PUMP), the same way a
+     caught roped fall does (FALL_PUMP). */
+  ok(E.WIND_PUMP > 0 && E.WIND_PUMP < 1, `WIND_PUMP is ${E.WIND_PUMP}, not a share of the meter`)
+  const base = { ...E.freshRun(6, 0, 5), inRun: true, skirmish: null, weather: 1, rock: 0,
+    runDeck: E.DEFAULT_LOADOUT.map(E.spawn), kit: ['secondwind'], burn: 3, bonusBurns: 0 }
+  // spending the wind marks the next burn, and raises the cap that lets it run
+  const spent = E.secondWindStep(base, 'secondwind')
+  ok(spent.windBurn, 'spending a Second Wind does not mark the burn it bought')
+  ok(E.attemptsFor(spent) > E.attemptsFor(base), 'the wind bought no extra burn')
+  eq(spent.kit.length, 0, 'the wind was not consumed')
+  // that burn starts part-pumped; an ordinary retry still starts fresh
+  const windOn = E.startBurn({ ...spent, burn: spent.burn + 1 }, new E.RNG(3))
+  const plain = E.startBurn({ ...base, burn: base.burn + 1 }, new E.RNG(3))
+  eq(plain.pump, 0, 'an ordinary retry no longer starts on an empty clock')
+  eq(windOn.pump, Math.floor(E.PUMP_MAX * E.WIND_PUMP), 'a wind burn does not start part-pumped')
+  ok(windOn.pump > 0 && windOn.pump < E.PUMP_MAX,
+    'a wind burn must be a real chance, not a lost one')
+  // and the mark is spent, so the burn AFTER it is not taxed again
+  eq(windOn.windBurn, false, 'the wind mark survives the burn it paid for')
+  eq(E.startBurn({ ...windOn, burn: windOn.burn + 1 }, new E.RNG(3)).pump, 0,
+    'the burn after a wind burn is still being charged for it')
+})
+
 test('UI-2: the menu says which caption belongs to which action, and one leads', () => {
   /* Reported off a phone: the menu was "boring and not clear what goes to what".
      Both halves of that were structural — every mode was the same full-width ink

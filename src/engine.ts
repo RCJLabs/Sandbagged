@@ -283,6 +283,14 @@ export type RunRecord = {
 export const PROJECT_SKIN = 0     // the price is the node, not your skin
 export const RUNOUT_SKIN = 2      // holds of runout per skin lost in a fall
 export const FALL_PUMP = 0.5      // pump you keep after being caught
+/* BAL-15: a Second Wind buys the GO, not a fresh body. The retry used to start
+   on an empty clock — a full extra attempt, carrying the beta you had just
+   banked — which measured at +6 points of campaign completion off one cheap
+   consumable. That is the "skip" CARD-9's ceiling exists to forbid, and it had
+   quietly eaten all the headroom the band had left. You come back on part-pumped
+   now, exactly as a caught roped fall does above: chalk up, shake out, tie back
+   in — but you have already been fighting. */
+export const WIND_PUMP = 0.4      // share of the meter you carry into a wind burn
 export type MapNode = { type: NodeType; routeIdx: number }
 
 export type GameState = {
@@ -290,6 +298,9 @@ export type GameState = {
   /** CARD-9: extra burns bought on this boulder (a Second Wind). Added to the
       attempt cap, reset by startBurn on a fresh line — it never carries over. */
   bonusBurns?: number
+  /** BAL-15: the next burn was bought with a Second Wind, so it starts
+      part-pumped (WIND_PUMP). Transient — spent by startBurn, never saved. */
+  windBurn?: boolean
   weather: number; rock: number
   beta: string[]; worked: string[]
   holdDeck: Hold[]; feetDeck: Hold[]
@@ -2239,8 +2250,10 @@ export function secondWindStep(s: GameState, id: string): GameState {
   const i = s.kit.indexOf(id)
   if (!k || !k.burn || i < 0) return s
   const kit = s.kit.slice(); kit.splice(i, 1)
-  return { ...s, kit, bonusBurns: (s.bonusBurns ?? 0) + k.burn,
-    log: [...s.log, `${k.name}. One more burn — ${s.burn + 1} of ${attemptsFor(s) + k.burn}.`] }
+  // BAL-15: the next burn is a wind burn — you get the go, but not a fresh body
+  return { ...s, kit, bonusBurns: (s.bonusBurns ?? 0) + k.burn, windBurn: true,
+    log: [...s.log, `${k.name}. One more burn — ${s.burn + 1} of ${attemptsFor(s) + k.burn}.`,
+      'Back on, but you have been fighting a while.'] }
 }
 
 /* ======================= THE FORECAST ==============================
@@ -3395,7 +3408,11 @@ export function startBurn(s: GameState, rng: RNG): GameState {
     ...s, holdDeck: holds, feetDeck: feet,
     boardH: [null, null, null], boardP: [null, null, null],
     piles: { draw: deck, discard: [], exhaust: [], hand: [] },
-    pump: 0, flow: 0, cleared: 0, worked: [], turn: 1, phaseSeen: '',
+    // BAL-15: a wind burn starts part-pumped — the go, not a fresh body. The
+    // flag is spent here, so only the burn the wind bought pays it.
+    pump: s.windBurn ? Math.floor(PUMP_MAX * WIND_PUMP) : 0,
+    windBurn: false,
+    flow: 0, cleared: 0, worked: [], turn: 1, phaseSeen: '',
     // the belay is your first piece: on a rope you are never on nothing
     runout: 0, lastPiece: spec.roped ? 0 : -1, pitch: 0, savedBlow: false, peakPump: 0,
     clipped: false, seq: null, readAhead: 0,
