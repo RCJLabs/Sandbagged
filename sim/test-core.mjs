@@ -2670,6 +2670,35 @@ test('GUARD-6: the balance ledger is gated on a release, not on a habit', () => 
     'the header still claims the ledger costs ~20s, which is why it gets skipped')
 })
 
+test('UI-4: the map says what each stage ahead of you is', () => {
+  /* Every future stage was an identical circle with a bare number, so the run's
+     decision surface — and the screen the art direction is proudest of — could not
+     tell you that stage 5 is a camp or stage 9 the boss; you read the prose list
+     instead. Past stages already drew a mark from the trail, so only the future
+     was anonymous. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  // the kinds have to reach the drawing at all
+  ok(/function ActMap\(\{[^}]*kinds/.test(app), 'ActMap still cannot see what the stages are')
+  ok(/<ActMap[\s\S]{0,400}kinds=\{/.test(app), 'the map is not told the stage kinds')
+  // every node type that is NOT a plain climb must be distinguishable
+  const at = app.indexOf('const NODE_MARK')
+  ok(at > 0, 'the mark vocabulary is gone — this guard is reading nothing')
+  const marks = app.slice(at, app.indexOf('}', at))
+  for (const kind of ['camp', 'shop', 'event', 'project', 'fa', 'boss'])
+    ok(new RegExp(`${kind}:`).test(marks), `${kind} has no mark, so it draws as a bare number`)
+  // the boss is the one that must read from a distance, so it is a shape not a glyph
+  ok(/boss = k === 'boss'|const boss = k === 'boss'/.test(app), 'the boss is not singled out')
+  ok(/boss \? 'var\(--red\)' : 'var\(--fade\)'/.test(app), 'the boss does not stand out in ink')
+  // and the engine's node types must all be accounted for, so a new one cannot
+  // silently arrive as an anonymous circle
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  const types = (/export type NodeType = ([^\n]+)/.exec(eng)?.[1] ?? '')
+    .split('|').map(t => t.trim().replace(/'/g, '')).filter(Boolean)
+  ok(types.length >= 6, `read ${types.length} node types`)
+  for (const t of types.filter(t => t !== 'climb'))
+    ok(new RegExp(`${t}:`).test(marks), `node type "${t}" has no mark on the map`)
+})
+
 test('DEV-1: content is inset past the notch and the home indicator', () => {
   /* index.html sets viewport-fit=cover — an explicit opt-OUT of the browser
      insetting content for the notch and the home indicator — and env(safe-area-*)

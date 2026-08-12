@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.5 — DEV-1: content is inset past the notch and the home
-//   indicator — one-handed COMMIT is out of the OS swipe-up zone at last
+// SANDBAGGED v10.6 — UI-4: the map says what each stage ahead of you is — the
+//   boss reads from a distance, and camps, posts and events stop being circles
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -600,8 +600,26 @@ function Topo({ cleared, total, seed }: { cleared: number; total: number; seed: 
    of an array. The line behind you is drawn in solid, using the trail UX-16
    started keeping; the stage ahead is dashed. The list underneath is still how
    you choose, because tapping a 9px ink mark on a phone is not a control. */
-function ActMap({ act, tier, total, trail, seed, label }: {
+/* UI-4: the map is the run's decision surface and the art direction's showpiece,
+   and every future stage was an identical circle with a bare number on it — so it
+   could not tell you that stage 5 is a camp or stage 9 the boss, and you had to
+   read the prose list underneath instead. The stage KINDS come in now and each
+   future node is drawn as what it is, in the same ink vocabulary the menu marks
+   and the card families already use. Past stages already drew a mark from the
+   trail; this is the other half of that idea. */
+/* UI-4: one character per stage kind, in the guidebook's own shorthand — the same
+   idea as the trail marks that already annotate the stages behind you. */
+const NODE_MARK: Record<string, string> = {
+  camp: '\u25b2',      // a tent
+  shop: '\u25aa',      // the post
+  event: '?',
+  project: '\u2691',   // a line you come back to
+  fa: '\u2605',        // an unclimbed line
+  boss: '',             // drawn as a cross instead, so it reads from a distance
+}
+function ActMap({ act, tier, total, trail, seed, label, kinds }: {
   act: number; tier: number; total: number; trail: string[]; seed: number; label: string
+  kinds?: string[]
 }) {
   const pts = mapPoints(total, seed)
   const contours = mapContours(act, seed)
@@ -650,9 +668,20 @@ function ActMap({ act, tier, total, trail, seed, label }: {
                 style={{ fontWeight: 700, letterSpacing: 0.5 }}>YOU</text>
             ) : done ? (
               <text x={x + 6} y={y - 1} fontSize={8.5} fill="var(--fade)">{mark(note)}</text>
-            ) : (
-              <text x={x + 6} y={y + 3} fontSize={7} fill="var(--fade)">{i + 1}</text>
-            )}
+            ) : (() => {
+              const k = kinds?.[i] ?? ''
+              // the boss is the one you want to see coming from the bottom
+              const boss = k === 'boss'
+              return (<>
+                {boss ? (
+                  <path d={`M${(x - 5).toFixed(1)},${(y - 5).toFixed(1)} l10,10 M${(x + 5).toFixed(1)},${(y - 5).toFixed(1)} l-10,10`}
+                    stroke="var(--red)" strokeWidth={1.6} strokeLinecap="round" opacity={0.85} />
+                ) : null}
+                <text x={x + 6} y={y + 3} fontSize={7.5}
+                  fill={boss ? 'var(--red)' : 'var(--fade)'}
+                  style={boss ? { fontWeight: 700 } : undefined}>{NODE_MARK[k] ?? String(i + 1)}</text>
+              </>)
+            })()}
           </g>)
       })}
     </svg>
@@ -1093,7 +1122,7 @@ function startTutorial() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.5 · RCJ Labs</div>
+          <div className="sfoot">v10.6 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1208,7 +1237,7 @@ function startTutorial() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.5 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.6 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -1536,7 +1565,12 @@ function startTutorial() {
             No camp between here and the boss.</div>) : null}
         {/* RUN-8: the act as a page of the guidebook, not a list of buttons */}
         <ActMap act={st.act} tier={st.tier} total={ACTS[st.act].length}
-          trail={st.trail} seed={st.runSeed || 1} label={ACT_NAMES[st.act]} />
+          trail={st.trail} seed={st.runSeed || 1} label={ACT_NAMES[st.act]}
+          kinds={ACTS[st.act].map(t => {
+            // a tier can offer more than one thing; name it by what it leads with
+            const n = t.find(x => x.type === 'boss') ?? t.find(x => x.type !== 'climb') ?? t[0]
+            return n?.type ?? ''
+          })} />
         <div className="sub">seed {seedCode(st.runSeed)}</div>
         {/* UX-16: what this trip has actually been */}
         {st.trail.length ? (
