@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v9.98 — ROUTE-13: the guidebook is named — 25 routes get their
-//   own named feature, which BAL-15 finally opened the balance headroom for
+// SANDBAGGED v9.99 — SAVE-1/2/5: the save system stops losing your game — an
+//   import is applied, a boss no longer drops the run, and xp cannot go NaN
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -656,7 +656,11 @@ function Pips({ o, d, hi }: { o: number; d: number; hi?: number }) {
 export default function App() {
   const [st, setSt] = useState<GameState>(() => {
     const slot = activeSlot()
-    return { ...freshRun(0, 0, (Date.now() & 0x7fffffff) >>> 0), slot, ...loadGame(slot) }
+    // SAVE-1: null means the slot is there but unreadable. Play on, but never
+    // write over it — a save we cannot parse is not the same as no save.
+    const loaded = loadGame(slot)
+    return { ...freshRun(0, 0, (Date.now() & 0x7fffffff) >>> 0), slot,
+      ...(loaded ?? {}), saveBlocked: loaded === null }
   })
   const [io, setIo] = useState({ code: '', msg: '' })
   const [showPractice, setShowPractice] = useState(false)
@@ -718,10 +722,20 @@ export default function App() {
   const pickSeed = () => codeSeed(seedIn) ?? ((st.seed * 1664525 + 1013904223) >>> 0)
   const spec = specOf(st)
   // save at every safe point. Never mid-climb.
+  /* SAVE-2: this was an ALLOWLIST of six phases, which quietly excluded every
+     screen that follows a send — `gear`, `pack`, `claim`, `epilogue`, `shop`,
+     `event`, `circuitNext`. Beat an act boss and close the tab on the gear offer
+     and the whole act was gone; close it on the EPILOGUE and you lost the
+     campaign win itself (wins, the ascent-style unlock, archWins, the last
+     journal page, the XP, the history record). It is a denylist now: everything
+     is saved except the two phases whose state is mid-climb and deliberately not
+     in SaveData — the "you abandoned it" snapshot is already written when the
+     climb starts, so those two have nothing to add.
+     SAVE-1: and nothing is written at all over a slot that failed to read. */
   useEffect(() => {
-    if (st.phase === 'menu' || st.phase === 'map' || st.phase === 'reward'
-      || st.phase === 'camp' || st.phase === 'runEnd' || st.phase === 'sessionEnd') saveGame(st)
-  }, [st.phase, st.tier, st.level, st.xp, st.owned.length, st.skin])
+    if (st.saveBlocked) return
+    if (st.phase !== 'climb' && st.phase !== 'burnEnd') saveGame(st)
+  }, [st])
   const weather = WEATHER[st.weather], rock = ROCK[st.rock]
   const sel = useMemo(() => st.piles.hand.find(c => c.uid === st.selected) ?? null,
     [st.piles.hand, st.selected])
@@ -1039,7 +1053,7 @@ function startTutorial() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v9.98 · RCJ Labs</div>
+          <div className="sfoot">v9.99 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1066,6 +1080,17 @@ function startTutorial() {
           <span className="sub">{st.xp}/{need} xp</span>
           <span className="sub">{st.sends} sends · {st.wins} wins</span>
         </div>
+
+        {/* SAVE-1: a slot that exists but would not parse. The game is playable,
+            but it is running on a fresh state and must not overwrite what is
+            there — so say so, rather than quietly eating the campaign. */}
+        {st.saveBlocked ? (
+          <div className="spot" style={{ borderLeftColor: 'var(--red)', marginTop: 10 }}>
+            <b style={{ color: 'var(--red)' }}>THIS SLOT WOULD NOT READ</b>
+            Something is wrong with the save in this slot, so nothing is being written to
+            it — what is there has not been touched. Try another slot from THE BOOKS →
+            SAVES, or paste a save code in there to start again.
+          </div>) : null}
 
         {/* UI-2: exactly one tile takes the ink, and it is whatever you are
             actually in the middle of — a run you can resume outranks everything,
@@ -1140,7 +1165,7 @@ function startTutorial() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v9.98 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v9.99 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2013,10 +2038,14 @@ function startTutorial() {
   }
 
   if (st.phase === 'saves') {
-    const load = (n: number) => setSt(s => ({
-      ...freshRun(0, 0, (Date.now() & 0x7fffffff) >>> 0), slot: n, ...loadGame(n), phase: 'menu',
-      coaching: s.coaching, sound: s.sound, cbSafe: s.cbSafe,
-    }))
+    const load = (n: number) => setSt(s => {
+      const got = loadGame(n)
+      return {
+        ...freshRun(0, 0, (Date.now() & 0x7fffffff) >>> 0), slot: n,
+        ...(got ?? {}), saveBlocked: got === null, phase: 'menu',
+        coaching: s.coaching, sound: s.sound, cbSafe: s.cbSafe,
+      }
+    })
     return (
       <div className={skin}>
         <div className="row"><span className="h1" role="heading" aria-level={1}><Lettered t="SAVES" seed={83} /></span>
@@ -2036,7 +2065,15 @@ function startTutorial() {
                     : 'Tap to start here.'}</div>
                 {sum ? (
                   <div className="sub" style={{ color: 'var(--red)', marginTop: 3 }}
-                    {...tap(() => { wipeSlot(n); setIo({ code: '', msg: `Slot ${n + 1} wiped.` }) })}>
+                    {...tap(() => {
+                      wipeSlot(n)
+                      setIo({ code: '', msg: `Slot ${n + 1} wiped.` })
+                      /* SAVE-1: wiping the slot you are PLAYING only cleared the
+                         disk — the in-memory game was untouched and the persist
+                         effect wrote it straight back, so the wipe silently
+                         resurrected. Reset the game too when it is this slot. */
+                      if (n === st.slot) load(n)
+                    })}>
                     wipe this slot</div>) : null}
               </div>)
           })}
@@ -2048,8 +2085,18 @@ function startTutorial() {
               try { void navigator.clipboard?.writeText(c) } catch { /* clipboard blocked */ } }}>
             EXPORT</button>
           <button className="btn" style={{ flex: 1 }}
-            onClick={() => setIo(x => ({ ...x, msg: importSave(x.code, st.slot)
-              ? 'Imported. Reloading the slot.' : 'That code did not read.' }))}>
+            {...{ onClick: () => {
+              /* SAVE-1: this used to write the code to storage, say "Reloading
+                 the slot", and never reload — so the persist effect wrote the
+                 stale in-memory game straight back over the import on the way
+                 to the menu. The one feature whose job is not losing data lost
+                 it, and the message claimed success. It reloads now. */
+              if (!importSave(io.code, st.slot)) {
+                setIo(x => ({ ...x, msg: 'That code did not read.' })); return
+              }
+              setIo({ code: '', msg: '' })
+              load(st.slot)
+            } }}>
             IMPORT</button>
         </div>
         <textarea value={io.code} spellCheck={false}

@@ -301,6 +301,9 @@ export type GameState = {
   /** BAL-15: the next burn was bought with a Second Wind, so it starts
       part-pumped (WIND_PUMP). Transient — spent by startBurn, never saved. */
   windBurn?: boolean
+  /** SAVE-1: this slot exists on disk but could not be read, so the game must
+      NOT write over it. Transient — derived at load, never itself saved. */
+  saveBlocked?: boolean
   weather: number; rock: number
   beta: string[]; worked: string[]
   holdDeck: Hold[]; feetDeck: Hold[]
@@ -530,8 +533,16 @@ export function saveGame(s: GameState) {
       mutators: s.mutators,
       runs: s.runs, falls: s.falls, ending: s.ending, topRope: s.topRope,
       history: s.history.slice(0, HISTORY_MAX), archWins: s.archWins, mutatorWin: s.mutatorWin,
-      run: s.inRun && s.tier < ACTS[s.act].length
-        ? { deck: s.runDeck.map(c => c.upgraded ? c.name : c.name), tier: s.tier, skin: s.skin, seed: s.seed,
+      /* SAVE-2: this used to drop the whole run whenever `tier` ran past the end
+         of the act's map — and it always does at a boss, because a boss IS the
+         last tier and starting a climb pre-writes tier+1 (the "you abandoned it"
+         state). So the on-disk save said "no run in progress" from the moment you
+         tapped into any boss, and closing the tab on the screens that follow a
+         boss send lost the entire act. The tier is CLAMPED to the map now instead
+         of the run being thrown away; you resume on the boss's stage. */
+      run: s.inRun
+        ? { deck: s.runDeck.map(c => c.name),
+            tier: Math.min(s.tier, Math.max(0, ACTS[s.act].length - 1)), skin: s.skin, seed: s.seed,
             act: s.act, gear: s.gear, boons: s.boons, kit: s.kit, cash: s.cash, psyche: s.psyche,
             runSeed: s.runSeed, eventsSeen: s.eventsSeen }
         : null,
@@ -565,12 +576,27 @@ export function importSave(code: string, slot: number): boolean {
   try {
     const json = decodeURIComponent(escape(atob(code.trim())))
     const d = JSON.parse(json) as SaveData
-    if (typeof d.level !== 'number') return false
+    /* SAVE-5: this validated exactly one field, so `{"level":1}` imported
+       cleanly and then bricked levelling for good (xp came through undefined and
+       every gainXp produced NaN). Check the shape of what we are about to trust,
+       and refuse a save from a build newer than this one rather than storing
+       something we would only fail to read back. */
+    if (typeof d.level !== 'number' || !isFinite(d.level)) return false
+    if (d.xp !== undefined && (typeof d.xp !== 'number' || !isFinite(d.xp))) return false
+    if ((d.v ?? 0) > SAVE_FILE_VERSION) return false
+    for (const [k, val] of [['owned', d.owned], ['journal', d.journal], ['seen', d.seen],
+      ['loadout', d.loadout], ['history', d.history]] as const)
+      if (val !== undefined && !Array.isArray(val)) { void k; return false }
     localStorage.setItem(slotKey(slot), json)
     return true
   } catch { return false }
 }
-export function loadGame(slot = 0): Partial<GameState> {
+/* SAVE-1: `null` means the slot exists but could NOT be read (corrupt, or written
+   by a newer build); `{}` means the slot is genuinely empty. They used to be the
+   same value, so an unreadable save was indistinguishable from a new game — and
+   the app then persisted a fresh game straight over it. The caller must refuse to
+   write when this returns null. */
+export function loadGame(slot = 0): Partial<GameState> | null {
   try {
     const raw = localStorage.getItem(slotKey(slot))
     if (!raw) return {}
@@ -578,9 +604,17 @@ export function loadGame(slot = 0): Partial<GameState> {
     // Older saves are merged, not discarded — every field has a default, so a
     // version bump fills gaps instead of wiping the player. Only a NEWER save
     // than this build is refused.
-    if ((d.v ?? 0) > SAVE_FILE_VERSION) return {}
+    if ((d.v ?? 0) > SAVE_FILE_VERSION) return null   // SAVE-1: written by a newer build — do not overwrite it
     return {
-      level: d.level, xp: d.xp, owned: d.owned ?? [], sends: d.sends ?? 0, wins: d.wins ?? 0,
+      /* SAVE-5: these two were the ONLY fields here without a default, directly
+         under the comment above promising every field has one. Object spread
+         copies a key holding `undefined`, so `xp: undefined` beat freshRun's 0,
+         `gainXp` then computed NaN, and `while (NaN >= xpToNext(level))` was
+         never true — levelling frozen for good and every XP readout NaN. It was
+         reachable from a one-field import code, not just a future version bump. */
+      level: typeof d.level === 'number' && isFinite(d.level) ? d.level : 1,
+      xp: typeof d.xp === 'number' && isFinite(d.xp) ? d.xp : 0,
+      owned: d.owned ?? [], sends: d.sends ?? 0, wins: d.wins ?? 0,
       journal: d.journal ?? [],
       ...(d.loadout && d.loadout.length === DECK_SIZE ? { loadout: d.loadout } : {}),
       style: d.style ?? 0, styleMax: d.styleMax ?? 0, seen: d.seen ?? [],
@@ -599,14 +633,20 @@ export function loadGame(slot = 0): Partial<GameState> {
       topRope: d.topRope ?? true, history: d.history ?? [],
       archWins: d.archWins ?? [], mutatorWin: d.mutatorWin ?? false,
       ...(d.run ? { inRun: true,
-        runDeck: d.run.deck.map(n => n.endsWith('+')
-          ? upgrade(spawn(n.slice(0, -1))) : spawn(n)),
+        /* SAVE-1: an unknown card name used to throw out of `spawn` and take the
+           WHOLE save with it (the catch below returned an empty object, which the
+           app then treated as a new game and persisted over the original). A card
+           renamed or removed between versions now costs you that card, not your
+           campaign. */
+        runDeck: d.run.deck
+          .filter(n => CARDS[n.endsWith('+') ? n.slice(0, -1) : n])
+          .map(n => n.endsWith('+') ? upgrade(spawn(n.slice(0, -1))) : spawn(n)),
         tier: d.run.tier,
         skin: d.run.skin, seed: d.run.seed, act: d.run.act ?? 0, gear: d.run.gear ?? [],
         cash: d.run.cash ?? 0, boons: d.run.boons ?? [], kit: d.run.kit ?? [], psyche: d.run.psyche ?? PSYCHE_MAX,
         runSeed: d.run.runSeed ?? 0, eventsSeen: d.run.eventsSeen ?? [] } : {}),
     }
-  } catch { return {} }
+  } catch { return null }   // SAVE-1: unreadable, NOT empty — the caller must not overwrite
 }
 
 /* ===================== CONTENT: HOLDS + ABILITIES ==================

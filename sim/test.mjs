@@ -654,7 +654,11 @@ test('a save from a NEWER build is refused', () => {
   const raw = JSON.parse(store.get('sandbagged.save.1'))
   raw.v = E.SAVE_FILE_VERSION + 5
   store.set('sandbagged.save.1', JSON.stringify(raw))
-  eq(Object.keys(E.loadGame(1)).length, 0, 'a future save must not be half-read')
+  /* v9.99 (SAVE-1): the contract got STRONGER here. "Refused" used to mean an
+     empty object — indistinguishable from an empty slot, so the app treated a
+     future save as a new game and then persisted over it. Refused now means
+     `null`: unreadable, do not touch. Asserting the stronger value. */
+  eq(E.loadGame(1), null, 'a future save must be refused as unreadable, not read as empty')
 })
 test('export and import move a save between slots', () => {
   E.saveGame(sampleSave())

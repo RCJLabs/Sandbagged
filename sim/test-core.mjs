@@ -2277,10 +2277,16 @@ test('nothing builds a state from scratch without carrying you over', () => {
      the shape rather than the symptom: anywhere a state is built from
      `freshRun` or `newRun` rather than from the state you are already in,
      `carryOver` or `loadGame` must be right beside it. */
+  /* v9.99 (SAVE-1): the window used to look FORWARD only, so hoisting the read
+     into `const loaded = loadGame(slot)` on the line above tripped it even though
+     the state below merges that very value. Adjacency is adjacency in either
+     direction — the property being defended (a from-scratch state is merged with
+     what was loaded or carried) is unchanged, and a freshRun with neither call
+     anywhere near it still fails. */
   const app = readFileSync('src/App.tsx', 'utf8')
   const bad = []
   for (const m of app.matchAll(/(freshRun|newRun)\(/g)) {
-    const near = app.slice(m.index, m.index + 420)
+    const near = app.slice(Math.max(0, m.index - 200), m.index + 420)
     if (!/carryOver|loadGame/.test(near)) {
       const line = app.slice(0, m.index).split('\n').length
       bad.push(`${m[1]} at line ${line}`)
@@ -2629,6 +2635,90 @@ test('inked paths are cached without changing', () => {
   }
   ok(E.roughPath(84, 124, 1) !== E.roughPath(84, 124, 2), 'every border is the same stroke')
 })
+test('SAVE-5: a save missing xp does not freeze levelling forever', () => {
+  /* `level: d.level, xp: d.xp` were the only two fields in loadGame without a
+     default, under a comment promising every field had one. Object spread copies
+     a key holding undefined, so xp came through undefined, gainXp computed NaN,
+     and `while (NaN >= xpToNext(level))` was never true — level frozen for good
+     and every XP readout NaN. `{"level":1}` as an import code was enough. */
+  const code = btoa(unescape(encodeURIComponent(JSON.stringify({ v: E.SAVE_FILE_VERSION, level: 4 }))))
+  ok(E.importSave(code, 5), 'a minimal but valid save code was refused')
+  const got = E.loadGame(5)
+  ok(got, 'a valid minimal save read as unreadable')
+  eq(got.xp, 0, 'xp came back undefined, which turns every future gain into NaN')
+  eq(got.level, 4, 'the level did not survive')
+  // and the thing that actually broke: XP must still accumulate
+  const s = { ...E.freshRun(0, 0, 1), ...got }
+  const after = E.gainXp(s, 30, new E.RNG(1))
+  ok(Number.isFinite(after.xp), `xp went to ${after.xp} — levelling is frozen`)
+  ok(after.xp > 0 || after.level > got.level, 'the xp gain vanished')
+  // a code whose xp is present but not a number must be refused outright
+  const bad = btoa(unescape(encodeURIComponent(JSON.stringify({ level: 1, xp: 'lots' }))))
+  ok(!E.importSave(bad, 5), 'a save with a non-numeric xp was accepted')
+  E.wipeSlot(5)
+})
+
+test('SAVE-2: the run survives a boss, and so does winning the campaign', () => {
+  /* saveGame dropped the run whenever tier ran past the end of the act's map —
+     which it ALWAYS does at a boss, because a boss is the last tier and starting
+     a climb pre-writes tier+1 as the "you abandoned it" state. So the save said
+     "no run" from the moment you tapped into any boss, and the screens after a
+     boss send were not save phases either. */
+  const lastTier = E.ACTS[0].length - 1
+  const atBoss = { ...E.freshRun(9, 0, 4), slot: 6, inRun: true, act: 0,
+    tier: lastTier + 1,                     // the pre-written abandon state
+    runDeck: E.DEFAULT_LOADOUT.map(E.spawn), skin: 7, psyche: 2, cash: 40 }
+  E.saveGame(atBoss)
+  const back = E.loadGame(6)
+  ok(back, 'the boss save read as unreadable')
+  ok(back.inRun, 'tapping into a boss threw the whole run away on disk')
+  eq(back.tier, lastTier, 'the resumed tier is off the end of the act map')
+  eq(back.runDeck.length, atBoss.runDeck.length, 'the deck did not survive the boss')
+  eq(back.skin, 7, 'skin did not survive'); eq(back.psyche, 2, 'psyche did not survive')
+  // and the screens that follow a send must be save phases — it is a denylist now
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const eff = app.slice(app.indexOf('if (st.saveBlocked) return'), app.indexOf('if (st.saveBlocked) return') + 220)
+  ok(eff.length > 40, 'the persist effect moved and this guard is not reading it')
+  ok(/phase !== 'climb'/.test(eff) && /phase !== 'burnEnd'/.test(eff),
+    'the persist effect is an allowlist again — a screen after a send will not save')
+  for (const p of ['gear', 'epilogue', 'pack', 'claim'])
+    ok(!new RegExp(`st\\.phase === '${p}'`).test(eff), `${p} is being special-cased again`)
+  E.wipeSlot(6)
+})
+
+test('SAVE-1: an unreadable slot is never overwritten, and an import is applied', () => {
+  /* loadGame returned {} for BOTH "empty slot" and "could not read this", so an
+     unreadable save was indistinguishable from a new game — and the app then
+     persisted a fresh game over it. One unknown card name was enough to trigger
+     the throw. */
+  // a corrupt slot reads as null (unreadable), not {} (empty)
+  localStorage.setItem('sandbagged.save.7', '{not json at all')
+  eq(E.loadGame(7), null, 'a corrupt save reads as an empty slot, so it gets overwritten')
+  // a save from a NEWER build is refused the same way, not treated as empty
+  localStorage.setItem('sandbagged.save.7',
+    JSON.stringify({ v: E.SAVE_FILE_VERSION + 1, level: 9 }))
+  eq(E.loadGame(7), null, 'a newer save reads as empty, so this build would eat it')
+  // an unknown card in the run deck costs that card, never the whole save
+  E.saveGame({ ...E.freshRun(0, 0, 1), slot: 7, inRun: true, act: 0, tier: 1,
+    runDeck: E.DEFAULT_LOADOUT.map(E.spawn), level: 12 })
+  const raw = JSON.parse(localStorage.getItem('sandbagged.save.7'))
+  raw.run.deck = [...raw.run.deck, 'A Card That No Longer Exists']
+  localStorage.setItem('sandbagged.save.7', JSON.stringify(raw))
+  const back = E.loadGame(7)
+  ok(back, 'one renamed card destroyed the entire save')
+  eq(back.level, 12, 'the campaign was lost with the unknown card')
+  ok(back.runDeck.every(c => c && c.name), 'a blank card came back in the deck')
+  // the app must refuse to write over a blocked slot, and the import must reload
+  const app = readFileSync('src/App.tsx', 'utf8')
+  ok(/if \(st\.saveBlocked\) return/.test(app), 'nothing stops the game overwriting an unreadable slot')
+  ok(/saveBlocked: (got|loaded) === null/.test(app), 'a failed read is not recorded anywhere')
+  const imp = app.slice(app.indexOf('if (!importSave('), app.indexOf('IMPORT</button>'))
+  ok(imp.length > 40, 'the import handler moved and this guard is not reading it')
+  ok(/load\(st\.slot\)/.test(imp), 'IMPORT still does not reload, so the import gets overwritten')
+  ok(!/Reloading the slot/.test(imp), 'IMPORT still claims to reload without reloading')
+  E.wipeSlot(7)
+})
+
 test('an empty save slot reports empty rather than throwing', () => {
   eq(E.slotSummary(2), null, 'an untouched slot claims to hold a save')
   ok(E.activeSlot() >= 0, 'the active slot is not a slot')
