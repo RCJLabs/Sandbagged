@@ -2,14 +2,14 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.12 — ENG-32: the feet lane is a trade — Support is earned, a rushed
-//   placement gives the hands less, and the lane finally says what it is doing
+// SANDBAGGED v10.13 — AUD-2: the game has a sense of place — wind, a stove, the post,
+//   all synthesised; and the finale is silent on purpose
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
 import {
   ACTS, ACT_NAMES, ACT_OF_ROUTE, ACT_TERRAIN, ACT_XP, ARCHETYPES, ASCENT, BOOK_BETA_MAX,
-  BY_RARITY, CAMPUS_BITE, CARDS, CROP_COST, CampAction, Card, DECKS, DECK_SIZE,
+  Bed, BY_RARITY, CAMPUS_BITE, CARDS, CROP_COST, CampAction, Card, DECKS, DECK_SIZE,
   DEFAULT_LOADOUT, DOUBT_AT, EVENTS, EXPOSED_FALL_PSYCHE, EXPOSED_PSYCHE,
   FA_NAMES_A, FA_NAMES_B, FEET_STATS, FLOW_AT, FLOW_HIGH, GameState, HISTORY_MAX, HOLD_STATS,
   JOURNAL, KEYWORDS, LANE_NAMES, LINES, MAP_BOT, MAP_H, MAP_TOP, MAP_W, MUTATORS,
@@ -22,7 +22,7 @@ import {
   campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitZone, claimStep, claimVerdict,
   consumableById, KIT_MAX, useKitStep, secondWindStep,
   coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyGoals, dailyRoute, dailySeed, dailyShare, dailyUsed, tomorrowKey, MOVE_GIFTS, CURSE_TAX,
-  supportNow,
+  supportNow, bedFor,
   SEASON_WEEKS, seasonKey, seasonWeekOf, seasonTitle, nextSeasonTitle, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
   endSession, endingFor, endingStep, establishedIn, exportSave, exposed, exposureOf,
   faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
@@ -110,6 +110,109 @@ export function sfx(kind: Sfx, on: boolean) {
         tone(659, 659, 0.30, 'triangle', 0.09, 0.20)
         break
     }
+  } catch { /* silence is fine */ }
+}
+/* AUD-2. The sustained layer. Everything above is one-shot — start, decay, stop —
+   and a bed has a lifecycle instead: it fades in, it runs, it crossfades to the next
+   place, it stops. Synthesised on the same two primitives (noise through a filter, and
+   oscillators), because the build is one inlined file with no external requests and
+   there is no audio library in the project.
+   ONE bed at a time, and switching always goes through `bed()`, so there is exactly
+   one place that can leave a node running. Every path is swallowed like the rest of
+   this layer: a silent game still plays perfectly. */
+let BED_NOISE: AudioBuffer | null = null
+let BED: { kind: Bed; stop: (at: number) => void } | null = null
+const BED_FADE = 1.4                     // seconds to crossfade between places
+function bedNoise(ac: AudioContext): AudioBuffer {
+  if (BED_NOISE) return BED_NOISE
+  // three seconds, so the loop is long enough not to read as a loop
+  const n = Math.floor(ac.sampleRate * 3)
+  const buf = ac.createBuffer(1, n, ac.sampleRate)
+  const ch = buf.getChannelData(0)
+  let seed = 90210 >>> 0
+  for (let i = 0; i < n; i++) {
+    seed = (seed * 1664525 + 1013904223) >>> 0
+    ch[i] = (seed / 4294967296) * 2 - 1
+  }
+  BED_NOISE = buf
+  return buf
+}
+/** A place, as a running graph. Returns how to take it away again. */
+function makeBed(ac: AudioContext, kind: Bed): { stop: (at: number) => void } | null {
+  const t = ac.currentTime
+  const out = ac.createGain()
+  out.gain.setValueAtTime(0.0001, t)
+  out.connect(ac.destination)
+  const nodes: { start: () => void; stop: (at: number) => void }[] = []
+  /* A moving band of noise is what wind, a stove and a shop floor all are; what
+     separates them is where the band sits, how wide it is, and how fast it moves. */
+  const air = (freq: number, q: number, vol: number, rate: number, sweep: number) => {
+    const src = ac.createBufferSource(); src.buffer = bedNoise(ac); src.loop = true
+    const bp = ac.createBiquadFilter(); bp.type = 'bandpass'
+    bp.frequency.value = freq; bp.Q.value = q
+    const g = ac.createGain(); g.gain.value = vol
+    // the gust: a slow oscillator on the filter and on the level
+    const lfo = ac.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = rate
+    const lfoAmt = ac.createGain(); lfoAmt.gain.value = sweep
+    lfo.connect(lfoAmt); lfoAmt.connect(bp.frequency)
+    const lfo2 = ac.createOscillator(); lfo2.type = 'sine'; lfo2.frequency.value = rate * 0.6
+    const lfo2Amt = ac.createGain(); lfo2Amt.gain.value = vol * 0.5
+    lfo2.connect(lfo2Amt); lfo2Amt.connect(g.gain)
+    src.connect(bp); bp.connect(g); g.connect(out)
+    nodes.push({
+      start: () => { src.start(t); lfo.start(t); lfo2.start(t) },
+      stop: at => { try { src.stop(at); lfo.stop(at); lfo2.stop(at) } catch { /* already gone */ } },
+    })
+  }
+  /** A held note, well under the effects, for the places that hum rather than blow. */
+  const hum = (f: number, vol: number, type: OscillatorType = 'sine') => {
+    const o = ac.createOscillator(); o.type = type; o.frequency.value = f
+    const g = ac.createGain(); g.gain.value = vol
+    o.connect(g); g.connect(out)
+    nodes.push({ start: () => o.start(t), stop: at => { try { o.stop(at) } catch { /* gone */ } } })
+  }
+  let peak = 0.05
+  switch (kind) {
+    // the forest floor: soft, high, barely moving. Almost nothing, which is the point
+    case 'forest': air(900, 1.1, 0.030, 0.07, 260); peak = 0.05; break
+    // desert towers: dry, thinner, and it never really stops
+    case 'desert': air(1700, 0.9, 0.034, 0.11, 520); peak = 0.055; break
+    // the alpine wall: the one place the wind is a character
+    case 'alpine': air(600, 0.55, 0.055, 0.16, 900); hum(58, 0.020); peak = 0.085; break
+    // a stove and a low hiss, close and enclosed
+    case 'camp': air(320, 2.6, 0.040, 0.5, 90); hum(104, 0.018, 'triangle'); peak = 0.06; break
+    // the van's radio, heard through the panel: a detuned pair, no words
+    case 'van': hum(146, 0.020, 'triangle'); hum(147.6, 0.016, 'triangle'); hum(220, 0.010); air(500, 3.5, 0.012, 0.3, 60); peak = 0.05; break
+    // a trading post: people, canvas, somebody's generator
+    case 'post': air(420, 1.6, 0.030, 0.22, 140); hum(86, 0.014, 'triangle'); peak = 0.05; break
+    default: return null
+  }
+  if (!nodes.length) return null
+  out.gain.linearRampToValueAtTime(peak, t + BED_FADE)
+  for (const n of nodes) n.start()
+  return {
+    stop: at => {
+      try {
+        out.gain.cancelScheduledValues(at)
+        out.gain.setValueAtTime(out.gain.value, at)
+        out.gain.linearRampToValueAtTime(0.0001, at + BED_FADE)
+      } catch { /* fine */ }
+      for (const n of nodes) n.stop(at + BED_FADE + 0.1)
+      setTimeout(() => { try { out.disconnect() } catch { /* fine */ } }, (BED_FADE + 0.4) * 1000)
+    },
+  }
+}
+/** Put the game in a place. Idempotent: asking for the bed already running is a no-op,
+    which is what lets a render-driven effect call this on every state change. */
+export function bed(kind: Bed, on: boolean) {
+  try {
+    const want = on ? kind : 'none'
+    if (BED && BED.kind === want) return
+    const ac = audio(); if (!ac) return
+    if (BED) { BED.stop(ac.currentTime); BED = null }
+    if (want === 'none') return
+    const made = makeBed(ac, want)
+    if (made) BED = { kind: want, stop: made.stop }
   } catch { /* silence is fine */ }
 }
 export const buzz = (ms: number | number[], on: boolean) => {
@@ -802,6 +905,20 @@ export default function App() {
     if (st.saveBlocked) return
     if (st.phase !== 'climb' && st.phase !== 'burnEnd') saveGame(st)
   }, [st])
+  /* AUD-2: put the game where it is. `bedFor` owns the decision (engine, tested) and
+     `bed` owns the graph (idempotent, so calling it on every state change is free).
+     Both switches gate it: the ambience switch is the player's, and `sound` off means
+     silence everywhere. Nothing here can start an AudioContext before a gesture — the
+     splash's first tap already opened it, and every phase this reaches is after that. */
+  useEffect(() => {
+    bed(bedFor(st), st.sound && st.ambience)
+  }, [st.phase, st.act, st.inRun, st.routeIdx, st.skirmish, st.sound, st.ambience])
+  // and take it away when the tab goes, so a backgrounded PWA is not left droning
+  useEffect(() => {
+    const away = () => bed(document.hidden ? 'none' : bedFor(st), !document.hidden && st.sound && st.ambience)
+    document.addEventListener('visibilitychange', away)
+    return () => document.removeEventListener('visibilitychange', away)
+  }, [st])
   /* DEV-2: tell the service-worker update path when it is unsafe to reload. A new
      build reaching the player is worth having, but not at the price of the climb
      they are in the middle of — mid-climb state is deliberately not saved, so a
@@ -1149,7 +1266,7 @@ function startTutorial() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.12 · RCJ Labs</div>
+          <div className="sfoot">v10.13 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1342,7 +1459,7 @@ function startTutorial() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.12 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.13 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -1480,6 +1597,14 @@ function startTutorial() {
               role="switch" aria-checked={st.sound} aria-label="Sound"
               onClick={() => { const on = !st.sound; if (on) sfx('lift', true); setSt(x => ({ ...x, sound: on })) }}>
               SOUND {st.sound ? 'ON' : 'OFF'}</button>
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            {/* AUD-2: the beds get their own switch. A sustained drone you can only
+                silence by killing the effects too is one people mute at the OS. */}
+            <button className={`btn${st.ambience && st.sound ? ' go' : ''}`} style={{ flex: 1, padding: 11 }}
+              role="switch" aria-checked={st.ambience} aria-label="Ambience" disabled={!st.sound}
+              onClick={() => setSt(x => ({ ...x, ambience: !x.ambience }))}>
+              AMBIENCE {st.ambience ? 'ON' : 'OFF'}</button>
           </div>
           <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
             {/* A11Y-4: haptics on their own switch, no longer riding on sound */}

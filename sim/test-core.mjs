@@ -2307,6 +2307,102 @@ test('FA-1: the FA is a real mode, and the grade you claim is an economy', () =>
     'an in-run FA claim did not drop back onto the map')
 })
 
+test('the game has a sense of place, and the finale has none on purpose (AUD-2)', () => {
+  /* AUD-2. Eight one-shot effects and nothing sustained, so the game had no sense of
+     place. What can be TESTED here is not the sound — I cannot hear it — but the
+     decision and the wiring, which is exactly why the decision lives in the engine as
+     a pure function and only the oscillators live in the screen.
+     The load-bearing case is the finale: "silence is the loudest thing you can do with
+     a boss", so a bed that played through it would throw away the one deliberate
+     silence in the game. */
+  const base = { ...E.freshRun(0, 0, 5), inRun: true, skirmish: null, act: 0, phase: 'map' }
+  const beds = new Set()
+
+  // every act on the wall has its own place, and they are distinct
+  const onWall = act => E.bedFor({ ...base, act, phase: 'climb' })
+  for (const act of [0, 1, 2]) {
+    const b = onWall(act)
+    ok(b !== 'none', `act ${act} climbs in silence`)
+    beds.add(b)
+  }
+  eq(beds.size, 3, `the three acts do not sound like three places: ${[...beds].join(',')}`)
+  // and the map keeps you in the same place as the climb
+  for (const act of [0, 1, 2]) {
+    eq(E.bedFor({ ...base, act, phase: 'map' }), onWall(act),
+      `act ${act} sounds like somewhere else on the map than on the wall`)
+  }
+
+  /* THE FINALE IS SILENT, and it outranks the act it is in. */
+  const finaleIdx = E.ROUTES.findIndex(r => r.finale)
+  ok(finaleIdx >= 0, 'no route is the finale, so this cannot be tested')
+  const onFinale = { ...base, act: 2, routeIdx: finaleIdx, skirmish: null, phase: 'climb' }
+  ok(E.specOf(onFinale).finale, 'the finale fixture is not the finale')
+  eq(E.bedFor(onFinale), 'none', 'the finale has a bed playing over it')
+  eq(E.bedFor({ ...onFinale, phase: 'burnEnd' }), 'none', 'the finale is silent climbing but not at the end of a burn')
+  // ...and act 3 is NOT silent otherwise, so the silence is the finale's and not the act's
+  ok(onWall(2) !== 'none', 'the whole alpine act is silent, so the finale silence says nothing')
+
+  // a camp, a post and the van are places of their own
+  eq(E.bedFor({ ...base, phase: 'camp' }), 'camp', 'a camp sounds like nowhere')
+  eq(E.bedFor({ ...base, phase: 'shop' }), 'post', 'the trading post sounds like nowhere')
+  ok(['camp', 'post', 'van'].every(k => k !== onWall(0)), 'a camp sounds like the wall it is under')
+
+  // the menu and anything outside a run are silent — there is no place to be
+  eq(E.bedFor({ ...base, phase: 'menu' }), 'none', 'the menu drones')
+  eq(E.bedFor({ ...base, inRun: false, phase: 'climb', skirmish: E.dailyRoute() }), 'none',
+    'a daily or a skirmish claims a place in a campaign it is not in')
+  // every phase resolves to a real bed name, so nothing can ask for a graph that
+  // does not exist — the screen switches on this and a stray name would be silence
+  const KINDS = ['none', 'forest', 'desert', 'alpine', 'camp', 'van', 'post']
+  const phases = ['menu', 'map', 'climb', 'burnEnd', 'sessionEnd', 'reward', 'camp', 'runEnd',
+    'pack', 'collection', 'event', 'journal', 'deck', 'talk', 'glossary', 'gear', 'logbook',
+    'shop', 'circuitNext', 'saves', 'stats', 'prepare', 'more', 'epilogue', 'history',
+    'line', 'claim', 'deeds']
+  for (const phase of phases) for (const act of [0, 1, 2]) for (const inRun of [true, false]) {
+    const b = E.bedFor({ ...base, phase, act, inRun })
+    ok(KINDS.includes(b), `phase ${phase} asks for a bed that does not exist: ${b}`)
+  }
+  // and it is a pure read — asking twice gives the same answer
+  eq(E.bedFor(onWall(1) ? { ...base, act: 1, phase: 'climb' } : base),
+    E.bedFor({ ...base, act: 1, phase: 'climb' }), 'bedFor is not a pure read')
+
+  /* THE WIRING. Synthesised, gated by both switches, and taken away when the tab goes.
+     None of this can be heard in a test, so it is read off the source. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  // no sampled audio and no library: the build is one inlined file with no requests
+  ok(!/\.mp3|\.ogg|\.wav|audio\/|new Audio\(|decodeAudioData|tone\.js|Tone\./i.test(app),
+    'the ambience is not synthesised — something fetches or decodes an asset')
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
+  const deps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).join(' ')
+  ok(!/tone|howler|pizzicato|audio/i.test(deps), `an audio library crept into the deps: ${deps}`)
+  // both switches gate it, and the ambience one is the player's own
+  const drive = app.slice(app.indexOf('AUD-2: put the game where it is'), app.indexOf('DEV-2: tell the service-worker'))
+  ok(drive.length > 200, 'the bed driver moved out from under this guard')
+  ok(/bedFor\(st\)/.test(drive), 'the screen decides the bed itself instead of asking the engine')
+  /* BOTH call sites must carry both switches. Asserting the pair appears "somewhere in
+     the driver" was not enough: the visibility handler also contains it, so ungating the
+     main effect left this green — caught by injecting exactly that. */
+  eq((drive.match(/st\.sound && st\.ambience/g) || []).length, 2,
+    'a bed call site is missing one of the two switches')
+  ok(!/bed\(bedFor\(st\), st\.sound\)/.test(drive),
+    'the main bed effect is gated by sound alone, so the ambience switch does nothing')
+  ok(/visibilitychange/.test(drive), 'a backgrounded tab is left droning')
+  ok(/document\.hidden/.test(drive), 'nothing checks whether the tab is hidden')
+  // one bed at a time: exactly one place stops the running graph
+  const mgr = app.slice(app.indexOf('export function bed('), app.indexOf('export const buzz'))
+  ok(mgr.length > 150, 'the bed manager moved out from under this guard')
+  eq((mgr.match(/BED\.stop\(/g) || []).length, 1,
+    'more than one place stops the bed, so a graph can be left running')
+  ok(/BED\.kind === want/.test(mgr), 'asking for the bed already playing restarts it')
+  // the switch is on the settings screen and says which state it is in
+  ok(/AMBIENCE \{st\.ambience \? 'ON' : 'OFF'\}/.test(app), 'there is no ambience switch to turn off')
+  ok(/aria-checked=\{st\.ambience\}/.test(app), 'the ambience switch is not a switch to a screen reader')
+  // and the setting is the player's, so it survives a run and a save
+  E.saveGame({ ...base, slot: 1, ambience: false })
+  eq(E.loadGame(1).ambience, false, 'the ambience setting did not survive a save')
+  eq(E.carryOver({ ...base, ambience: false }).ambience, false,
+    'the ambience setting is thrown away by a new run — settings are the player-s')
+})
 test('the feet lane is a trade, and it says what it is doing (ENG-32)', () => {
   /* ENG-32. The ticket read "feet are a lane you fill, not a decision you make", and
      measuring first showed the premise was half wrong in the useful direction: the

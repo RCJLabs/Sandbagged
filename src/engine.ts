@@ -402,6 +402,9 @@ export type GameState = {
   talkReply: string | null
   coaching: boolean
   sound: boolean
+  /** AUD-2: the sustained beds on their own switch. A drone you cannot turn off
+      without losing the effects too is a drone people mute at the OS instead. */
+  ambience: boolean
   /** A11Y-4: haptics on their own switch. The buzz used to ride on `sound`, so
       you could not have one without the other. */
   haptics: boolean
@@ -584,7 +587,7 @@ type SaveData = {
   mutators?: string[]
   runs?: number; falls?: number; ending?: string; topRope?: boolean; history?: RunRecord[]
   archWins?: number[]; mutatorWin?: boolean
-  coaching?: boolean; sound?: boolean; haptics?: boolean; assist?: boolean; cbSafe?: boolean; tutorialDone?: boolean
+  coaching?: boolean; sound?: boolean; ambience?: boolean; haptics?: boolean; assist?: boolean; cbSafe?: boolean; tutorialDone?: boolean
   motion?: boolean; textScale?: number; reach?: 'off' | 'left' | 'right'
   run: { deck: string[]; tier: number; skin: number; seed: number; act: number
     gear: string[]; boons: string[]; kit?: string[]; cash: number; psyche: number; runSeed: number
@@ -612,7 +615,7 @@ export function saveGame(s: GameState) {
     const d: SaveData = {
       v: SAVE_FILE_VERSION, level: s.level, xp: s.xp, owned: s.owned,
       sends: s.sends, wins: s.wins, journal: s.journal, loadout: s.loadout,
-      style: s.style, styleMax: s.styleMax, seen: s.seen, coaching: s.coaching, sound: s.sound, haptics: s.haptics, assist: s.assist, cbSafe: s.cbSafe,
+      style: s.style, styleMax: s.styleMax, seen: s.seen, coaching: s.coaching, sound: s.sound, ambience: s.ambience, haptics: s.haptics, assist: s.assist, cbSafe: s.cbSafe,
       tutorialDone: s.tutorialDone, motion: s.motion, textScale: s.textScale, reach: s.reach,
       arch: s.arch, loadouts: s.loadouts, book: s.book, bestCircuit: s.bestCircuit, ticked: s.ticked, established: s.established, hints: s.hints, grades: s.grades, tweak: s.tweak,
       larder: s.larder, titles: s.titles, graceWeek: s.graceWeek, dailyMet: s.dailyMet,
@@ -715,7 +718,7 @@ export function loadGame(slot = 0): Partial<GameState> | null {
       journal: d.journal ?? [],
       ...(d.loadout && d.loadout.length === DECK_SIZE ? { loadout: d.loadout } : {}),
       style: d.style ?? 0, styleMax: d.styleMax ?? 0, seen: d.seen ?? [],
-      coaching: d.coaching ?? true, sound: d.sound ?? true, haptics: d.haptics ?? true, assist: d.assist ?? false, cbSafe: d.cbSafe ?? false,
+      coaching: d.coaching ?? true, sound: d.sound ?? true, ambience: d.ambience ?? true, haptics: d.haptics ?? true, assist: d.assist ?? false, cbSafe: d.cbSafe ?? false,
       tutorialDone: d.tutorialDone ?? false,
       motion: d.motion ?? true, textScale: d.textScale ?? 0, reach: d.reach ?? 'off',
       arch: d.arch ?? 0,
@@ -1641,6 +1644,30 @@ export function buildable(owned: string[]): string[] {
 }
 
 export const LANE_NAMES = ['LEFT HAND', 'RIGHT HAND', 'FEET']
+
+/* AUD-2. Eight one-shot effects and nothing sustained: the game had no sense of
+   PLACE. Wind on the alpine wall, a stove at a camp, the radio in the van — and
+   deliberately nothing at all on the finale, because silence is the loudest thing you
+   can do with a boss and an ambience bed that plays through it would throw that away.
+   Synthesised, not sampled: this build is one inlined HTML file with no external
+   requests, and there is no audio library in `package.json` (a roadmap row claimed
+   Tone.js was already a dependency for seven versions; it never was).
+   WHICH BED PLAYS IS A PURE FUNCTION AND IT LIVES HERE. The screen owns the
+   oscillators; this owns the decision — which means the part that can be wrong can be
+   tested, and I cannot hear a test. */
+export type Bed = 'none' | 'forest' | 'desert' | 'alpine' | 'camp' | 'van' | 'post'
+export function bedFor(s: GameState): Bed {
+  // the finale is silent ON PURPOSE, and it outranks everything below it
+  if (s.phase === 'climb' || s.phase === 'burnEnd') {
+    if (specOf(s).finale) return 'none'
+    if (s.inRun) return (['forest', 'desert', 'alpine'] as const)[Math.min(2, Math.max(0, s.act))]
+    return 'none'                       // a skirmish, a daily, the tutorial: no place to be
+  }
+  if (s.phase === 'camp') return 'camp'
+  if (s.phase === 'shop') return 'post'
+  if (s.phase === 'map' && s.inRun) return (['forest', 'desert', 'alpine'] as const)[Math.min(2, Math.max(0, s.act))]
+  return 'none'
+}
 
 /** A deliberately plain deck — nothing to read, nothing to misplay. */
 export const TUTORIAL_DECK: string[] = [
@@ -3458,7 +3485,7 @@ export function carryOver(s: GameState): Partial<GameState> {
     loadouts: s.loadouts, styleMax: s.styleMax, tutorialDone: s.tutorialDone,
     slot: s.slot, ending: s.ending, tweak: s.tweak,
     // settings are the player's, not the run's
-    sound: s.sound, haptics: s.haptics, assist: s.assist, motion: s.motion, cbSafe: s.cbSafe, textScale: s.textScale, reach: s.reach,
+    sound: s.sound, ambience: s.ambience, haptics: s.haptics, assist: s.assist, motion: s.motion, cbSafe: s.cbSafe, textScale: s.textScale, reach: s.reach,
     coaching: s.coaching, hints: s.hints, topRope: s.topRope, grades: s.grades,
     dailyDay: s.dailyDay, dailyScore: s.dailyScore,
     dailyBest: s.dailyBest, dailyStreak: s.dailyStreak,
@@ -3503,7 +3530,7 @@ export function freshRun(routeIdx: number, deckTier: number, seed: number): Game
     runout: 0, lastPiece: -1, pitch: 0, cash: 0, psyche: PSYCHE_MAX,
     circuit: false, circuitScore: 0, bestCircuit: 0, slot: 0, runSeed: 0, ending: '', topRope: true, history: [], archWins: [], mutatorWin: false, runs: 0, falls: 0,
     shopCards: [], shopGear: [], shopKit: [], kit: [], bought: [],
-    coaching: true, sound: true, haptics: true, assist: false, cbSafe: false, motion: true, textScale: 0, reach: 'off',
+    coaching: true, sound: true, ambience: true, haptics: true, assist: false, cbSafe: false, motion: true, textScale: 0, reach: 'off',
     tutorialDone: false,
     fxLane: ['', '', ''], fxTick: 0, gear: [], boons: [], gearOffers: [], savedBlow: false, peakPump: 0, rests: 0, cruxFree: 0, clipped: false, bonusUsed: false, line: 0, rerolls: 0, mutators: [], seq: null, readAhead: 0, order: [], routeMove: null, arch: 0,
     loadouts: ARCHETYPES.map(a => a.loadout.slice()), reroll: 0, book: {}, ticked: [], hints: true, grades: 'v',
