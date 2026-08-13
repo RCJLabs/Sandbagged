@@ -2696,7 +2696,78 @@ test('the tuning policy can see the feet lane (SIM-6)', () => {
   // and the harness still only ever calls the shipping engine (SIM-1/SIM-5)
   const sim = readFileSync('sim/run.mjs', 'utf8')
   ok(/autoPlay/.test(sim), 'the harness no longer plays through the shipping policy')
-  ok(!/support/i.test(sim), 'the harness grew its own opinion about the feet')
+  /* match the CODE, not the English word — the same correction NARR-14's guard carries for
+     the same reason. SIM-8's note in run.mjs lists what the old stat sort was blind to, and
+     the word "Support" appears in that sentence, so the bare-word form failed on a comment
+     while the property it defends was untouched. Comments are stripped first. */
+  const simCode = sim.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+  ok(!/support/i.test(simCode), 'the harness grew its own opinion about the feet')
+})
+test('SIM-8: the band measures a deck a player can actually hold', () => {
+  /* SIM-8. The pinned band was measured on an ILLEGAL deck for as long as there has been a
+     pin. run.mjs had its own builder — sort every card by `power * 2 + contact`, take the
+     top ones — and it capped rares and uncommons but not BETA rarity, while
+     `copyLimit('beta')` is 3. So six of the fifteen measured slots were `Beta · Going Alone`
+     (4/8) and `Beta · Being Frightened` (3/7), cards `buildable()` refuses outright, worth a
+     measured +10.5 points. The band now rides `buildLoadout` — the engine's builder, the one
+     behind BUILD ME ONE — so there is ONE builder (ENG-19) and the number describes a deck
+     somebody could arrive at. Re-pinned ~52 -> ~44 at v10.23. */
+  const sim = readFileSync('sim/run.mjs', 'utf8')
+  const builder = region(sim, 'function buildBest()', ['\nif (mode', '\nfunction '],
+    { min: 200, what: "the harness's deck builder" })
+  ok(/E\.buildLoadout\(/.test(builder), 'the harness builds its own deck again instead of asking the engine')
+  /* and it must not have grown a second opinion. Scoped to the builder on purpose: run.mjs
+     legitimately scores cards elsewhere (which one to sharpen), so a file-wide ban on the
+     formula would fail on code that has nothing to do with this. */
+  ok(!/\.power\b|\bsort\(|\breduce\(/.test(builder),
+    'the harness deck builder is scoring cards by hand again — one builder, per ENG-19')
+
+  // the deck it hands over is one the card picker would accept, on every count
+  const owned = Object.keys(E.CARDS)
+    .filter(n => ['common', 'uncommon', 'rare'].includes(E.CARDS[n].rarity ?? 'common'))
+  const deck = E.buildLoadout({ ...E.freshRun(0, 0, 1), owned, gear: [], boons: [],
+    mutators: [], arch: 0 }, [], owned)
+  const used = r => deck.filter(n => (E.CARDS[n].rarity ?? 'common') === r).length
+  eq(deck.length, E.DECK_SIZE, `the measured deck is ${deck.length} cards`)
+  ok(used('rare') <= E.RARE_SLOTS, `the measured deck holds ${used('rare')} rares against ${E.RARE_SLOTS}`)
+  ok(used('uncommon') <= E.UNCOMMON_SLOTS,
+    `the measured deck holds ${used('uncommon')} uncommons against ${E.UNCOMMON_SLOTS}`)
+  eq(used('beta'), 0, 'the measured deck carries beta cards again — the exact bug SIM-8 fixed')
+  eq(used('curse'), 0, 'the measured deck carries a curse')
+
+  /* the beta exclusion has to be checked where it can FAIL. Asserting `used('beta') === 0`
+     on a collection that never offered beta is the vacuous shape this session hit twice, so:
+     beta cards must exist, must be excluded from what the harness claims to own, and must
+     still be refused when a collection does claim them. */
+  const betas = Object.keys(E.CARDS).filter(n => (E.CARDS[n].rarity ?? '') === 'beta')
+  ok(betas.length > 0, 'there are no beta cards, so none of this exclusion means anything')
+  /* read what the HARNESS restricts itself to, not a list rebuilt here. The first cut of
+     this asserted `betas.every(n => !owned.includes(n))` against the `owned` computed a few
+     lines above — true by construction, so widening run.mjs's own filter back to
+     "anything but a curse" left it green. Found by injecting exactly that. */
+  ok(/\['common', 'uncommon', 'rare'\]\.includes\(E\.CARDS\[n\]\.rarity/.test(builder),
+    'the harness no longer restricts itself to the collectible rarities, so beta can come back')
+  ok(E.copyLimit('beta') > 1,
+    'a beta card is now single-copy, so the six-of-fifteen shape could not recur — check this guard still says something')
+  const claimed = [...owned, ...betas]
+  eq(E.buildLoadout({ ...E.freshRun(0, 0, 1), owned: claimed, gear: [], boons: [],
+    mutators: [], arch: 0 }, [], claimed).filter(n => (E.CARDS[n].rarity ?? '') === 'beta').length, 0,
+    'claiming beta cards as owned puts them back in the measured deck')
+
+  /* THE PIN AND ITS GUARD MUST AGREE. The band is stated twice — as a number in the
+     assertion and as prose in its message — and a re-pin that updates one and not the other
+     is how a pin quietly stops meaning anything. */
+  const led = readFileSync('sim/test.mjs', 'utf8')
+  const drift = region(led, "test('the campaign has not drifted since it was last set'", ["  test('"],
+    { min: 800, what: 'the drift guard' })
+  const band = /ok\(full > (\d+) && full < (\d+)/.exec(drift)
+  ok(band, 'the drift guard no longer states a band')
+  const said = /completes \$\{full\}% with a full journal — ~(\d+)/.exec(drift)
+  ok(said, 'the drift guard does not say what it is pinned at')
+  const [lo, hi] = [Number(band[1]), Number(band[2])], pin = Number(said[1])
+  ok(pin > lo && pin < hi, `the guard is pinned at ~${pin} but its band is ${lo}–${hi}`)
+  ok(hi - lo <= 14, `the band is ${hi - lo} points wide, which would not catch a BAL-14 slide`)
+  ok(/SIM-8|v10\.23/.test(drift), 'the re-pin is no longer dated in the guard that carries it')
 })
 test('a challenge is a problem and its terms, and a typo is refused (SOCIAL-2)', () => {
   /* SOCIAL-2. SOCIAL-1 let you paste a RESULT — people could compare numbers but

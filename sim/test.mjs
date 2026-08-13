@@ -2035,9 +2035,54 @@ if (SLOW) {
        same stat sort restricted to legal cards reads 42.9 (n=2700). So the honest band
        for a legal deck is ~43 stat-sorted or ~44 as the game builds it, against a pin of
        ~52. Re-pointing the harness is therefore a RE-PIN and needs a decision, and it
-       will also recalibrate ROUTE-8, CARD-9 and the climber spread the way SIM-6 did. */
-    ok(full > 44 && full < 58,
-      `the campaign completes ${full}% with a full journal — ~52-53, held at v9.98 (ROUTE-13)`)
+       will also recalibrate ROUTE-8, CARD-9 and the climber spread the way SIM-6 did.
+       v10.23 (SIM-8): THE PIN IS RE-SET, ~52 -> ~44.3 (n=2700, PAGES=14). Agreed with Evan
+       and deliberate in the CARD-15 sense: not a drift accommodated, a wrong reference deck
+       replaced. The band now rides `buildLoadout` — the engine's builder, the one behind
+       BUILD ME ONE, with the slot rules SIM-7 gave it — so there is ONE builder (ENG-19)
+       and the number describes a deck a player can actually arrive at. run.mjs's own stat
+       sort is gone. Drift tolerance is +-6 (38-50), about 2 SE at the n=300 that guard runs
+       and still tight enough to catch a BAL-14-shaped 10-point slide either way.
+       WHAT THE BETTER DECK COST, measured: guide-line band 53.4 -> 44.3. Of that, +10.5 was
+       the six illegal beta cards alone (the same stat sort restricted to legal cards reads
+       42.9), and the rest is the deck being differently shaped: the game's build carries
+       half the raw Power (20 against 40) and wins on consistency instead — two copies each
+       of Hand Jam, Fist Jam and Arm Bar, three rests, three techniques.
+       ONE GUARD NEEDED RETUNING, and it is the one SIM-6 also had to move. ROUTE-8 says a
+       line you pick is a choice and not a trap: no more than 8 points below the guide. At
+       n=1500 the guide reads 45.1 and the direct at `dCrux: 3` reads 38.1 — that is -7.0
+       against a -8 floor, margin 1.0 on a 1.8-point difference SE, which is a guard passing
+       on a coin flip. The direct is now `dCrux: 2` and reads 43.1, so -2.0, five points
+       clear of either bound. That RESTORES the intent rather than inventing one: the
+       ROUTE-8 note itself says the direct should land "~2 under the guide" and that cruxes
+       are "almost free" — both were true of a deck with twice the Power, and its own next
+       sentence explains the rest ("a cruxy line that a powerful deck eats and a weak one
+       walls on"). The traverse needed nothing: -5.0, inside by 3.0.
+       A TRAP AVOIDED, recorded because I walked into it: `dClear: -1` on the direct reads
+       +1.2 and looks like a fix. CARD-15 removed exactly that, for exactly this drift — a
+       short line skips endurance. Read the note above LINES before touching that field.
+       AND A SAMPLE-SIZE LESSON, again. At n=500 the direct at `dCrux: 2` read +1.0 and at
+       n=1500 it reads -2.0; the difference SE at 500 is 3.1, so the first number was one SE
+       of nothing. ROUTE-8's own arms run at n=500, which resolves its -8 floor and NOT its
+       +3 ceiling. Do not tune this guard off a single n=500 pass.
+       WHAT DID NOT MOVE: CARD-9's lift reads +1.8 (base 45.1, wind 46.9 at n=900) against
+       its 0-4 window, comfortable at both ends. The climber spread is untouched BY
+       CONSTRUCTION — `arch` mode sets `LOADOUT = undefined` and measures each climber's own
+       loadout, so this re-pin cannot reach it. Its numbers are unchanged and the Comp Kid
+       still sits at 5.2% against a floor of 5, which is a pre-existing graze worth somebody
+       looking at and is not SIM-8's doing. The acts curve and the journal guard both hold. */
+    /* THE PIN IS ~44, RE-SET AT v10.23 (SIM-8), and this is a deliberate dated re-pin in
+       the CARD-15 sense rather than a drift being accommodated. The reason is that the old
+       ~52 was measured on a deck no player can hold: run.mjs sorted every card by raw stats
+       and capped rares and uncommons but not BETA, and `copyLimit('beta')` is 3 — so six of
+       the fifteen measured slots were `Beta ·` cards that `buildable()` refuses outright,
+       worth a measured +10.5 points. The band now measures the deck the GAME builds
+       (`buildLoadout`, the BUILD ME ONE button, with the slot rules SIM-7 gave it), which
+       is the only deck a player can actually arrive at. 44.3% at n=2700, PAGES=14.
+       Tolerance is +-6 around it: about 2 SE at the n=300 this guard runs, and still tight
+       enough to catch a BAL-14-shaped 10-point slide in either direction. */
+    ok(full > 38 && full < 50,
+      `the campaign completes ${full}% with a full journal — ~44, re-pinned at v10.23 (SIM-8)`)
     ok(pcts[0] < full - 5, `reading his journal is worth ${(full - pcts[0]).toFixed(1)} points`)
   })
   test('the acts get deadlier in order', () => {
@@ -2066,16 +2111,16 @@ if (SLOW) {
        With a full collection the builder fielded TEN rares against a limit of one and
        completed 18.9% against the starter deck's 28.1% — nine points WORSE than the deck
        it offered to replace. Obeying the slot rules takes it to 45.0%.
-       `DECK=builder` measures the game's builder specifically; the pinned band still rides
-       `buildBest` in run.mjs, so this guard cannot move it. 300 runs an arm: the gap is 18
-       points against a ~3.7-point difference SE, so the margin is not the tight part. */
+       SIM-8: the harness's own stat sort is gone and `campaign` now measures the game's
+       builder, so this arm and the pinned band read the same deck. 300 runs an arm: the gap
+       is 18 points against a ~3.7-point difference SE, so the margin is not the tight part. */
     const pct = cmd => {
       const out = execSync(cmd, { encoding: 'utf8' })
       const m = [...out.matchAll(/completion\s+([\d.]+)%/g)].map(x => Number(x[1]))
       ok(m.length >= 1, `could not read completion from: ${cmd}`)
       return m[m.length - 1]
     }
-    const built = pct('DECK=builder PAGES=14 node sim/run.mjs campaign 300')
+    const built = pct('PAGES=14 node sim/run.mjs campaign 300')
     const deflt = pct('PAGES=14 node sim/run.mjs campaign 300 default')
     ok(built > deflt + 8,
       `the deck the game builds completes ${built}% against the starter deck's ${deflt}% — it is offering to make you worse`)

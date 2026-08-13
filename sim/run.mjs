@@ -422,31 +422,31 @@ if (mode === 'cards') {
   console.log(`\nwithin-rarity outliers (>2sd): ${bad.length ? bad.map(b => `${b.name} ${b.d >= 0 ? '+' : ''}${b.d.toFixed(0)}`).join(', ') : 'none'}`)
 }
 
-function buildBest() {
-  const val = n => { const c = E.CARDS[n]; return c.kind === 'bonus' ? 7 : c.power * 2 + c.contact }
-  const ok = n => E.CARDS[n].rarity !== 'curse'
-  const all = Object.keys(E.CARDS).filter(ok)
-  const feet = all.filter(n => E.CARDS[n].lane === 'feet').sort((a, b) => val(b) - val(a))
-  const rest = all.filter(n => (E.CARDS[n].shed ?? 0) > 0 && E.CARDS[n].lane === 'any')
-                  .sort((a, b) => val(b) - val(a))
-  const hand = all.filter(n => (E.CARDS[n].lane ?? 'hand') === 'hand' && E.CARDS[n].kind === 'move')
-                  .sort((a, b) => val(b) - val(a))
-  const built = []
-  const push = n => {
-    const r = E.CARDS[n].rarity ?? 'common'
-    const lim = E.copyLimit(r)
-    const used = k => built.filter(x => E.CARDS[x].rarity === k).length
-    if (r === 'rare' && used('rare') >= E.RARE_SLOTS) return false
-    if (r === 'uncommon' && used('uncommon') >= E.UNCOMMON_SLOTS) return false
-    if (built.filter(x => x === n).length < lim && built.length < E.DECK_SIZE) { built.push(n); return true }
-    return false
-  }
-  for (const n of feet) { while (push(n)) { if (built.filter(x => E.CARDS[x].lane === 'feet').length >= 4) break }
-    if (built.filter(x => E.CARDS[x].lane === 'feet').length >= 4) break }
-  for (const n of rest) { push(n); if (built.filter(x => (E.CARDS[x].shed ?? 0) > 0).length >= 2) break }
-  for (const n of hand) { while (push(n)); if (built.length >= E.DECK_SIZE) break }
+/* SIM-8. This used to be the harness's OWN deck builder: sort every card by
+   `power * 2 + contact` (bonuses at a flat 7) and take the top ones. Two things were
+   wrong with it and the second is why the pinned band moved.
 
-  return built
+   (1) It was blind to every keyword in the game — shed, Support, fx, anchor, latch, chip,
+   opposition, synergy, restChip, read — while the harness's IN-RUN picks went through the
+   engine's real `cardValue`. The measured campaign started with a stat-greedy deck and
+   then drafted like a competent player, which is nobody.
+
+   (2) It measured an ILLEGAL deck. It capped rares and uncommons but not BETA rarity, and
+   `copyLimit('beta')` is 3 — so the top of a raw stat sort pulled in three
+   `Beta · Going Alone` (4/8) and three `Beta · Being Frightened` (3/7), SIX of the fifteen
+   slots, in cards `buildable()` refuses outright. Measured worth: +10.5 points. The ~52
+   pin was set on a deck no player can hold.
+
+   The engine builds a deck — `buildLoadout`, what the BUILD ME ONE button calls, with the
+   slot rules SIM-7 gave it — so the band measures THAT. One builder (ENG-19), and the
+   number describes the deck the game would actually hand you. */
+function buildBest() {
+  // what a player can actually collect: packs roll common/uncommon/rare and `buildable`
+  // adds the starters. Beta and curse are not collectible.
+  const owned = Object.keys(E.CARDS)
+    .filter(n => ['common', 'uncommon', 'rare'].includes(E.CARDS[n].rarity ?? 'common'))
+  const st = { ...E.freshRun(0, 0, 1), owned, gear: [], boons: [], mutators: [], arch: ARCH }
+  return E.buildLoadout(st, [], owned)
 }
 
 if (mode === 'loadout') {
@@ -485,17 +485,6 @@ if (mode === 'campaign') {
   LOADOUT = buildBest()
   const label = process.argv[4] ?? 'built'
   if (label === 'default') LOADOUT = undefined
-  /* SIM-7: `DECK=builder` measures the deck THE GAME builds — `buildLoadout`, what the
-     BUILD ME ONE button calls — rather than this file's own stat sort. It is a separate
-     switch on purpose: the pinned band is measured through `buildBest` and re-pointing it
-     is a re-pin decision, but the game's builder needs a measured floor under it or a
-     repeat of the bug SIM-7 found goes unnoticed. See the ledger. */
-  if (process.env.DECK === 'builder') {
-    const owned = Object.keys(E.CARDS)
-      .filter(n => ['common', 'uncommon', 'rare'].includes(E.CARDS[n].rarity ?? 'common'))
-    LOADOUT = E.buildLoadout({ ...E.freshRun(0, 0, 1), owned, gear: [], boons: [],
-      mutators: [], arch: ARCH }, [], owned)
-  }
   console.log(`Full campaign — ${label} loadout, Working It\n`)
   /* GUARD-6: most guards read only the full-journal band but paid for all three,
      so two runs in three were thrown away. `PAGES=14` measures one band, which

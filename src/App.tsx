@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.22 — SIM-7: BUILD ME ONE was handing you an illegal deck, ten rares
-//   against a limit of one, that climbed worse than the starter deck it replaced
+// SANDBAGGED v10.23 — SIM-8: the band was pinned on a deck no player can hold. Re-pinned
+//   ~52 to ~44 against the deck the game itself builds
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1298,7 +1298,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.22 · RCJ Labs</div>
+          <div className="sfoot">v10.23 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1527,7 +1527,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.22 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.23 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

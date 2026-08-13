@@ -288,8 +288,18 @@ export type Line = { id: string; name: string; text: string
    line's identity is now the cruxes alone, and it lands ~2 under the guide. */
 export const LINES: Line[] = [
   { id: 'guide', name: 'As it goes', text: 'The line in the book. No arguments.' },
-  { id: 'direct', name: 'The direct', dClear: 0, dCrux: 3,
-    text: 'Straight up it. Same height, but three more cruxes on the way.' },
+  /* SIM-8: dCrux 3 -> 2, and the prose with it. This comment says cruxes are "almost free"
+     and that the direct "lands ~2 under the guide" — both were true of the deck the band
+     used to be measured on, which carried twice the raw Power and could simply pull through
+     them. Against the deck the game actually builds (SIM-8), three extra cruxes cost 7.0
+     against a floor of 8, and this paragraph's own sentence explains why: "a cruxy line
+     that a powerful deck eats and a weak one walls on". Two cruxes restores the INTENDED
+     relationship rather than inventing a new one — measured at n=1500, guide 45.1 vs
+     direct 43.1, so −2.0, five points clear of either bound.
+     NOT via `dClear`: CARD-15 removed the direct's one-fewer-hold for exactly the drift
+     this ticket is fixing, and putting it back read +1.2 here. Read the note above. */
+  { id: 'direct', name: 'The direct', dClear: 0, dCrux: 2,
+    text: 'Straight up it. Same height, but two more cruxes on the way.' },
   { id: 'traverse', name: 'The traverse', dCrux: -3, dClear: 1,
     text: 'Out left and back in, past the worst of it. Three fewer cruxes, but the long way — more holds to work before the top.' },
 ]
