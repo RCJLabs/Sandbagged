@@ -1436,7 +1436,14 @@ test('the end of a run gives you an account of it', () => {
   const app = readFileSync('src/App.tsx', 'utf8')
   const at = app.indexOf("if (st.phase === 'runEnd')")
   ok(at > 0, 'there is no run-end screen')
-  const screen = app.slice(at, at + 3200)
+  /* v10.17: this sliced a fixed 3200 characters, so adding anything near the top of the
+     screen silently pushed a needle out of the window and failed for the wrong reason
+     (NARR-14's closing line did exactly that). The window ends where the screen ends
+     now — at the next phase branch — which is the property meant all along. */
+  const end = app.indexOf("if (st.phase === '", at + 10)
+  ok(end > at, 'the run-end screen is the last branch, so this window cannot be bounded')
+  const screen = app.slice(at, end)
+  ok(screen.length > 1500, `the run-end screen reads as only ${screen.length} chars`)
   for (const [what, needle] of [
     ['the hardest thing you have sent', 'hardest thing you have sent'],
     ['what you sent this trip', 'sent this trip'],
@@ -2307,6 +2314,122 @@ test('FA-1: the FA is a real mode, and the grade you claim is an economy', () =>
     'an in-run FA claim did not drop back onto the map')
 })
 
+test('a line-s description agrees with its own numbers (ROUTE-14)', () => {
+  /* Caught on a render, not in review: SIM-6 retuned the direct from four extra cruxes
+     to three and left the prose saying "four more cruxes" next to a panel showing 3.
+     Tuning a number and leaving the sentence is the easiest mistake in the file, so the
+     words are checked against the numbers now. */
+  const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight']
+  for (const l of E.LINES) {
+    const dc = l.dCrux ?? 0, dl = l.dClear ?? 0
+    const t = l.text.toLowerCase()
+    // any count word in the prose must be a number the line actually carries
+    for (const m of t.matchAll(/\b(no|one|two|three|four|five|six|seven|eight)\b\s+(more|fewer|extra|less)?/g)) {
+      const n = WORDS.indexOf(m[1])
+      ok(n === Math.abs(dc) || n === Math.abs(dl),
+        `${l.name} says "${m[0].trim()}" but carries dCrux ${dc} and dClear ${dl}`)
+    }
+    // and the direction words have to match the sign
+    if (dc > 0) ok(!/fewer crux/.test(t), `${l.name} adds cruxes but says fewer`)
+    if (dc < 0) ok(!/more crux/.test(t), `${l.name} removes cruxes but says more`)
+  }
+})
+test('somebody is out there with you, and they wanted something else (NARR-14)', () => {
+  /* NARR-14. Thirty-seven routes and nobody belayed. The game had a spotter (a hint
+     system wearing a person) and TALKS (people you meet once), but nothing that was WITH
+     you, so a trip meant to read as an expedition read as a solo campaign.
+     A partner is TEXT AND NOTHING ELSE, and that is deliberate: ROUTE-10 and ENG-24
+     both established that this project pays narrative in information and never in power.
+     So the guard's first job is to prove they cannot make you better at climbing. Their
+     one mechanic is an OPINION — they would go a particular way up, and they have
+     something to say whether you took it or not. */
+  ok(E.PARTNERS.length >= 3, `only ${E.PARTNERS.length} partners — a run would always draw the same one`)
+  const MOMENTS = ['tie', 'agree', 'differ', 'send', 'fall', 'camp', 'top', 'died']
+  for (const p of E.PARTNERS) {
+    ok(p.name && p.who.length > 15, `${p.id} is not a person`)
+    ok(p.line >= 0 && p.line < E.LINES.length, `${p.name} favours a line that does not exist: ${p.line}`)
+    for (const m of MOMENTS) {
+      ok(typeof p.says[m] === 'string' && p.says[m].length > 20,
+        `${p.name} has nothing to say at ${m}`)
+    }
+    // every line is distinct — a partner that repeats itself is not a voice
+    eq(new Set(MOMENTS.map(m => p.says[m])).size, MOMENTS.length, `${p.name} repeats a line`)
+  }
+  // no two partners share a name or an id, and between them they hold real disagreement
+  eq(new Set(E.PARTNERS.map(p => p.id)).size, E.PARTNERS.length, 'two partners share an id')
+  eq(new Set(E.PARTNERS.map(p => p.name)).size, E.PARTNERS.length, 'two partners share a name')
+  /* every line has an advocate. Weaker forms of this ("at least two differ") pass while
+     a whole line has nobody who would take it — and a line nobody ever argues for is a
+     line the player never hears a reason for. */
+  const favoured = new Set(E.PARTNERS.map(p => p.line))
+  for (let i = 0; i < E.LINES.length; i++) {
+    ok(favoured.has(i), `no partner would ever take ${E.LINES[i].name} — that line has no advocate`)
+  }
+
+  /* THEY ARE TEXT. A partner must carry no field that could reach the resolution — no
+     Power, Contact, Grip, Bite, Support, skin, psyche or pump anywhere in the table. */
+  const allowed = new Set(['id', 'name', 'who', 'line', 'says'])
+  for (const p of E.PARTNERS) {
+    for (const k of Object.keys(p)) ok(allowed.has(k), `${p.name} carries a field a partner should not have: ${k}`)
+  }
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  const table = eng.slice(eng.indexOf('export const PARTNERS'), eng.indexOf('export function partnerFor'))
+  ok(table.length > 800, 'the partner table moved out from under this guard')
+  ok(!/\b(power|contact|grip|bite|support|skin|psyche|pump|dTax|shed)\s*:/i.test(table),
+    'the partner table grew a mechanical field — a partner is text')
+  // ...and nothing in the resolution consults them
+  for (const fn of ['export function resolve', 'export function powerAgainst', 'export function biteAgainst',
+    'export function startBurn', 'export function autoPlay']) {
+    const at = eng.indexOf(fn)
+    ok(at > 0, `${fn} is gone`)
+    const body = eng.slice(at, at + 4000)
+    /* match the API, not the English word: autoPlay's opposition comments call the other
+       hand lane a "partner", which is a different thing entirely. */
+    ok(!/\b(partnerFor|partnerSays|partnerAgrees|PARTNERS)\b/.test(body),
+      `${fn} reads the partner — that is power, not narrative`)
+  }
+
+  /* WHO YOU GET IS DERIVED FROM THE RUN SEED. UX-5's contract is that a run is fully
+     determined by its starting seed, so a shared seed must hand over the same partner —
+     and deriving rather than storing means a reload cannot change who is standing there. */
+  const base = { ...E.freshRun(0, 0, 5), inRun: true, runSeed: 12345 }
+  const p1 = E.partnerFor(base)
+  ok(p1, 'nobody is out there on a run')
+  eq(E.partnerFor({ ...base }).id, p1.id, 'the same seed drew two different partners')
+  eq(E.partnerFor({ ...base, act: 2, tier: 4, skin: 1 }).id, p1.id,
+    'the partner changed partway through the trip')
+  // ...and different seeds do spread across the roster
+  const drawn = new Set()
+  for (let n = 0; n < 200; n++) drawn.add(E.partnerFor({ ...base, runSeed: n * 7919 }).id)
+  eq(drawn.size, E.PARTNERS.length, `200 seeds only ever drew ${drawn.size} of ${E.PARTNERS.length} partners`)
+  // nobody is belaying a skirmish, a daily or a challenge — those are not trips
+  eq(E.partnerFor({ ...base, inRun: false }), null, 'somebody turned up to a one-off problem')
+  eq(E.partnerSays({ ...base, inRun: false }, 'tie'), '', 'a partner spoke outside a run')
+
+  // the opinion reads off the same field the screen shows
+  eq(E.partnerAgrees(base, p1.line), true, 'going their way does not read as agreement')
+  const other = [0, 1, 2].find(i => i !== p1.line)
+  eq(E.partnerAgrees(base, other), false, 'going the other way still reads as agreement')
+  eq(E.partnerAgrees({ ...base, inRun: false }, p1.line), false, 'a partner who is not there agreed with you')
+  // and they say something different depending on which you took
+  ok(E.partnerSays(base, 'agree') !== E.partnerSays(base, 'differ'),
+    'the partner says the same thing whether you took their advice or not')
+
+  /* THEY ARE ON THE SCREENS. A partner nobody sees is the CARD-17 failure mode again —
+     present in the data, dead in the game. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const lineAt = app.indexOf("st.phase === 'line'")
+  ok(lineAt > 0, 'there is no line-choice screen')
+  const lineScreen = app.slice(lineAt, app.indexOf('NOT TODAY', lineAt))
+  ok(/partnerSays\(st, 'tie'\)/.test(lineScreen), 'they do not say which way they would go')
+  ok(/partnerAgrees\(st, i\)/.test(lineScreen), 'the line they favour is not marked on the choice')
+  const campAt = app.indexOf("st.phase === 'camp'")
+  ok(/partnerSays\(st, 'camp'\)/.test(app.slice(campAt, campAt + 3000)), 'they are not at the fire')
+  ok(/partnerSays\(st, sent \? 'send' : 'fall'\)/.test(app), 'they have nothing to say about a burn')
+  const endAt = app.indexOf("if (st.phase === 'runEnd')")
+  ok(/partnerSays\(st, won \? 'top' : 'died'\)/.test(app.slice(endAt, endAt + 4000)),
+    'the trip ends without a word from whoever was there')
+})
 test('the tuning policy can see the feet lane (SIM-6)', () => {
   /* SIM-6. `autoPlay` chose the feet by MAX SUPPORT and nothing else, so it could not
      see that a foot works its hold — and the feet lane works about 38% of every hold

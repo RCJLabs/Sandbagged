@@ -289,7 +289,7 @@ export type Line = { id: string; name: string; text: string
 export const LINES: Line[] = [
   { id: 'guide', name: 'As it goes', text: 'The line in the book. No arguments.' },
   { id: 'direct', name: 'The direct', dClear: 0, dCrux: 3,
-    text: 'Straight up it. Same height, but four more cruxes on the way.' },
+    text: 'Straight up it. Same height, but three more cruxes on the way.' },
   { id: 'traverse', name: 'The traverse', dCrux: -3, dClear: 1,
     text: 'Out left and back in, past the worst of it. Three fewer cruxes, but the long way — more holds to work before the top.' },
 ]
@@ -2613,6 +2613,96 @@ export type Talk = {
      conversation, never the reward or the balance. */
   replies: { label: string; text: string; outcome?: EventOutcome; arch?: string }[]
 }
+/* NARR-14. Thirty-seven routes and nobody belayed. The game had a spotter (coaching,
+   which is a hint system wearing a person) and it had TALKS (people you meet once and
+   leave behind), but nothing that was WITH you — so a trip that is meant to read as an
+   expedition read as a solo campaign with dialogue in it.
+
+   A partner is not a stat. Everything here is text, which is deliberate rather than
+   lazy: ROUTE-10 and ENG-24 both established that this project pays narrative in
+   INFORMATION and never in power, and after four on-band tickets in a row the last
+   thing the ledger needs is a fifth. So a partner cannot make you better at climbing.
+   What they can do is have an OPINION — each of them would go a particular way up, they
+   say so before you choose, and they have something to say about it afterwards whether
+   you took their advice or not. That is the whole mechanic: somebody who wanted
+   something different from what you did.
+
+   WHO YOU GET IS DERIVED FROM THE RUN SEED, not stored. UX-5's contract is that a run
+   is fully determined by its starting seed, so a shared seed has to hand the other
+   person the same partner; deriving it also means no new save field to drift and no
+   chance of a reload changing who is standing there. */
+export type PartnerMoment = 'tie' | 'agree' | 'differ' | 'send' | 'fall' | 'camp' | 'top' | 'died'
+export type Partner = {
+  id: string
+  name: string
+  /** Who they are, in one line, for the screen that introduces them. */
+  who: string
+  /** Which of the three lines they would take. Their opinion, and nothing more. */
+  line: number
+  says: Record<PartnerMoment, string>
+}
+export const PARTNERS: Partner[] = [
+  { id: 'wren', name: 'Wren', who: 'Belays like she is being timed. Has opinions about your feet.', line: 1,
+    says: {
+      tie: 'She flakes the rope without being asked. "Straight up it, if you have any sense."',
+      agree: '"Good. I hate traversing." She sits down and watches your feet, not your hands.',
+      differ: '"Fine. I will be here." She does not look up from her book until you are off the ground.',
+      send: '"There you go." She says it like she never doubted it, which is a kindness and a lie.',
+      fall: '"Feet." One word, and she is right, and you both know it.',
+      camp: 'She eats standing up and goes to bed early. "Tomorrow you go first."',
+      top: '"Well." She shakes your hand, formally, like a stranger. Then she laughs at herself.',
+      died: 'She carries the pads down without saying anything. At the car: "Next time you go first."',
+    } },
+  { id: 'ade', name: 'Ade', who: 'Been coming here thirty years. Knows where the water is.', line: 0,
+    says: {
+      tie: '"The book has it right, you know. People forget the book was written by somebody who was here."',
+      agree: '"Sensible." He settles in with the flask and does not offer you any.',
+      differ: '"Hm." He watches you go the other way and says nothing at all, which is worse.',
+      send: '"That is the line." He is pleased about the LINE, which is somehow better than being pleased for you.',
+      fall: '"It goes. Not like that, but it goes." He is already thinking about the sequence.',
+      camp: 'He tells you about a winter here in the nineties. Half of it cannot be true.',
+      top: '"I will put it in the book." From him this is an enormous thing to say.',
+      died: '"Thirty years I have been failing on things here." He means it to be comforting, and it is.',
+    } },
+  { id: 'moss', name: 'Moss', who: 'Would rather be looking at the rock than climbing it.', line: 2,
+    says: {
+      tie: '"There is a way round the side, you know. It is nicer over there."',
+      agree: '"Oh good." He points out three things on the way that have nothing to do with climbing.',
+      differ: '"Suit yourself." He wanders off left anyway and describes it to you while you are pumped.',
+      send: '"Did you see the quartz band? No. You would not have." He is not disappointed in you.',
+      fall: '"That hold is a fossil, you know. Whole animal." You are lying on the ground.',
+      camp: 'He has collected four rocks and wants to talk about all of them.',
+      top: '"Good. Now can we go and look at the other side." He has wanted to all week.',
+      died: '"Shame." He is already photographing something in the moss.',
+    } },
+  { id: 'kit', name: 'Kit', who: 'Nineteen, terrifyingly strong, no idea how lucky that is.', line: 1,
+    says: {
+      tie: '"Just go up it? Why would you not just go up it." Genuine question.',
+      agree: '"Obviously." She is already thinking about the next one.',
+      differ: '"Weird flex but okay." She spots you properly, though, which she does not have to.',
+      send: '"Was that hard? That looked hard." She is not being cruel. That is the problem.',
+      fall: '"Ohhh. Yeah. Go again?" It has not occurred to her that you might not.',
+      camp: 'She is asleep before the water boils and up before you.',
+      top: 'She screams. Genuinely screams, at a wall, in the dark. It is the best moment of the trip.',
+      died: '"Same time next year?" She has already forgotten which one beat you.',
+    } },
+]
+/** Who is out with you. Derived from the run seed — see the note above. */
+export function partnerFor(s: GameState): Partner | null {
+  if (!s.inRun) return null
+  return PARTNERS[(s.runSeed >>> 0) % PARTNERS.length]
+}
+/** What they have to say about a moment, or '' if nobody is there. */
+export function partnerSays(s: GameState, m: PartnerMoment): string {
+  const p = partnerFor(s)
+  return p ? p.says[m] : ''
+}
+/** Did you go their way? Only meaningful once a line is chosen. */
+export const partnerAgrees = (s: GameState, line: number) => {
+  const p = partnerFor(s)
+  return p ? p.line === line : false
+}
+
 export const TALKS: Talk[] = [
   { id: 'marge1', who: 'Marge', act: 0,
     text: 'You are the one asking about the drainage. I have had four of you this year. Two of them were journalists.',

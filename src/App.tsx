@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.16 — SIM-6: the tuning policy can see the feet lane. A better ruler,
-//   not an easier climb — and it re-calibrated two other guards on the way
+// SANDBAGGED v10.17 — NARR-14: somebody is out there with you, and they would have gone
+//   a different way. Text only: a partner has an opinion, never a stat
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -22,6 +22,7 @@ import {
   campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitZone, claimStep, claimVerdict,
   consumableById, KIT_MAX, useKitStep, secondWindStep,
   challengeCode, challengeRoute, challengeShare, readChallenge, goalById, dailyScore,
+  partnerFor, partnerSays, partnerAgrees,
   coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyGoals, dailyRoute, dailySeed, dailyShare, dailyUsed, tomorrowKey, MOVE_GIFTS, CURSE_TAX,
   supportNow, bedFor,
   SEASON_WEEKS, seasonKey, seasonWeekOf, seasonTitle, nextSeasonTitle, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
@@ -1291,7 +1292,7 @@ function startTutorial() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.16 · RCJ Labs</div>
+          <div className="sfoot">v10.17 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1520,7 +1521,7 @@ function startTutorial() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.16 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.17 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2719,6 +2720,10 @@ function startTutorial() {
         <div className="h1" role="heading" aria-level={1}><Lettered t="CAMP" seed={23} /></div>
         <InkRule seed={31} color="var(--ink)" />
         <div className="sub">skin {st.skin}/{RUN_SKIN + styleMods(st.style).skin} · deck {st.runDeck.length}</div>
+        {/* NARR-14: they are on the trip, so they are at the fire as well */}
+        {partnerFor(st) ? (
+          <div className="sub" style={{ margin: '7px 0 0', color: 'var(--dim)' }}>
+            {partnerSays(st, 'camp')}</div>) : null}
         {talk ? (
           <div className="menu-item" style={{ borderWidth: 2, margin: '9px 0' }}
             {...tap(() => setSt(s => ({ ...s, talkId: talk.id, talkReply: null, phase: 'talk' })))}>
@@ -2838,17 +2843,31 @@ function startTutorial() {
           <span className="big" style={{ color: 'var(--red)' }}>{gradeLabel(base, st.grades)}</span></div>
         <InkRule seed={91} color="var(--ink)" />
         <div className="sub">{base.note}</div>
+        {/* NARR-14: they say which way they would go before you pick, so the choice is
+            somebody's opinion and not just three sets of numbers. */}
+        {(() => {
+          const pn = partnerFor(st)
+          if (!pn) return null
+          return (
+            <div className="spot" style={{ borderLeftColor: 'var(--tan)' }}>
+              <b style={{ color: 'var(--tan)' }}>{pn.name.toUpperCase()}</b>
+              {partnerSays(st, 'tie')}</div>)
+        })()}
         <div className="lbl" style={{ marginTop: 12 }}>WHICH WAY UP</div>
         <div style={{ marginTop: 6 }}>
           {LINES.map((l, i) => {
             const clear = Math.max(4, base.clear + (l.dClear ?? 0))
             const crux = Math.max(0, base.crux + (l.dCrux ?? 0))
+            const theirs = partnerAgrees(st, i)
             return (
               <div key={l.id} className="menu-item" {...tap(() => go(i))}>
                 <div className="row"><span className="big">{l.name}</span>
                   <span className="sub">{clear} holds · {crux} crux
                     {l.dTax ? ' · +1 tax' : ''}</span></div>
                 <div className="sub">{l.text}</div>
+                {theirs ? (
+                  <div className="sub" style={{ color: 'var(--tan)' }}>
+                    ▸ {partnerFor(st)!.name} would go this way.</div>) : null}
               </div>)
           })}
         </div>
@@ -3027,6 +3046,12 @@ function startTutorial() {
               ? `You lost the psyche for it on ${spec.name}. Some trips end that way.`
               : `Skin ran out on ${spec.name}. The rock keeps.`}
         </div>
+        {/* NARR-14: the last word on the trip belongs to whoever was out there with you.
+            A trip that ends in silence is what this ticket exists to stop. */}
+        {partnerFor(st) && !st.circuit ? (
+          <div className="spot" style={{ borderLeftColor: 'var(--tan)' }}>
+            <b style={{ color: 'var(--tan)' }}>{partnerFor(st)!.name.toUpperCase()}</b>
+            {partnerSays(st, won ? 'top' : 'died')}</div>) : null}
         {/* UX-11. The run-end screen said you won or died and nothing else,
             while the trail, the logbook, the lines you named and the pages you
             found were all being tracked. This is the account of the trip. */}
@@ -3153,6 +3178,16 @@ function startTutorial() {
                 {sharedChal ? 'COPIED ✓' : 'SEND IT BACK ▸'}</button>
             </div>)
         })() : null}
+        {/* NARR-14: somebody watched that. They have a view on it, and on whether you
+            went the way they would have gone. */}
+        {partnerFor(st) ? (
+          <div className="spot" style={{ borderLeftColor: 'var(--tan)' }}>
+            <b style={{ color: 'var(--tan)' }}>{partnerFor(st)!.name.toUpperCase()}</b>
+            {partnerSays(st, sent ? 'send' : 'fall')}
+            {st.inRun && !st.skirmish ? (
+              <div style={{ marginTop: 4 }}>
+                {partnerSays(st, partnerAgrees(st, st.line) ? 'agree' : 'differ')}</div>) : null}
+          </div>) : null}
         <hr className="rule" />
         <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.6, margin: '9px 0' }}>
           {sent ? `Topped out on burn ${st.burn}.`
