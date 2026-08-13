@@ -1318,6 +1318,15 @@ for (const c of [
   // brushes and chalks the hold you rest under, so where you shake out matters.
   rest('Chalk the Hold', 7, 2, 'uncommon', { restChip: 2,
     text: 'Rest · shed 2. −2 Grip to the hold you rest under. Anchor.' }),
+  /* CARD-18: and the other way round — rest MORE and work the hold less. One card
+     is a quirk; two make the trade the mechanic is about (how much of a shake-out
+     you spend on the rock) into a decision you make twice.
+     The first cut of this was Shake Out with a free chip bolted on, which is the
+     strict upgrade CARD-11's own guard forbids for Chalk the Hold. It pays for the
+     chip on a different axis instead: no anchor, so you get the rest and the chip
+     and then it is gone for the burn. */
+  rest('Milk The Jug', 6, 3, 'uncommon', { restChip: 1, anchor: false,
+    text: 'Rest · shed 3. −1 Grip to the hold you rest under. No anchor — it burns out.' }),
 
   // ---------- UNCOMMON · technique ----------
   bn('Visualize', 0, 'uncommon', { draw: 2, text: 'Draw 2.' }),
@@ -1328,6 +1337,15 @@ for (const c of [
   bn('Second Wind', 1, 'uncommon', { shed: 4, draw: 1, text: 'Shed 4. Draw 1.' }),
   bn('Skin File', 0, 'uncommon', { restore: 2, text: 'Return 2 burnt cards to hand.' }),
   bn('Beta Spray', 0, 'uncommon', { draw: 2, shed: 1, text: 'Shed 1. Draw 2.' }),
+  /* CARD-18: the other end of RUN-9's read. Sight the Line reads 2 and hands you a
+     card; this reads twice as far and hands you nothing, off the clock instead. Both
+     are pure information — resolution never consults readAhead — so this is the one
+     part of the ticket that cannot touch the band whatever it costs. */
+  bn('Take It All In', 1, 'uncommon', { read: 4, text: 'Read the next 4 holds off the wall.' }),
+  /* CARD-18: skin was a currency exactly one card ever charged, and that card was a
+     rare that bought Power with it. This buys the CLOCK with it, at uncommon: the
+     route goes, and the trip is a fall shorter for it. */
+  bn('Last Of The Skin', 0, 'uncommon', { shed: 5, skinCost: 1, text: 'Shed 5. Costs 1 skin.' }),
 
   // ---------- RARE ----------
   mv('Iron Fingers', 4, 8, 'rare', { latch: true, fx: 'precise', text: 'Latch · Precise vs crimps.' }),
@@ -1420,6 +1438,11 @@ for (const c of [
   ft('Toe Hook Rest', 0, 9, 'uncommon', { support: 2, shed: 2, anchor: true, text: 'Support 2 · shed 2.' }),
   ft('Precise Swap', 2, 7, 'uncommon', { support: 2, text: 'Support 2.' }),
   ft('Stem Box', 1, 9, 'uncommon', { support: 2, shed: 1, text: 'Support 2 · shed 1.' }),
+  /* CARD-18: latch existed on exactly one card, a rare hand move. On a FOOT it is a
+     different card entirely — what it saves is the Support, which ENG-32 made the
+     thing you are paying for, so a foot that slips and catches keeps the hands paid
+     for a turn they would otherwise have climbed alone. */
+  ft('Rand Smear', 1, 6, 'uncommon', { support: 2, latch: true, text: 'Support 2 · Latch.' }),
   bn('Wire Brush Pro', 0, 'uncommon', { gripCut: 3, cleans: true, targeted: true, text: '−3 Grip, strip its ability.' }),
   bn('Spotter', 1, 'uncommon', { shed: 2, draw: 1, text: 'Shed 2. Draw 1.' }),
   bn('Crash Pad', 1, 'uncommon', { shed: 4, text: 'Shed 4 pump.' }),
@@ -5412,6 +5435,14 @@ export function cardValue(s: GameState, c: Card, deck: Card[]): number {
   // keywords that measured well in the per-card probe
   if (c.anchor) v += 3
   if (c.latch) v += 3
+  /* CARD-18 / ENG-25: restChip had no term at all, so the drafter scored a chipping
+     rest on its shed alone and Chalk the Hold read below the take-it line for eleven
+     versions. Priced against a keyword already calibrated here rather than guessed:
+     the per-card probe reads restChip at +3.0pt per point (exactly linear at 1 and 2)
+     against anchor's +2.6pt, and anchor is worth 3 — so restChip is worth 3 a point.
+     The policy CAN spend it: ENG-26 wired the chip into previewLane, so autoPlay
+     sees the grip it will actually face. That is what separates this from `read`. */
+  if (c.restChip) v += c.restChip * 3
   if (c.fx === 'tough' || c.fx === 'guard') v += 2
   if (c.fx === 'echo') v += 3
   if (c.fx === 'settle2') v += settleCap
@@ -5873,6 +5904,11 @@ export const KEYWORDS: { name: string; text: string }[] = [
   { name: 'Support / campusing', text: 'A card in the feet lane adds Power to both hands. An empty feet lane adds Bite instead.' },
   { name: 'Settle', text: 'A move that survives a turn gains +1 Power, up to +2. Durability turns into offence.' },
   { name: 'Beta', text: 'Hold types you have worked come back at −1 Grip on later burns. Falling is learning.' },
+  /* CARD-18: both of these were mechanics the game had and never named. A card can
+     spend skin and a card can read the wall, and until this ticket exactly one card
+     did each — so neither was worth explaining. Now they are. */
+  { name: 'Reading ahead', text: 'The next holds off the route deck, before you are on them. Some cards read them, some holds read themselves, and being dialed in reads them for free. It changes what you plan and never what the hold does.' },
+  { name: 'Skin', text: 'How much more your hands will take on this trip. Falls cost it, a camp gives some back, and running out ends the trip wherever you happen to be standing. A few cards spend it outright.' },
   { name: 'Anchor', text: 'Does not burn out when it blows — it returns to the discard pile.' },
   { name: 'Latch', text: 'Survives its first blow at 1 Contact instead of being destroyed.' },
   { name: 'Precise', text: '+2 Power against crimps and sharp crimps.' },

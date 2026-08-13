@@ -1265,12 +1265,28 @@ test('the pool does not fill up with cards nobody would take', () => {
   const vals = names.map(n => [n, E.cardValue(st, E.spawn(n), deck)])
   const mean = vals.reduce((a, [, v]) => a + v, 0) / vals.length
   const dead = vals.filter(([, v]) => v < mean * 0.55)
-  // what is left should be situational — sequences and protection — not filler
-  const situational = dead.filter(([n]) => E.CARDS[n].seq || E.CARDS[n].clip).length
+  /* what is left should be situational — cards `cardValue` STRUCTURALLY cannot price,
+     not filler. A sequence's payout depends on holding a condition across turns and
+     protection depends on being on a rope, so neither reads in an average state.
+     CARD-18 adds `read` to that set, and it is the same property rather than a
+     softer bar: the value of reading the wall is planning, and the greedy policy
+     does not plan — it never consults `readAhead` at all, which is asserted just
+     below so this classification stays a derived fact. When the policy can read
+     ahead (SIM-7), `read` earns a real term and comes back out of this set. */
+  const situational = dead.filter(([n]) =>
+    E.CARDS[n].seq || E.CARDS[n].clip || E.CARDS[n].read).length
   ok(dead.length / vals.length < 0.14,
     `${dead.length} of ${vals.length} cards would never be taken`)
   ok(situational >= dead.length * 0.4,
-    'the dead cards are filler rather than situational')
+    `${situational} of ${dead.length} dead cards are situational — the rest is filler`)
+  // the derivation behind counting `read` as situational: the policy cannot spend it
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  const auto = region(eng, 'export function autoPlay', ['export function coach',
+    '\nexport function ', '\nexport const '], { min: 600, what: 'autoPlay' })
+  ok(!/readAhead/.test(auto),
+    'the policy reads ahead now, so `read` is priceable and must not be excused as situational')
+  ok(E.CARDS['Sight the Line'].read > 0 && E.CARDS['Take It All In'].read > 0,
+    'the read cards are gone, so this exclusion covers nothing')
 })
 test('a technique card is worth a deck slot', () => {
   // measured: two of fifteen moves swapped for techniques took a mid Act 1
@@ -1902,7 +1918,39 @@ if (SLOW) {
        ceiling of 4, so both ends are coin flips and the middle is chosen for margin.
        v10.19 (GUARD-8): no band movement, and off-band by construction — it changed the
        suite and not one line of engine content. Recorded only so that a reader walking
-       the versions does not go looking for a measurement that was never needed. */
+       the versions does not go looking for a measurement that was never needed.
+       v10.20 (CARD-18): four cards added (244 -> 248) to give skinCost, read, latch and
+       restChip a second carrier each. The point estimate slid 52.7 -> 53.4 at n=2700 and
+       THE MOVE IS RESHUFFLE, NOT DIFFICULTY — measured rather than asserted, in three
+       arms on the same seeds:
+         A  244 cards, as shipped at v10.19 ............ 52.7
+         B  248 cards, the four keywords STRIPPED ...... 53.6
+         C  248 cards, shipped ......................... 53.4
+       B is the same four cards at identical stats, rarity and names with only the
+       keyword fields removed, so every pool length and every RNG draw matches C. The
+       pool change alone is +0.9; the four mechanics are -0.2, which is nothing. The ~52
+       pin holds and no re-pin was needed. This is CARD-11's v9.74 finding reproduced,
+       and the mechanism is now named: three EVENT outcomes draw a card off
+       `BY_RARITY(rarity)`, the WHOLE table rather than REWARDS, so `rng.int(73)` became
+       `rng.int(77)` and every run downstream of an event diverges. If you add a card
+       and the band moves, run arm B before you believe you changed the difficulty.
+       restChip was priced rather than guessed. It had NO term in `cardValue` at all, so
+       for eleven versions the drafter scored a chipping rest on its shed alone and Chalk
+       the Hold read BELOW the take-it line — ENG-25's blind spot, a third instance. The
+       per-card probe (`CARDS_ONLY=... node sim/run.mjs cards`, added this version because
+       the unfiltered probe takes over nine minutes and so was never run) reads restChip
+       at +3.0pt per point, exactly linear at 1 and 2, against `anchor` at +2.6pt — and
+       anchor is already worth 3 here, so restChip is worth 3 a point. `read` deliberately
+       got NO term: the policy never consults `readAhead`, so valuing it would make the
+       drafter buy something the sim cannot spend, which is ENG-25 run backwards.
+       NOTE for the next person, and it is the bigger finding: the harness's own
+       `buildBest` values a card at `power * 2 + contact` (bonuses at a flat 7) and is
+       blind to shed, Support, fx, anchor, latch, chip, opposition and synergy alike. So
+       the measured STARTING deck is stat-greedy while the in-run picks go through the
+       engine's real `cardValue`. Every keyword card in the game is therefore outside the
+       band's starting deck unless its raw stats carry it there — which is why all four of
+       these are off-band by construction, and also why that is a gap rather than a
+       feature. Logged as SIM-7. */
     ok(full > 44 && full < 58,
       `the campaign completes ${full}% with a full journal — ~52-53, held at v9.98 (ROUTE-13)`)
     ok(pcts[0] < full - 5, `reading his journal is worth ${(full - pcts[0]).toFixed(1)} points`)

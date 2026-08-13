@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.19 — GUARD-8: the guard suite reads itself. One validated way to take
-//   a source window, and a meta-guard that refuses a hand-rolled one
+// SANDBAGGED v10.20 — CARD-18: four mechanics the game had and you would never meet
+//   twice — reading the wall, latching, chipping a hold, paying in skin
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1298,7 +1298,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.19 · RCJ Labs</div>
+          <div className="sfoot">v10.20 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1527,7 +1527,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.19 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.20 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

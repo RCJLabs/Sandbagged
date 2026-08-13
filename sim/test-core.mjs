@@ -3688,6 +3688,159 @@ test('CARD-12: the singleton effects have draftable breadth now', () => {
     eq(E.spawn(name).fx, c.fx, `${name} lost its effect on spawn`)
   }
 })
+test('CARD-18: the four mechanics nobody could meet twice', () => {
+  /* skinCost, read, latch and restChip were each carried by exactly ONE card of 244.
+     That is not a small pool — it is a mechanic the game has and a player will almost
+     certainly never see, which is CARD-12's pattern and CARD-17's failure mode. Each
+     has a sibling now, and each sibling is a different card rather than a reskin. */
+  const MECH = {
+    skinCost: ['The Whole Trip', 'Last Of The Skin'],
+    read: ['Sight the Line', 'Take It All In'],
+    latch: ['Iron Fingers', 'Rand Smear'],
+    restChip: ['Chalk the Hold', 'Milk The Jug'],
+  }
+  for (const [field, names] of Object.entries(MECH)) {
+    const carry = Object.entries(E.CARDS).filter(([, c]) => c[field])
+    ok(carry.length >= 2, `only ${carry.length} card of ${Object.keys(E.CARDS).length} carries ${field}`)
+    for (const n of names) {
+      ok(E.CARDS[n], `${n} is gone`)
+      ok(E.CARDS[n][field], `${n} no longer carries ${field}`)
+      // the CARD-11/CARD-13 trap: the field must survive spawn or it is dead in play
+      eq(E.spawn(n)[field], E.CARDS[n][field], `spawn dropped ${field} on ${n}`)
+    }
+    // and the pair must not be one card twice
+    const shapes = new Set(names.map(n => {
+      const c = E.CARDS[n]
+      return `${c.power ?? 0}/${c.contact ?? 0}/${c.cost ?? 0}/${c.lane ?? 'hand'}/${c[field]}`
+    }))
+    eq(shapes.size, names.length, `the two ${field} cards are the same card twice`)
+  }
+
+  /* NO STRICT UPGRADES. Two of the four shipped as one in the first cut — Milk The Jug
+     was Shake Out with a free chip and Rand Smear was Precise Feet's exact stat line
+     with a free latch — which is the thing CARD-11's own guard forbids for its card.
+     A general dominance scan was tried and abandoned: it reports 2,759 pairs across the
+     table, because a higher rarity is SUPPOSED to dominate and two different `fx`
+     values are not comparable. So the trade is asserted against the specific neighbour
+     each card was measured against. */
+  const c = n => E.CARDS[n]
+  // vs a plain starter rest at the same contact and shed: it pays with the anchor
+  eq(c('Milk The Jug').contact, c('Shake Out').contact, 'the rest comparison moved')
+  eq(c('Milk The Jug').shed, c('Shake Out').shed, 'the rest comparison moved')
+  ok(c('Shake Out').anchor && !c('Milk The Jug').anchor,
+    'Milk The Jug is Shake Out plus a free chip — the chip has to cost something')
+  // vs the common feet card at the same Support: it pays with a point of Contact
+  eq(c('Rand Smear').support, c('Precise Feet').support, 'the feet comparison moved')
+  ok(c('Rand Smear').contact < c('Precise Feet').contact,
+    'Rand Smear is a common plus a free latch')
+  // the read pair trade information depth against what they hand back
+  ok(c('Take It All In').read > c('Sight the Line').read, 'the deeper read does not read deeper')
+  ok(!c('Take It All In').draw && c('Sight the Line').draw > 0,
+    'the deeper read also draws, so it is a strict upgrade')
+  ok(c('Take It All In').cost > c('Sight the Line').cost, 'the deeper read is free')
+  // and skin buys the clock at uncommon where it used to buy Power at rare
+  ok(c('Last Of The Skin').shed > 0 && !c('Last Of The Skin').powerAll,
+    'both skin cards buy the same thing')
+  eq(c('Last Of The Skin').cost, 0, 'the skin card charges pump as well as skin')
+
+  /* BEHAVIOUR, each against a control, because "it is in the table" is what CARD-11
+     and CARD-13 both looked like while shipping dead. */
+  const s0 = E.startBurn({ ...E.freshRun(4, 0, 5), inRun: true, skirmish: null, phase: 'climb' },
+    new E.RNG(11))
+  const H = (uid, grip) => ({ uid, name: 'crimp', bite: 2, grip, crux: false, clean: false })
+  const F = (uid, bite, grip) => ({ uid, name: 'ledge', bite, grip, crux: false, clean: false })
+
+  // restChip: exactly its own amount, in the lane it rests in, and nowhere else
+  for (const name of MECH.restChip) {
+    const card = E.spawn(name)
+    const out = E.resolve({ ...s0, pump: 10, boardH: [H(1, 6), H(2, 6), null],
+      boardP: [card, null, null] }, new E.RNG(5))
+    eq(out.boardH[0].grip, 6 - card.restChip, `${name} did not chip the hold it rested under`)
+    eq(out.boardH[1].grip, 6, `${name} chipped a lane it was not resting in`)
+  }
+
+  // latch: it holds where an identical-Contact card without it comes off, and once only
+  const foot = E.spawn('Rand Smear')
+  const plain = E.spawn('Flag')
+  eq(plain.support, foot.support, 'the latch control no longer matches on Support')
+  const bite = foot.contact + 2                       // enough to blow either of them
+  const play = card => E.resolve({ ...s0, pump: 6, boardH: [H(1, 3), null, F(3, bite, 4)],
+    boardP: [E.spawn('Lock Off'), null, card] }, new E.RNG(7))
+  const latched = play(foot), blew = play(plain)
+  ok(latched.boardP[2], 'the latching foot came off on its first blow')
+  eq(latched.boardP[2].contact, 1, 'a latch holds on at something other than 1 Contact')
+  ok(latched.boardP[2].latched, 'the latch is not marked, so it can save the same card for ever')
+  ok(!blew.boardP[2], 'the control foot survived, so this proves nothing about latch')
+  ok(E.supportNow(latched) > E.supportNow(blew),
+    'latching the foot bought no Support, which is the whole reason it is on a foot')
+  ok(!E.resolve({ ...latched, pump: 6 }, new E.RNG(7)).boardP[2], 'a latch saves more than once')
+
+  // read: it raises readAhead by what it says, and pays what it says
+  for (const name of MECH.read) {
+    const card = E.spawn(name)
+    const out = E.playBonusStep({ ...s0, pump: 8 }, card, 0, new E.RNG(3))
+    eq(out.readAhead, Math.min(s0.holdDeck.length, card.read), `${name} read a different depth`)
+    eq(out.pump, 8 + card.cost, `${name} did not cost what it says`)
+  }
+  /* and reading is INFORMATION (RUN-9/ENG-24), which is what makes it band-safe and
+     what makes `read` situational in the dead-card guard. Asserted behaviourally, not
+     by grepping resolve for `readAhead`: resolve legitimately WRITES it — a signature
+     hold can grant a read (ROUTE-12) and being dialed in grants one (ENG-24) — so the
+     property is that no outcome depends on it. Two states differing only in how far
+     you have read must resolve identically. */
+  const seen = { ...s0, pump: 9, boardH: [H(1, 5), H(2, 4), F(3, 3, 4)],
+    boardP: [E.spawn('Lock Off'), E.spawn('Crimp Grip'), E.spawn('Flag')] }
+  const outcome = st => {
+    const r = E.resolve(st, new E.RNG(21))
+    return JSON.stringify({ pump: r.pump, cleared: r.cleared, skin: r.skin, psyche: r.psyche,
+      flow: r.flow, boardH: r.boardH, boardP: r.boardP, piles: r.piles, turn: r.turn })
+  }
+  eq(outcome({ ...seen, readAhead: 4 }), outcome({ ...seen, readAhead: 0 }),
+    'a turn resolves differently depending on how far you have read — reading is a power now')
+
+  // skinCost: it takes the skin and pays out
+  for (const name of MECH.skinCost) {
+    const card = E.spawn(name)
+    const out = E.playBonusStep({ ...s0, pump: 12, skin: 4 }, card, 0, new E.RNG(3))
+    eq(out.skin, 4 - card.skinCost, `${name} did not charge the skin it says it does`)
+  }
+
+  /* OFF-BAND BY CONSTRUCTION, asserted rather than argued. The in-run offer pool is
+     REWARDS, and the harness's built loadout is stat-sorted over the moves and feet —
+     bonuses cannot enter it at all. None of the four is in REWARDS, so no offer roll
+     changes. What DOES change is `BY_RARITY('uncommon').length`, which three event
+     outcomes draw against, and that is the whole of the measured +0.9 (see the ledger).
+     A later change that puts one of these in REWARDS moves the band, so it trips here
+     first and gets measured on purpose. */
+  const inRewards = Object.values(MECH).flat()
+    .filter(n => Object.values(E.REWARDS).some(list => list.includes(n)) && n !== 'Iron Fingers')
+  eq(inRewards.length, 0,
+    `${inRewards.join(', ')} joined the in-run reward pool — that is a band change, measure it`)
+  // but they must be reachable SOMEWHERE, or this is breadth nobody can meet
+  for (const n of Object.values(MECH).flat())
+    ok(E.BY_RARITY(E.CARDS[n].rarity).includes(n), `${n} is in no pool at all`)
+
+  /* And the drafter can see restChip now — it had no term, so a chipping rest was
+     scored on its shed alone and BOTH restChip cards read below the take-it line. */
+  const deck = E.DEFAULT_LOADOUT.map(E.spawn)
+  const st = { ...E.freshRun(0, 0, 3), inRun: true, skirmish: null, runDeck: deck,
+    boons: [], gear: [], mutators: [] }
+  const val = n => E.cardValue(st, E.spawn(n), deck)
+  for (const n of MECH.restChip) {
+    const bare = E.spawn(n)
+    ok(val(n) > E.cardValue(st, { ...bare, restChip: 0 }, deck),
+      `the drafter prices ${n} the same with and without its chip`)
+  }
+  ok(val('Chalk the Hold') > val('Milk The Jug'),
+    'the bigger chip is not worth more to the drafter than the smaller one')
+
+  // both new mechanics are named in the game, not just carried by a card
+  const kw = new Map(E.KEYWORDS.map(k => [k.name, k.text]))
+  ok(/route deck|next holds/i.test(kw.get('Reading ahead') ?? ''), 'reading ahead is unexplained')
+  ok(/never/i.test(kw.get('Reading ahead') ?? ''),
+    'the reading-ahead entry does not say it changes nothing about the hold')
+  ok(/fall|camp/i.test(kw.get('Skin') ?? ''), 'skin is unexplained')
+})
 test('spawn carries every field a card defines — no effect silently dropped', () => {
   // the tripwire for the class of bug that made CARD-11 and CARD-13 ship DEAD:
   // spawn()/makeDeck() copy an EXPLICIT field list, and a new field left off it

@@ -391,8 +391,13 @@ if (mode === 'cards') {
   const score = deck => probe.reduce((a, i) => a + stat(i, 0, { customDeck: deck }).send, 0) / probe.length
   const ctrl = score(base())
   const rows = []
+  /* CARD-18: the whole table is ~240 cards x 3 routes and takes over nine minutes,
+     which is why nobody ran it. CARDS_ONLY='A|B' probes just the ones you are
+     asking about, so pricing one keyword costs seconds instead. */
+  const only = process.env.CARDS_ONLY ? process.env.CARDS_ONLY.split('|') : null
   for (const name of Object.keys(E.CARDS)) {
     const c = E.CARDS[name]
+    if (only && !only.includes(name)) continue
     if (c.rarity === 'starter') continue
     const d = base(); for (let k = 0; k < 3; k++) d.push(E.spawn(name))
     rows.push({ name, r: c.rarity, d: score(d) - ctrl })
