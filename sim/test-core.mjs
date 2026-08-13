@@ -2307,6 +2307,56 @@ test('FA-1: the FA is a real mode, and the grade you claim is an economy', () =>
     'an in-run FA claim did not drop back onto the map')
 })
 
+test('no two screens fight over a class name (VIS-8)', () => {
+  /* VIS-8. `.board` has named the climb screen's lane rows — a 3-column grid — since
+     v0. DAILY-3 (v10.9) added a season board and called it `.board` too. The later rule
+     won, so both the route row and YOUR MOVES were forced into a 30px-tall, 230px-wide
+     flexbox: the hold cards overflowed up across the header and the screen was visibly
+     broken for FOUR versions, through v10.10, v10.11, v10.12 and v10.13.
+     Nothing caught it. tsc cannot see it, the guards did not render the climb screen's
+     LAYOUT, and I had a screenshot of the breakage in front of me while checking a card
+     caption and read straight past it. So this is the tripwire: one stylesheet, one
+     global namespace, and a bare class may only be declared once.
+     `.wrap` is the documented exception — the second rule sets a custom property and
+     nothing else (`--fs`, the text-scale root), which cannot conflict with layout. The
+     rule is therefore "twice is fine only if one side is variables only". */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const at = app.indexOf('const CSS = ')
+  ok(at > 0, 'the stylesheet moved out from under this guard')
+  const open = app.indexOf('`', at)
+  const css = app.slice(open + 1, app.indexOf('`', open + 1))
+  /* the stylesheet must not be truncated: a stray backtick inside it silently ends the
+     template literal and takes the rest of the CSS with it. This has bitten twice now
+     (DEV-3's comment, and this ticket's own first draft), so it is asserted. */
+  ok(css.length > 8000, `the stylesheet reads as only ${css.length} chars — a stray backtick truncated it`)
+  ok(css.includes('.wrap{'), 'the stylesheet does not contain the page wrapper — it is truncated')
+  ok(css.includes('.hand'), 'the stylesheet stops before the hand — it is truncated')
+
+  const rules = new Map()
+  for (const line of css.split('\n')) {
+    const m = /^(\.[a-zA-Z][\w-]*)\s*\{(.*)$/.exec(line)
+    if (!m) continue
+    const name = m[1].slice(1)
+    if (!rules.has(name)) rules.set(name, [])
+    rules.get(name).push(m[2])
+  }
+  ok(rules.size > 40, `only ${rules.size} class rules found — the parse is not seeing the stylesheet`)
+  const clashes = []
+  for (const [name, bodies] of rules) {
+    if (bodies.length < 2) continue
+    // a declaration block that sets ONLY custom properties cannot fight over layout
+    const real = bodies.filter(b => /[a-zA-Z-]+\s*:/.test(b.replace(/--[\w-]+\s*:[^;]*/g, '')))
+    if (real.length > 1) clashes.push(`.${name} x${bodies.length}`)
+  }
+  eq(clashes.length, 0,
+    `two screens are fighting over the same class name, and the later rule wins: ${clashes.join(', ')}`)
+
+  // and the season board specifically must not be called `board` again
+  ok(css.includes('.wkboard{'), 'the season board lost its own class name')
+  ok(/className="wkboard"/.test(app), 'the season board markup does not use its own class')
+  const boardRules = [...css.matchAll(/^\.board\{/gm)]
+  eq(boardRules.length, 1, `.board is declared ${boardRules.length} times — the climb screen owns that name`)
+})
 test('the game has a sense of place, and the finale has none on purpose (AUD-2)', () => {
   /* AUD-2. Eight one-shot effects and nothing sustained, so the game had no sense of
      place. What can be TESTED here is not the sound — I cannot hear it — but the

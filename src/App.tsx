@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.13 — AUD-2: the game has a sense of place — wind, a stove, the post,
-//   all synthesised; and the finale is silent on purpose
+// SANDBAGGED v10.14 — VIS-8: the climb screen is not broken any more. A season board
+//   added at v10.9 was called .board, which the lane rows have owned since v0
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -382,12 +382,19 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
 /* DAILY-3: the season board — one column per week of the four, filled by what you
    banked in it, with the week you are in outlined. Every week keeps a visible EMPTY
    track: without one, a season with two weeks left to climb read as a two-week
-   board rather than a four-week one with work still to do. */
-.board{display:flex;gap:5px;align-items:flex-end;height:30px;max-width:230px;margin:8px 0 0 14px}
-.board span{flex:1;display:flex;align-items:flex-end;height:100%;border:1px solid var(--line);
+   board rather than a four-week one with work still to do.
+   NAMED wkboard AND NOT board (no backticks in here — this is inside a template
+   literal, and a stray one silently truncates the whole stylesheet). It shipped as
+   .board at v10.9, and that name has belonged to the climb screen's lane rows since
+   v0 — a 3-column grid. The later rule won, so both the route row and YOUR MOVES were
+   forced into a 30px-tall, 230px-wide flexbox and the hold cards overflowed across the
+   header for four versions. A guard now fails on any bare class declared twice with
+   real properties on both sides. */
+.wkboard{display:flex;gap:5px;align-items:flex-end;height:30px;max-width:230px;margin:8px 0 0 14px}
+.wkboard span{flex:1;display:flex;align-items:flex-end;height:100%;border:1px solid var(--line);
  background:rgba(31,29,26,.045);border-radius:1px}
-.board span.now{border-color:var(--tan);border-style:dashed}
-.board i{display:block;width:100%;background:var(--tan)}
+.wkboard span.now{border-color:var(--tan);border-style:dashed}
+.wkboard i{display:block;width:100%;background:var(--tan)}
 /* VIS-5: a hazard you must answer this turn outranks a flavour note — heavier
    rule, a touch more ground, and it sorts to the top of the advisory stack. */
 .spot.urgent{border-left-width:6px;padding-top:8px;padding-bottom:8px;background:rgba(53,91,114,.10)}
@@ -1266,7 +1273,7 @@ function startTutorial() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.13 · RCJ Labs</div>
+          <div className="sfoot">v10.14 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1403,7 +1410,7 @@ function startTutorial() {
                 if (!total && !st.seasonBest) return null
                 return (
                   <>
-                    <div className="board" title="This season, week by week">
+                    <div className="wkboard" title="This season, week by week">
                       {wks.map((n, i) => (
                         <span key={i} className={i === col ? 'now' : ''}
                           title={`Week ${i + 1}${i === col ? ' (this week)' : ''} · ${n}`}>
@@ -1459,7 +1466,7 @@ function startTutorial() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.13 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.14 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
