@@ -135,6 +135,19 @@ export const PRICE = { common: 30, uncommon: 55, rare: 90, gear: 70, boon: 110, 
 export const REROLL_BASE = 25
 export const REROLL_STEP = 15
 export const CROP_COST = 45
+/* CARD-17. The four BONUS curses — Bad Landing, Ego, Doubt, Sandbagged Beta — were
+   the last dead cards in the game, and worse than dead. They carry a pump cost and
+   nothing else, and a played bonus goes to the DISCARD, so paying to play one bought
+   you nothing and then handed the card back when the discard reshuffled. Strictly
+   negative: the only correct play was to let it clog your hand.
+   They are a tax you can PAY OFF now. Play one and it is written off — exhausted for
+   the rest of the burn instead of recycled — for the cost already printed on it plus
+   this surcharge. CARD-16 deferred to exactly this: a removal mechanic rather than an
+   active per-turn effect, because a per-turn pump term compounds and this project has
+   measured that five times. Camps already `cut` a card from the run deck for good;
+   this is the mid-climb move that camp cannot make, and it is deliberately a worse
+   deal than the camp's — you are paying for the timing. */
+export const CURSE_TAX = 1
 export const cashForSend = (grade: number) => 5 + grade * 2
 // Skin is attrition from falling; psyche is attrition from FAILING. Skin
 // caps how much you can climb, psyche caps how much you can fail.
@@ -4597,7 +4610,16 @@ export function playBonusStep(s: GameState, c: Card, lane: number, rng: RNG): Ga
     if (c.cleans) boardH[lane] = clearDirt(boardH[lane]!)
     log.push(`${c.name}. −${c.gripCut} Grip${c.cleans ? ', ability stripped' : ''}.`)
   }
-  piles = { ...piles, discard: [...piles.discard, c] }
+  /* CARD-17: a curse you have paid for is WRITTEN OFF — exhausted, not discarded, so
+     it cannot come back round this burn. Every other bonus recycles as it always has. */
+  const cursed = c.rarity === 'curse'
+  if (cursed) {
+    pump += CURSE_TAX
+    log.push(`${c.name}. Written off — that is ${c.cost + CURSE_TAX} pump, and you will not see it again this burn.`)
+  }
+  piles = cursed
+    ? { ...piles, exhaust: [...piles.exhaust, c] }
+    : { ...piles, discard: [...piles.discard, c] }
   return { ...s, piles, pump, skin: Math.max(0, s.skin - c.skinCost),
     peakPump: Math.min(PUMP_MAX, Math.max(s.peakPump, pump)),
     boardP, boardH, runout, lastPiece, seq, readAhead, clipped, bonusUsed: true,
@@ -4657,7 +4679,11 @@ export function autoPlay(s: GameState, rng: RNG): GameState {
   let freeUsed = false
   for (const c of st.piles.hand.filter(c => c.kind === 'bonus')) {
     const isFree = ab.freeBonus && !freeUsed
-    const cost = isFree ? 0 : c.cost
+    /* CARD-17: the surcharge is part of what a write-off costs, so the headroom gate
+       has to see it — otherwise the policy could pay the tax straight through the cap.
+       Free Rein still covers the card's own cost, as it does for any bonus; the tax is
+       the price of the timing and is always paid. */
+    const cost = (isFree ? 0 : c.cost) + (c.rarity === 'curse' ? CURSE_TAX : 0)
     if (st.pump + cost >= PUMP_MAX - 2) continue
     /* Where to point it. A grip cut wants the hold that is furthest from
        going; a Power boost wants the lane closest to clearing, because that is
@@ -4688,6 +4714,11 @@ export function autoPlay(s: GameState, rng: RNG): GameState {
       || (!!c.seq && !st.seq)
       || (c.powerAll > 0 && st.boardP.some(Boolean))
       || ((c.power > 0 || c.gripCut > 0) && lane >= 0)
+      /* CARD-17: writing a curse off buys HAND QUALITY, not progress, so it wants more
+         headroom than a card that does something this turn — otherwise the policy
+         spends the clock on tidying up. ENG-25's lesson is why this clause exists at
+         all: a mechanic the policy cannot see gets measured as dead. */
+      || (c.rarity === 'curse' && st.pump + cost <= PUMP_MAX - 5)
     if (!worth) continue
     st = playBonusStep(st, c, lane, rng)
     if (isFree) freeUsed = true
@@ -5146,7 +5177,10 @@ export function cardHints(s: GameState, c: Card, deck: Card[]): string[] {
   const sharp: string[] = []
   const shape: string[] = []
 
-  if (c.rarity === 'curse') sharp.push('a curse — it does nothing good')
+  // CARD-17: it is still a curse, but it is no longer a card you can do nothing about
+  if (c.rarity === 'curse') sharp.push(c.kind === 'bonus'
+    ? `a curse — pay ${c.cost + CURSE_TAX} pump mid-climb to write it off for the burn`
+    : 'a curse — it does nothing good')
   if (c.clip) sharp.push(
     specOf(s).roped || ACTS[s.act]?.flat().some(x => ROUTES[x.routeIdx]?.roped)
       ? 'there is rope on this trip' : 'nothing to clip on a boulder')

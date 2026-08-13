@@ -2307,6 +2307,113 @@ test('FA-1: the FA is a real mode, and the grade you claim is an economy', () =>
     'an in-run FA claim did not drop back onto the map')
 })
 
+test('a bonus curse is a tax you can pay off, not a dead card (CARD-17)', () => {
+  /* CARD-17. The four BONUS curses were the last dead cards in the game and were
+     actually WORSE than dead: they carry a pump cost and nothing else, and a played
+     bonus goes to the DISCARD — so paying to play one bought nothing and handed the
+     card back on the next reshuffle. The only correct play was to let it clog your
+     hand all burn. A curse you pay for is written off now: exhausted for the burn,
+     for its printed cost plus CURSE_TAX. */
+  const bonusCurses = Object.keys(E.CARDS).map(n => E.spawn(n))
+    .filter(c => c.rarity === 'curse' && c.kind === 'bonus')
+  ok(bonusCurses.length >= 4, `only ${bonusCurses.length} bonus curses — this test is about those`)
+  // the premise: these carry a cost and nothing else. If one ever gains a real
+  // effect, that is a design change and this test should be revisited, not muted.
+  for (const c of bonusCurses) {
+    ok(c.cost > 0, `${c.name} costs nothing, so there is no tax to pay`)
+    eq(c.shed + c.draw + c.gripCut + c.powerAll + c.power + c.restore + c.read, 0,
+      `${c.name} now does something on its own — CARD-17 assumed it did not`)
+    eq(c.targeted, false, `${c.name} is targeted, so it cannot be written off with a tap`)
+  }
+  ok(E.CURSE_TAX > 0, 'writing a curse off is free')
+
+  const base = { ...E.freshRun(6, 0, 5), inRun: true, skirmish: null, phase: 'climb',
+    weather: 1, rock: 0, turn: 1, flow: 0, pump: 2, gear: [], boons: [], mutators: [],
+    boardH: [null, null, null], boardP: [null, null, null], holdDeck: [], worked: [],
+    order: [], fxLane: ['', '', ''] }
+  const curse = bonusCurses[0]
+  // a costed bonus with no pump-moving effect of its own, so the comparison is clean
+  const other = Object.keys(E.CARDS).map(n => E.spawn(n))
+    .find(c => c.kind === 'bonus' && c.rarity !== 'curse' && !c.targeted && c.cost > 0
+      && c.shed === 0 && c.draw === 0 && c.restore === 0)
+  ok(other, 'no ordinary costed bonus without a pump effect to compare against')
+
+  // a curse is EXHAUSTED, so it cannot come back this burn
+  const st = { ...base, piles: { draw: [], discard: [], exhaust: [], hand: [curse] } }
+  const paid = E.playBonusStep(st, curse, -1, new E.RNG(3))
+  ok(paid.piles.exhaust.some(c => c.uid === curse.uid), 'a written-off curse was not exhausted')
+  eq(paid.piles.discard.some(c => c.uid === curse.uid), false,
+    'a written-off curse went to the discard, so it comes back round — the bug CARD-17 fixes')
+  eq(paid.piles.hand.some(c => c.uid === curse.uid), false, 'a written-off curse stayed in hand')
+  // it costs the printed cost PLUS the surcharge, and nothing else
+  eq(paid.pump, base.pump + curse.cost + E.CURSE_TAX, 'a write-off does not cost what it says')
+  eq(paid.skin, base.skin, 'a write-off cost skin as well')
+  eq(paid.cleared, base.cleared, 'a write-off made progress up the wall')
+  // ...and an ORDINARY bonus still recycles exactly as it always did
+  const st2 = { ...base, piles: { draw: [], discard: [], exhaust: [], hand: [other] } }
+  const ord = E.playBonusStep(st2, other, -1, new E.RNG(3))
+  ok(ord.piles.discard.some(c => c.uid === other.uid), 'an ordinary bonus stopped recycling')
+  eq(ord.piles.exhaust.some(c => c.uid === other.uid), false, 'an ordinary bonus is being burned now')
+  eq(ord.pump, base.pump + other.cost, 'an ordinary bonus is paying the curse surcharge')
+
+  // the write-off is deliberately a WORSE deal than the camp cut, which is permanent
+  const held = { ...base, runDeck: [curse, E.spawn('Crimp Grip')] }
+  const cut = E.campStep(held, { kind: 'cut', uid: curse.uid })
+  eq(cut.runDeck.some(c => c.uid === curse.uid), false, 'a camp cut no longer removes the card')
+  ok(paid.runDeck.length === base.runDeck.length,
+    'a mid-climb write-off removed the card from the run deck — that is the camp cut, not this')
+
+  /* THE POLICY CAN SEE IT. ENG-25's lesson: a mechanic the sim cannot use is measured
+     as dead, and the whole point of CARD-17 is that these cards stop being dead. */
+  const handSt = { ...base, pump: 0,
+    piles: { draw: [], discard: [], exhaust: [], hand: [curse] } }
+  const played = E.autoPlay(handSt, new E.RNG(7))
+  ok(played.piles.exhaust.some(c => c.uid === curse.uid),
+    'the policy will not write a curse off, so the balance sim still scores it as dead')
+  /* ...but not when the clock is against it — that would spend the burn on tidying up.
+     THE FIXTURE IS ON THE BOUNDARY, derived from the constants, because a fixture that
+     is merely "pumped" proves nothing: the policy's outer affordability gate already
+     rejects those, so an earlier version of this test passed with the headroom rule
+     deleted AND with the surcharge left out of the gate. One pump either side of the
+     line catches both. */
+  const price = curse.cost + E.CURSE_TAX
+  const headroom = E.PUMP_MAX - 5              // what the policy demands for a write-off
+  const okPump = Math.max(0, headroom - price) // just inside: it should tidy up
+  const tightPump = headroom - price + 1       // one pump worse: it must not
+  ok(tightPump + price < E.PUMP_MAX - 2,
+    'the tight fixture is rejected by the affordability gate, so it tests nothing')
+  const loose = E.autoPlay({ ...base, pump: okPump,
+    piles: { draw: [], discard: [], exhaust: [], hand: [curse] } }, new E.RNG(7))
+  ok(loose.piles.exhaust.some(c => c.uid === curse.uid),
+    `the policy would not write a curse off even with headroom to spare (pump ${okPump})`)
+  const tight = E.autoPlay({ ...base, pump: tightPump,
+    piles: { draw: [], discard: [], exhaust: [], hand: [curse] } }, new E.RNG(7))
+  eq(tight.piles.exhaust.some(c => c.uid === curse.uid), false,
+    `the policy wrote a curse off at pump ${tightPump} — the clock spent on housekeeping`)
+
+  // the hint tells you the option exists, and quotes what it actually costs
+  const hint = E.cardHints(base, curse, [curse, E.spawn('Crimp Grip')]).join(' · ')
+  ok(/curse/i.test(hint), 'the hint no longer says it is a curse')
+  ok(hint.includes(String(curse.cost + E.CURSE_TAX)),
+    `the hint does not quote the real price: ${hint}`)
+  /* AND THE CARD IN HAND HAS TO SAY SO. `cardHints` only renders on the draft screens,
+     so without this the option exists mid-climb and nothing tells you — which is the
+     same "technically present, practically dead" state CARD-17 exists to end. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const hand = app.slice(app.indexOf('<div className="sect">YOUR HAND</div>'),
+    app.indexOf('vis-hidden', app.indexOf('<div className="sect">YOUR HAND</div>')))
+  ok(hand.length > 400, 'the hand render moved out from under this guard')
+  ok(/writeOff\(c\)/.test(hand), 'the card in hand does not mark a curse as writable-off')
+  ok(/CURSE_TAX/.test(hand), 'the card in hand does not quote what a write-off costs')
+  ok(/burn/i.test(hand), 'the card in hand does not say the write-off lasts the burn')
+
+  // a MOVE curse is untouched — it already has teeth (CARD-13/16), so it is not this
+  const moveCurse = Object.keys(E.CARDS).map(n => E.spawn(n))
+    .find(c => c.rarity === 'curse' && c.kind === 'move')
+  ok(moveCurse && moveCurse.hex > 0, 'a move curse lost its hex')
+  ok(!E.cardHints(base, moveCurse, [moveCurse, E.spawn('Crimp Grip')]).join(' ').includes('write it off'),
+    'a move curse is being offered a write-off it does not have')
+})
 test('the route acts on the climber, not just the stone (ENG-21)', () => {
   /* ENG-21. All four original moves did the same KIND of thing — mutate a hold's
      numbers — so the route could make the wall harder or easier and that was the

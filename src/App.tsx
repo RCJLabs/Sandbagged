@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.10 — ENG-21: the route acts on the climber, not just the stone — it
-//   rejects a card it will not hold, denies a shake-out, or hands you a stance
+// SANDBAGGED v10.11 — CARD-17: a bonus curse is a tax you can pay off — write it off
+//   mid-climb and it is gone for the burn instead of coming back round
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -21,7 +21,7 @@ import {
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
   campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitZone, claimStep, claimVerdict,
   consumableById, KIT_MAX, useKitStep, secondWindStep,
-  coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyGoals, dailyRoute, dailySeed, dailyShare, dailyUsed, tomorrowKey, MOVE_GIFTS,
+  coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyGoals, dailyRoute, dailySeed, dailyShare, dailyUsed, tomorrowKey, MOVE_GIFTS, CURSE_TAX,
   SEASON_WEEKS, seasonKey, seasonWeekOf, seasonTitle, nextSeasonTitle, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
   endSession, endingFor, endingStep, establishedIn, exportSave, exposed, exposureOf,
   faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
@@ -826,6 +826,8 @@ export default function App() {
     if (c.kind === 'bonus' && !c.targeted) { playBonus(c, -1); return }
     setSt(s => ({ ...s, selected: s.selected === c.uid ? null : c.uid }))
   }
+  /* CARD-17: which cards are a tax you can pay off rather than a card you play. */
+  const writeOff = (c: Card) => c.kind === 'bonus' && c.rarity === 'curse'
   function playBonus(c: Card, lane: number) {
     // SIM-5: the rules live in the engine. This keeps only what a screen owns —
     // the undo stack, and the seed advancing.
@@ -1146,7 +1148,7 @@ function startTutorial() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.10 · RCJ Labs</div>
+          <div className="sfoot">v10.11 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1339,7 +1341,7 @@ function startTutorial() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.10 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.11 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -3240,7 +3242,9 @@ function startTutorial() {
         {st.piles.hand.map(c => (
           <div key={c.uid} className={`card${st.selected === c.uid ? ' sel' : ''}${c.kind === 'bonus' ? ' bonus' : ''}`}
             {...tap(() => tapHandCard(c),
-              `${c.name}. ${c.kind === 'move' ? `${c.power} power, ${c.contact} contact` : `costs ${c.cost} pump`}`
+              `${c.name}. ${c.kind === 'move' ? `${c.power} power, ${c.contact} contact`
+                : writeOff(c) ? `a curse. Tap to write it off for ${c.cost + CURSE_TAX} pump`
+                : `costs ${c.cost} pump`}`
               + `. ${c.text}${st.selected === c.uid ? '. Selected' : ''}`)}>
             <Ink w={112} h={124} seed={c.uid} deckle={3}
               color={st.selected === c.uid ? 'var(--red)' : 'var(--ink)'}
@@ -3248,9 +3252,16 @@ function startTutorial() {
             <Fam c={c} />
             <div><div className="nm">{c.name.toUpperCase()}</div>
               <div className="tx" style={{ marginTop: 2 }}>
-                {c.kind === 'bonus' ? `${c.cost} pump` : c.lane === 'feet' ? 'feet' : c.lane === 'any' ? 'any' : 'hand'}
+                {writeOff(c) ? `write off · ${c.cost + CURSE_TAX} pump`
+                  : c.kind === 'bonus' ? `${c.cost} pump`
+                  : c.lane === 'feet' ? 'feet' : c.lane === 'any' ? 'any' : 'hand'}
               </div></div>
             <div><div className="tx" style={{ marginBottom: 3 }}>{c.text}</div>
+              {/* CARD-17: a bonus curse is the one card whose printed text says nothing
+                  about what it does, because it does nothing — so the card itself has to
+                  offer the way out, or the mechanic is invisible where it is used. */}
+              {writeOff(c) ? (
+                <div className="tx" style={{ color: 'var(--red)' }}>Tap: gone for this burn.</div>) : null}
               {c.kind === 'move' ? <Pips o={c.power} d={c.contact} /> : null}</div>
           </div>
         ))}
