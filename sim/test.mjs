@@ -32,8 +32,10 @@ function test(name, fn) {
   try { fn(); results.push([true, current, name]) }
   catch (e) { results.push([false, current, name, e.message]) }
 }
-const ok = (c, m) => { if (!c) throw new Error(m) }
-const eq = (a, b, m) => { if (a !== b) throw new Error(`${m} — expected ${b}, got ${a}`) }
+/* GUARD-8: shared with test-core.mjs, one copy, because two copies of one rule drift
+   (ENG-19). `ok`/`eq` refuse an assertion with no failure message; `region` refuses a
+   source window that cannot prove it is reading the right text. */
+import { ok, eq, region, tail } from './guard.mjs'
 
 // ---- the engine, bundled from the same source the game ships -------------
 await build({
@@ -473,9 +475,8 @@ test('UX-17: the tutorial step leads, and the marks key is one tap from a climb'
 })
 test('UX-18: the Collection is a codex — mark, text and family, not a checklist', () => {
   const app = readFileSync('src/App.tsx', 'utf8')
-  const collStart = app.indexOf("st.phase === 'collection'")
-  const coll = app.slice(collStart, app.indexOf("st.phase === 'map'", collStart))
-  ok(collStart > 0 && coll.length > 0, 'the collection screen vanished')
+  const coll = region(app, "st.phase === 'collection'", ["st.phase === 'map'"],
+    { min: 300, what: 'the collection screen' })
   // it uses the deckrow layout the deck/logbook screens use, not a bare row
   ok(/className="deckrow"/.test(coll), 'the collection is still a bare name-and-stat row')
   // an owned card shows its rules text and its family, and the scannable mark
@@ -536,7 +537,8 @@ test('VIS-6: the family mark reaches every card-list screen', () => {
   // the scannable shape mark used to stop at the hand and board; a draft screen
   // is exactly where "is this a feet card, a rest, a curse?" decides the pick
   // anchor on each SCREEN block and bound it by the next screen's `if`
-  const screen = phase => { const i = app.indexOf(`if (st.phase === '${phase}'`); return app.slice(i, app.indexOf('if (st.phase ===', i + 8)) }
+  const screen = phase => region(app, `if (st.phase === '${phase}'`, ['if (st.phase ==='],
+    { min: 200, what: `the ${phase} screen` })
   const reward = screen('reward'), shop = screen('shop'), pack = screen('pack')
   ok(/<FamMark /.test(reward), 'the reward offers show no family mark')
   ok(/<FamMark /.test(shop), 'the shop cards show no family mark')
@@ -547,7 +549,7 @@ test('VIS-6: the family mark reaches every card-list screen', () => {
 })
 test('A11Y-6: the settings are switches, consistent, and reachable first', () => {
   const app = readFileSync('src/App.tsx', 'utf8')
-  const more = app.slice(app.indexOf("st.phase === 'more'"))
+  const more = tail(app, "st.phase === 'more'", { min: 500, what: 'the more screen' })
   // settings lead the screen now; the book archives follow
   const settingsAt = more.indexOf('>SETTINGS<')
   const booksAt = more.indexOf('>THE BOOKS<')
@@ -1674,17 +1676,13 @@ test('every font size scales with --fs', () => {
   // sliced engine.ts and quietly matched nothing (which is how the narrative
   // blocks' hardcoded 13px slipped the text-size setting for good)
   const app = readFileSync('src/App.tsx', 'utf8')
-  const cssStart = app.indexOf('const CSS = `')
-  /* GUARD-3: anchor the slice. `indexOf` returns -1 when the CSS block is renamed
-     or moved, `slice(-1, …)` yields '', and the assertion below is a
-     count-equals-zero — so the whole check would pass on an empty string. This is
-     the very guard whose comment above records the LAST time it silently matched
-     nothing; it should not be able to happen twice. */
-  ok(cssStart > 0, 'the CSS block moved — this guard is reading nothing')
-  const cssEnd = app.indexOf('`', cssStart + 13)
-  ok(cssEnd > cssStart, 'the CSS block has no end — this guard is reading nothing')
-  const css = app.slice(cssStart, cssEnd)
-  ok(css.length > 2000, `the CSS slice is only ${css.length} chars — the anchors are wrong`)
+  /* GUARD-3: anchor the slice. `indexOf` returns -1 when the CSS block is renamed or
+     moved, `slice(-1, …)` yields '', and the assertion below is a count-equals-zero — so
+     the whole check would pass on an empty string. This is the very guard whose comment
+     above records the LAST time it silently matched nothing; it should not be able to
+     happen twice. GUARD-8 moved all three of those checks into `region` so that no
+     future window has to remember to make them. */
+  const css = region(app, 'const CSS = `', ['`'], { min: 8000, what: 'the stylesheet' })
   const cssFixed = css.match(/font-size:\d/g) ?? []
   eq(cssFixed.length, 0, `${cssFixed.length} CSS font sizes bypass the text-size setting`)
   // 13px was the reading size for every narrative block (event, talk, claim,
@@ -1901,7 +1899,10 @@ if (SLOW) {
        Kid (85 turns a run) was bought back with `quickFeet` rather than the 5% floor
        being lowered to meet it — the CARD-15 pattern. And WIND_PUMP went 0.55 → 0.45
        rather than back to 0.4: 0.55 read a lift of −1.3 and 0.4 read 3.8 against a
-       ceiling of 4, so both ends are coin flips and the middle is chosen for margin. */
+       ceiling of 4, so both ends are coin flips and the middle is chosen for margin.
+       v10.19 (GUARD-8): no band movement, and off-band by construction — it changed the
+       suite and not one line of engine content. Recorded only so that a reader walking
+       the versions does not go looking for a measurement that was never needed. */
     ok(full > 44 && full < 58,
       `the campaign completes ${full}% with a full journal — ~52-53, held at v9.98 (ROUTE-13)`)
     ok(pcts[0] < full - 5, `reading his journal is worth ${(full - pcts[0]).toFixed(1)} points`)

@@ -19,8 +19,11 @@ function test(name, fn) {
   try { fn(); results.push([true, current, name]) }
   catch (e) { results.push([false, current, name, e.message]) }
 }
-const ok = (c, m) => { if (!c) throw new Error(m) }
-const eq = (a, b, m) => { if (a !== b) throw new Error(`${m} — expected ${b}, got ${a}`) }
+/* GUARD-8: the assertions and the source-window helpers live in sim/guard.mjs, one copy
+   shared with test.mjs, because two copies of one rule drift (ENG-19). Read the header
+   there for what each of them refuses to do. `guardScan` is asserted at the bottom of
+   this file, over this file. */
+import { ok, eq, region, declBody, appFn, cssRule, tail, guardScan } from './guard.mjs'
 
 await build({
   entryPoints: ['sim/entry.ts'], bundle: true, format: 'esm', outfile: 'sim/_core.mjs',
@@ -174,7 +177,9 @@ test('a stage cannot advance without leaving a mark', () => {
   const advances = [...src.matchAll(/tier: s\.tier \+ 1/g)]
   ok(advances.length >= 4, `only ${advances.length} places advance a stage`)
   for (const m of advances) {
-    const around = src.slice(Math.max(0, m.index - 260), m.index + 260)
+    // guard-8: allow — a proximity check, not a guard window. The requirement over it is
+    // POSITIVE, so a window too small fails loudly instead of passing on nothing.
+    const around = src.slice(Math.max(0, m.index - 260), m.index + 260) // guard-8: allow
     ok(/noteTrail/.test(around),
       `a stage advance at line ${src.slice(0, m.index).split('\n').length} records nothing`)
   }
@@ -210,10 +215,10 @@ test('an injury is a consequence and never a strategy', () => {
   // reads prose instead of code will fail on its own documentation
   /* GUARD-3: anchor both ends. If either type is renamed the slice is '' and the
      six negative assertions below all pass on nothing — "an injury must never pay
-     you anything" would be unenforced while reading green. */
-  const twFrom = src.indexOf('export type Tweak'), twTo = src.indexOf('export type CurseCause')
-  ok(twFrom > 0 && twTo > twFrom, 'the Tweak block moved — this guard is reading nothing')
-  const tweakBlock = src.slice(twFrom, twTo)
+     you anything" would be unenforced while reading green. GUARD-8 made that the
+     helper's job rather than each guard's. */
+  const tweakBlock = region(src, 'export type Tweak', ['export type CurseCause'],
+    { min: 200, what: 'the Tweak block' })
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
   for (const pay of ['xp', 'cash', 'dDraw', 'powerAll', 'dPower', 'reward'])
     ok(!new RegExp(`\\b${pay}\\b`).test(tweakBlock),
@@ -999,8 +1004,8 @@ test('four weeks make a season that finishes, and tomorrow is on the board (DAIL
   eq(JSON.stringify(E.dailyRoute(tk)), JSON.stringify(tr), 'tomorrow read differently twice')
   // the tease shows conditions, and deliberately does NOT spoil the objectives
   const app = readFileSync('src/App.tsx', 'utf8')
-  const tease = app.slice(app.indexOf('DAILY-3: what is coming'), app.indexOf('<div className="tilerow">'))
-  ok(tease.length > 200, "tomorrow's tease moved out from under this guard")
+  const tease = region(app, 'DAILY-3: what is coming', ['<div className="tilerow">'],
+    { min: 200, what: "tomorrow's tease" })
   ok(/dailyForecast\(tk\)/.test(tease), 'the tease does not show the conditions')
   ok(!/dailyGoals\(tk\)/.test(tease), "the tease gives away tomorrow's objectives")
 
@@ -1052,8 +1057,8 @@ test('the daily asks for two objectives, off its own seed (DAILY-2)', () => {
      `dailySeed(key+'#goals') !== dailySeed(key)` would only test the hash function —
      it stays green when `dailyGoals` is edited to reuse the route seed, which is the
      bug. So the derivation is asserted where it is written. */
-  const pick = eng0.slice(eng0.indexOf('export function dailyGoals'), eng0.indexOf('export function goalsMet'))
-  ok(pick.length > 100, 'dailyGoals moved out from under this guard')
+  const pick = region(eng0, 'export function dailyGoals', ['export function goalsMet'],
+    { min: 100, what: 'dailyGoals' })
   ok(/dailySeed\(`\$\{key\}#goals`\)/.test(pick), 'the goals are picked off the route seed, not a derived one')
   // and the correlation that would cause: the goals must not track the grade
   const byGrade = new Map()
@@ -1120,8 +1125,8 @@ test('the daily asks for two objectives, off its own seed (DAILY-2)', () => {
   const eng = readFileSync('src/engine.ts', 'utf8')
   ok(/if \(hold\.crux && feetOff\) cruxFree\+\+/.test(eng), 'a feet-off crux is not counted at the hold')
   ok(/rests: s\.rests \+ \(restedThis \? 1 : 0\)/.test(eng), 'a rest is not counted off the turn that rested')
-  const burn = eng.slice(eng.indexOf('export function startBurn'), eng.indexOf('const effGrip'))
-  ok(burn.length > 400, 'startBurn moved out from under this guard')
+  const burn = region(eng, 'export function startBurn', ['const effGrip'],
+    { min: 400, what: 'startBurn' })
   ok(/rests: 0, cruxFree: 0/.test(burn), 'a fresh burn does not reset the objective counters')
   // feet-off reads the board you HANDED IN, not the one resolve has chewed on
   ok(/const feetOff = !s\.boardP\[2\]/.test(eng), 'feet-off reads the mutated board')
@@ -1225,8 +1230,8 @@ test('the streak pays a ladder in kit and titles, and forgives one miss a week (
   ok(!/kit:\s*[^\n]*larder/.test(eng), 'the engine loads kit from the larder itself')
   // the App hands it over, capped, and keeps the rest banked for next time
   const app = readFileSync('src/App.tsx', 'utf8')
-  const hand = app.slice(app.indexOf('function startLostLine'), app.indexOf('function startTutorial'))
-  ok(hand.length > 200, 'the run-start handover moved out from under this guard')
+  const hand = region(app, 'function startLostLine', ['function startTutorial'],
+    { min: 200, what: 'the run-start handover' })
   ok(/larder\.slice\(0,\s*KIT_MAX\)/.test(hand), 'the larder is handed over without a cap')
   ok(/kit:\s*take/.test(hand) && /larder:\s*st\.larder\.slice\(take\.length\)/.test(hand),
     'the leftover kit is not kept back for the next trip')
@@ -1365,8 +1370,10 @@ test('every screen you can back out of knows where it came from', () => {
   // any screen rendering a BACK control must be in it
   const withBack = new Set()
   for (const blk of src.split(/if \(st\.phase === '/).slice(1)) {
-    const name = blk.slice(0, blk.indexOf("'"))
-    if (/goBack/.test(blk.slice(0, 4000))) withBack.add(name)
+    const name = blk.slice(0, blk.indexOf("'")) // guard-8: allow — a phase name, up to its own closing quote
+    // GUARD-8: this read a fixed 4000 chars, so a screen with its BACK control further
+    // down was silently left out of the census and never checked for a parent at all.
+    if (/goBack/.test(blk)) withBack.add(name)
   }
   for (const n of withBack) ok(back[n], `${n} has a BACK button but no parent`)
   // and no parent may be a screen that does not exist
@@ -1386,7 +1393,9 @@ test('nothing interactive is unreachable without a pointer', () => {
   // thirty-five tappable divs had no role, no tab stop and no key handler
   const src = readFileSync('src/App.tsx', 'utf8')
   const bare = [...src.matchAll(/<(?:div|span)\b[^>]*?onClick=/g)]
-    .filter(m => !/stopPropagation/.test(src.slice(m.index, m.index + 200)))
+    // a lookahead, not a guard window: a stopPropagation that moved out of range counts
+    // the element as bare, so this errs loud rather than quiet.
+    .filter(m => !/stopPropagation/.test(src.slice(m.index, m.index + 200))) // guard-8: allow
   eq(bare.length, 0, `${bare.length} elements are clickable but not focusable`)
   ok(/role: 'button' as const/.test(src), 'the tap helper does not give a role')
   ok(/e\.key === 'Enter'/.test(src), 'nothing responds to the keyboard')
@@ -1434,15 +1443,12 @@ test('the end of a run gives you an account of it', () => {
      said you won or died, while the trail, the logbook, the lines you named,
      the pages you found and what you were carrying were all being tracked. */
   const app = readFileSync('src/App.tsx', 'utf8')
-  const at = app.indexOf("if (st.phase === 'runEnd')")
-  ok(at > 0, 'there is no run-end screen')
   /* v10.17: this sliced a fixed 3200 characters, so adding anything near the top of the
      screen silently pushed a needle out of the window and failed for the wrong reason
      (NARR-14's closing line did exactly that). The window ends where the screen ends
      now — at the next phase branch — which is the property meant all along. */
-  const end = app.indexOf("if (st.phase === '", at + 10)
-  ok(end > at, 'the run-end screen is the last branch, so this window cannot be bounded')
-  const screen = app.slice(at, end)
+  const screen = region(app, "if (st.phase === 'runEnd')", ["if (st.phase === '"],
+    { min: 800, what: 'the run-end screen' })
   ok(screen.length > 1500, `the run-end screen reads as only ${screen.length} chars`)
   for (const [what, needle] of [
     ['the hardest thing you have sent', 'hardest thing you have sent'],
@@ -1466,7 +1472,7 @@ test('a two-digit grip span still fits its pip', () => {
      largest text size: about 47px, against a 93px content strip shared with the
      20px power diamond. */
   const app = readFileSync('src/App.tsx', 'utf8')
-  const pip = app.slice(app.indexOf('.pip{'), app.indexOf('.cb{'))
+  const pip = region(app, '.pip{', ['.cb{'], { min: 60, what: 'the pip styles' })
   ok(!/\.pip\{width:20px/.test(pip), 'the pip is still a fixed width and will clip a span')
   ok(/\.pip\{min-width:20px/.test(pip), 'the pip has no minimum, so a single digit will collapse')
   ok(/white-space:nowrap/.test(pip), 'the pip can still wrap a span onto two lines')
@@ -1558,7 +1564,8 @@ test('ENG-28: a hold\'s ability is read through abilityOf, never its base type',
   const eng = readFileSync('src/engine.ts', 'utf8')
   const direct = eng.match(/(?:HOLD_STATS|FEET_STATS)\[[^\]]+\]\?\.ability/g) ?? []
   eq(direct.length, 2, `${direct.length} base-ability lookups — only the two inside abilityOf are allowed`)
-  const fn = eng.slice(eng.indexOf('export const abilityOf'), eng.indexOf('/** What a hold is called'))
+  const fn = region(eng, 'export const abilityOf', ['/** What a hold is called'],
+    { min: 100, what: 'abilityOf' })
   eq((fn.match(/(?:HOLD_STATS|FEET_STATS)\[[^\]]+\]\?\.ability/g) ?? []).length, 2,
     'the allowed base-ability lookups are not the ones inside abilityOf')
   // and the behaviour: an overriding signature must read the same to both sides
@@ -1613,14 +1620,13 @@ test('UI-2: the menu says which caption belongs to which action, and one leads',
      tied a line to the thing it described. A mode is a Tile now: mark, name and
      caption inside the one element you tap, with exactly one hero taking the ink. */
   const app = readFileSync('src/App.tsx', 'utf8')
-  const menu = app.slice(app.indexOf("if (st.phase === 'menu')"),
-    app.indexOf("if (st.phase === 'prepare')"))
-  ok(menu.length > 500, 'could not slice the menu screen')
+  const menu = region(app, "if (st.phase === 'menu')", ["if (st.phase === 'prepare')"],
+    { min: 500, what: 'the menu screen' })
   // every mode is a tile, and every tile carries its own caption
   const tiles = menu.match(/<Tile\b/g) ?? []
   ok(tiles.length >= 6, `only ${tiles.length} menu modes are tiles`)
   for (const t of menu.split('<Tile').slice(1))
-    ok(/\bsub=/.test(t.slice(0, 420)), 'a menu tile has no caption of its own')
+    ok(/\bsub=/.test(t.split('/>')[0]), 'a menu tile has no caption of its own')
   // the caption lives INSIDE the tapped element, not in a sibling below it
   ok(/\.tile \.tsub\{/.test(app), 'the tile caption has no style of its own')
   // and the old ambiguous pattern is gone from this screen
@@ -1633,7 +1639,8 @@ test('UI-2: the menu says which caption belongs to which action, and one leads',
   // the marks are what make the rows scannable, so they must all differ
   const marks = [...app.matchAll(/MENU_MARKS\.(\w+)/g)].map(m => m[1])
   ok(new Set(marks).size >= 6, `only ${new Set(marks).size} distinct menu marks`)
-  const defs = app.slice(app.indexOf('const MENU_MARKS'), app.indexOf('function Mark('))
+  const defs = region(app, 'const MENU_MARKS', ['function Mark('],
+    { min: 100, what: 'the menu mark paths' })
   for (const k of new Set(marks)) ok(new RegExp(`\\b${k}:`).test(defs), `${k} has no mark path`)
 })
 
@@ -1644,8 +1651,8 @@ test('UI-2: the title card gates the game and opens the audio inside the tap', (
      one — otherwise the first climb's sound is silently blocked. */
   const app = readFileSync('src/App.tsx', 'utf8')
   ok(/const \[booted, setBooted\] = useState\(false\)/.test(app), 'nothing gates the game on a first tap')
-  const splash = app.slice(app.indexOf('if (!booted)'), app.indexOf("if (st.phase === 'menu')"))
-  ok(splash.length > 200, 'the title card is not rendered ahead of every screen')
+  const splash = region(app, 'if (!booted)', ["if (st.phase === 'menu')"],
+    { min: 200, what: 'the title card' })
   ok(/TAP TO BEGIN/.test(splash), 'the title card never says how to get past it')
   ok(/sfx\(/.test(splash) && /setBooted\(true\)/.test(splash),
     'the tap does not open the audio context, so the sound bed stays blocked')
@@ -2370,17 +2377,12 @@ test('no mode leaks into another mode (MODE-1)', () => {
   const starts = ['startDaily', 'startChallenge', 'startFA', 'startCircuit',
     'startTutorial', 'startLostLine', 'startClimb']
   for (const fn of starts) {
-    const at = app.indexOf('  function ' + fn)
-    ok(at > 0, `${fn} is gone or no longer a top-level function`)
-    let end = app.indexOf('\n  function ', at + 5)
-    if (end < 0) end = app.length
-    const body = app.slice(at, end)
-    ok(body.length > 80, `${fn} reads as only ${body.length} chars`)
+    const body = appFn(app, fn)
     ok(/modeReset\(\)/.test(body), `${fn} does not clear the other modes — it can inherit one`)
   }
   // the circuit has TWO entry paths (start and resume) and both need it
-  const cAt = app.indexOf('  function startCircuit')
-  const cBody = app.slice(cAt, app.indexOf('  function nextCircuitLine'))
+  const cBody = region(app, '  function startCircuit', ['  function nextCircuitLine'],
+    { min: 200, what: 'startCircuit' })
   eq((cBody.match(/modeReset\(\)/g) || []).length, 2,
     'one of the two circuit entry paths does not clear the other modes')
   ok(/circuit: true/.test(cBody), 'the circuit resets its own flag and never puts it back')
@@ -2442,16 +2444,17 @@ test('somebody is out there with you, and they wanted something else (NARR-14)',
     for (const k of Object.keys(p)) ok(allowed.has(k), `${p.name} carries a field a partner should not have: ${k}`)
   }
   const eng = readFileSync('src/engine.ts', 'utf8')
-  const table = eng.slice(eng.indexOf('export const PARTNERS'), eng.indexOf('export function partnerFor'))
-  ok(table.length > 800, 'the partner table moved out from under this guard')
+  const table = region(eng, 'export const PARTNERS', ['export function partnerFor'],
+    { min: 800, what: 'the partner table' })
   ok(!/\b(power|contact|grip|bite|support|skin|psyche|pump|dTax|shed)\s*:/i.test(table),
     'the partner table grew a mechanical field — a partner is text')
   // ...and nothing in the resolution consults them
   for (const fn of ['export function resolve', 'export function powerAgainst', 'export function biteAgainst',
     'export function startBurn', 'export function autoPlay']) {
-    const at = eng.indexOf(fn)
-    ok(at > 0, `${fn} is gone`)
-    const body = eng.slice(at, at + 4000)
+    // GUARD-8: bounded at the next declaration, not at 4000 characters. With a fixed
+    // window a function that outgrows it puts its tail outside, and the negative
+    // assertion below then passes on the part that was cut off.
+    const body = declBody(eng, fn, fn)
     /* match the API, not the English word: autoPlay's opposition comments call the other
        hand lane a "partner", which is a different thing entirely. */
     ok(!/\b(partnerFor|partnerSays|partnerAgrees|PARTNERS)\b/.test(body),
@@ -2487,16 +2490,17 @@ test('somebody is out there with you, and they wanted something else (NARR-14)',
   /* THEY ARE ON THE SCREENS. A partner nobody sees is the CARD-17 failure mode again —
      present in the data, dead in the game. */
   const app = readFileSync('src/App.tsx', 'utf8')
-  const lineAt = app.indexOf("st.phase === 'line'")
-  ok(lineAt > 0, 'there is no line-choice screen')
-  const lineScreen = app.slice(lineAt, app.indexOf('NOT TODAY', lineAt))
+  const lineScreen = region(app, "st.phase === 'line'", ['NOT TODAY'],
+    { min: 300, what: 'the line-choice screen' })
   ok(/partnerSays\(st, 'tie'\)/.test(lineScreen), 'they do not say which way they would go')
   ok(/partnerAgrees\(st, i\)/.test(lineScreen), 'the line they favour is not marked on the choice')
-  const campAt = app.indexOf("st.phase === 'camp'")
-  ok(/partnerSays\(st, 'camp'\)/.test(app.slice(campAt, campAt + 3000)), 'they are not at the fire')
+  const campScreen = region(app, "st.phase === 'camp'", ["if (st.phase === '"],
+    { min: 400, what: 'the camp screen' })
+  ok(/partnerSays\(st, 'camp'\)/.test(campScreen), 'they are not at the fire')
   ok(/partnerSays\(st, sent \? 'send' : 'fall'\)/.test(app), 'they have nothing to say about a burn')
-  const endAt = app.indexOf("if (st.phase === 'runEnd')")
-  ok(/partnerSays\(st, won \? 'top' : 'died'\)/.test(app.slice(endAt, endAt + 4000)),
+  const endScreen = region(app, "if (st.phase === 'runEnd')", ["if (st.phase === '"],
+    { min: 800, what: 'the run-end screen' })
+  ok(/partnerSays\(st, won \? 'top' : 'died'\)/.test(endScreen),
     'the trip ends without a word from whoever was there')
 })
 test('the tuning policy can see the feet lane (SIM-6)', () => {
@@ -2554,8 +2558,8 @@ test('the tuning policy can see the feet lane (SIM-6)', () => {
 
   // it prices Support through the SHARED function, so ENG-32's settling cost is in it
   const eng = readFileSync('src/engine.ts', 'utf8')
-  const pick = eng.slice(eng.indexOf('export function autoPlay'), eng.indexOf('const order = [0, 1]'))
-  ok(pick.length > 300, 'the feet pick moved out from under this guard')
+  const pick = region(eng, 'export function autoPlay', ['const order = [0, 1]'],
+    { min: 300, what: 'the feet pick' })
   ok(/supportNow\(/.test(pick), 'the policy scores Support with its own copy of the sum')
   ok(/powerAgainst\(st, c, h2, 2\)/.test(pick), 'the policy does not ask whether the foot works its hold')
   ok(!/b\.support > a\.support/.test(pick), 'the policy is back to picking on raw Support alone')
@@ -2614,7 +2618,7 @@ test('a challenge is a problem and its terms, and a typo is refused (SOCIAL-2)',
       if (good[i] === '-') continue
       for (const ch of alphabet) {
         if (ch === good[i]) continue
-        const typo = good.slice(0, i) + ch + good.slice(i + 1)
+        const typo = good.slice(0, i) + ch + good.slice(i + 1) // guard-8: allow — a code, not source
         const got = E.readChallenge(typo)
         if (!got) { refused++; continue }
         if (JSON.stringify(got) !== want) silentlyDifferent++
@@ -2632,7 +2636,7 @@ test('a challenge is a problem and its terms, and a typo is refused (SOCIAL-2)',
     const want = JSON.stringify({ seed: seed >>> 0, goal: goals[0] })
     for (let i = 0; i + 1 < good.length; i++) {
       if (good[i] === '-' || good[i + 1] === '-' || good[i] === good[i + 1]) continue
-      const t = good.slice(0, i) + good[i + 1] + good[i] + good.slice(i + 2)
+      const t = good.slice(0, i) + good[i + 1] + good[i] + good.slice(i + 2) // guard-8: allow — a code, not source
       const got = E.readChallenge(t)
       if (got && JSON.stringify(got) !== want) swapped++
     }
@@ -2701,8 +2705,8 @@ test('a challenge is a problem and its terms, and a typo is refused (SOCIAL-2)',
   /* OFF-BAND BY CONSTRUCTION: a challenge is a skirmish, and the harness climbs the
      campaign. Nothing here can reach the guided line. */
   const app = readFileSync('src/App.tsx', 'utf8')
-  const start = app.slice(app.indexOf('function startChallenge'), app.indexOf('const setMine'))
-  ok(start.length > 200, 'startChallenge moved out from under this guard')
+  const start = region(app, 'function startChallenge', ['const setMine'],
+    { min: 200, what: 'startChallenge' })
   ok(/inRun: false/.test(start), 'a challenge starts as a campaign run')
   ok(/skirmish: route/.test(start), 'a challenge does not ride the skirmish path')
   ok(/readChallenge\(code\)/.test(start), 'a challenge starts without reading the code first')
@@ -2723,14 +2727,11 @@ test('no two screens fight over a class name (VIS-8)', () => {
      nothing else (`--fs`, the text-scale root), which cannot conflict with layout. The
      rule is therefore "twice is fine only if one side is variables only". */
   const app = readFileSync('src/App.tsx', 'utf8')
-  const at = app.indexOf('const CSS = ')
-  ok(at > 0, 'the stylesheet moved out from under this guard')
-  const open = app.indexOf('`', at)
-  const css = app.slice(open + 1, app.indexOf('`', open + 1))
   /* the stylesheet must not be truncated: a stray backtick inside it silently ends the
      template literal and takes the rest of the CSS with it. This has bitten twice now
-     (DEV-3's comment, and this ticket's own first draft), so it is asserted. */
-  ok(css.length > 8000, `the stylesheet reads as only ${css.length} chars — a stray backtick truncated it`)
+     (DEV-3's comment, and VIS-8's own first draft), so it is asserted — and `region`'s
+     floor is now the thing that asserts it. */
+  const css = region(app, 'const CSS = `', ['`'], { min: 8000, what: 'the stylesheet' })
   ok(css.includes('.wrap{'), 'the stylesheet does not contain the page wrapper — it is truncated')
   ok(css.includes('.hand'), 'the stylesheet stops before the hand — it is truncated')
 
@@ -2828,8 +2829,8 @@ test('the game has a sense of place, and the finale has none on purpose (AUD-2)'
   const deps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).join(' ')
   ok(!/tone|howler|pizzicato|audio/i.test(deps), `an audio library crept into the deps: ${deps}`)
   // both switches gate it, and the ambience one is the player's own
-  const drive = app.slice(app.indexOf('AUD-2: put the game where it is'), app.indexOf('DEV-2: tell the service-worker'))
-  ok(drive.length > 200, 'the bed driver moved out from under this guard')
+  const drive = region(app, 'AUD-2: put the game where it is', ['DEV-2: tell the service-worker'],
+    { min: 200, what: 'the bed driver' })
   ok(/bedFor\(st\)/.test(drive), 'the screen decides the bed itself instead of asking the engine')
   /* BOTH call sites must carry both switches. Asserting the pair appears "somewhere in
      the driver" was not enough: the visibility handler also contains it, so ungating the
@@ -2841,8 +2842,8 @@ test('the game has a sense of place, and the finale has none on purpose (AUD-2)'
   ok(/visibilitychange/.test(drive), 'a backgrounded tab is left droning')
   ok(/document\.hidden/.test(drive), 'nothing checks whether the tab is hidden')
   // one bed at a time: exactly one place stops the running graph
-  const mgr = app.slice(app.indexOf('export function bed('), app.indexOf('export const buzz'))
-  ok(mgr.length > 150, 'the bed manager moved out from under this guard')
+  const mgr = region(app, 'export function bed(', ['export const buzz'],
+    { min: 150, what: 'the bed manager' })
   eq((mgr.match(/BED\.stop\(/g) || []).length, 1,
     'more than one place stops the bed, so a graph can be left running')
   ok(/BED\.kind === want/.test(mgr), 'asking for the bed already playing restarts it')
@@ -2959,8 +2960,8 @@ test('the feet lane is a trade, and it says what it is doing (ENG-32)', () => {
   // ONE FORMULA. The screen prints this number; a second copy of the sum would drift
   // (ENG-19), so powerAgainst must be its only consumer of the total.
   const eng = readFileSync('src/engine.ts', 'utf8')
-  const pa = eng.slice(eng.indexOf('export function powerAgainst'), eng.indexOf('export function biteAgainst'))
-  ok(pa.length > 400, 'powerAgainst moved out from under this guard')
+  const pa = region(eng, 'export function powerAgainst', ['export function biteAgainst'],
+    { min: 400, what: 'powerAgainst' })
   ok(/supportNow\(s\)/.test(pa), 'powerAgainst no longer reads the shared Support formula')
   ok(!/\.support\b/.test(pa), 'powerAgainst grew its own copy of the Support sum')
 
@@ -2988,8 +2989,8 @@ test('the feet lane is a trade, and it says what it is doing (ENG-32)', () => {
 
   // the screen says what the feet are doing, using the shared number
   const app = readFileSync('src/App.tsx', 'utf8')
-  const board = app.slice(app.indexOf('<div className="board">'), app.indexOf('<div className="sect">YOUR HAND</div>'))
-  ok(board.length > 400, 'the board render moved out from under this guard')
+  const board = region(app, '<div className="board">', ['<div className="sect">YOUR HAND</div>'],
+    { min: 400, what: 'the board render' })
   ok(/supportNow\(st\)/.test(board), 'the feet lane does not print what the hands are getting')
   ok(/SETTLING/.test(board), 'the feet lane does not say when a foot is still settling')
   ok(/i === 2/.test(board), 'the feet reading is not scoped to the feet lane')
@@ -2999,8 +3000,8 @@ test('the feet lane is a trade, and it says what it is doing (ENG-32)', () => {
      function resolve asks. */
   ok(/set: true/.test(board), 'the settling note is not derived from the shared formula')
   ok(/gain > 0/.test(board), 'the settling note is not conditional on there being a gain')
-  const reading = board.slice(board.indexOf('const now = supportNow(st)'))
-  ok(reading.length > 200, 'the feet reading moved out from under this guard')
+  const reading = tail(board, 'const now = supportNow(st)',
+    { min: 200, what: 'the feet reading' })
   ok(!/c\.settled/.test(reading),
     'the feet reading keys the settling note on `settled`, which the floor makes a lie')
 
@@ -3112,9 +3113,8 @@ test('a bonus curse is a tax you can pay off, not a dead card (CARD-17)', () => 
      so without this the option exists mid-climb and nothing tells you — which is the
      same "technically present, practically dead" state CARD-17 exists to end. */
   const app = readFileSync('src/App.tsx', 'utf8')
-  const hand = app.slice(app.indexOf('<div className="sect">YOUR HAND</div>'),
-    app.indexOf('vis-hidden', app.indexOf('<div className="sect">YOUR HAND</div>')))
-  ok(hand.length > 400, 'the hand render moved out from under this guard')
+  const hand = region(app, '<div className="sect">YOUR HAND</div>', ['vis-hidden'],
+    { min: 400, what: 'the hand render' })
   ok(/writeOff\(c\)/.test(hand), 'the card in hand does not mark a curse as writable-off')
   ok(/CURSE_TAX/.test(hand), 'the card in hand does not quote what a write-off costs')
   ok(/burn/i.test(hand), 'the card in hand does not say the write-off lasts the burn')
@@ -3312,8 +3312,8 @@ test('the route acts on the climber, not just the stone (ENG-21)', () => {
   // NO MOVE CARRIES A PUMP TERM. The three new branches are read off the source,
   // because "it happens not to add pump today" is what a guard is for.
   const eng = readFileSync('src/engine.ts', 'utf8')
-  const fn = eng.slice(eng.indexOf('export function applyRouteMove'), eng.indexOf('export function afterMove'))
-  ok(fn.length > 600, 'applyRouteMove moved out from under this guard')
+  const fn = region(eng, 'export function applyRouteMove', ['export function afterMove'],
+    { min: 600, what: 'applyRouteMove' })
   ok(!/\bpump\b/.test(fn), 'a route move now touches the pump directly')
 
   // THE PREVIEW AGREES WITH RESOLVE on every kind — the exactness pillar
@@ -3717,7 +3717,9 @@ test('nothing builds a state from scratch without carrying you over', () => {
   const app = readFileSync('src/App.tsx', 'utf8')
   const bad = []
   for (const m of app.matchAll(/(freshRun|newRun)\(/g)) {
-    const near = app.slice(Math.max(0, m.index - 200), m.index + 420)
+    // guard-8: allow — proximity again, and positive again: DAILY-1 had to widen this
+    // window, which is the safe direction — it failed rather than quietly stopped asking.
+    const near = app.slice(Math.max(0, m.index - 200), m.index + 420) // guard-8: allow
     if (!/carryOver|loadGame/.test(near)) {
       const line = app.slice(0, m.index).split('\n').length
       bad.push(`${m[1]} at line ${line}`)
@@ -3801,18 +3803,22 @@ test('there is one way to play a card', () => {
   /* GUARD-3: anchor it. Convert playBonus to a const/arrow and the slice is '',
      so all seven "the screen must not reimplement this rule" checks pass on
      nothing — the exact SIM-3 divergence class they exist to prevent. */
-  const pbAt = app.indexOf('function playBonus(')
-  ok(pbAt > 0, 'playBonus moved or changed shape — this guard is reading nothing')
-  const screen = app.slice(pbAt, pbAt + 900)
+  /* GUARD-8: the anchor was already checked here, but the 900 was not — grow playBonus
+     and a rule slides out of the window while all seven negatives keep passing. */
+  const screen = region(app, 'function playBonus(', ['\n  function ', '\n  const '],
+    { min: 200, what: 'playBonus' })
   for (const rule of ['c.shed', 'c.draw', 'c.gripCut', 'c.powerAll', 'c.clip', 'c.seq', 'c.read'])
     ok(!screen.includes(rule), `the screen still handles ${rule} itself`)
   // and the harness must call it rather than its own
-  const auto = engine.slice(engine.indexOf('export function autoPlay'))
+  const auto = tail(engine, 'export function autoPlay', { min: 600, what: 'autoPlay' })
   ok(/st = playBonusStep\(st, c, lane, rng\)/.test(auto),
     'the harness does not go through the shared function')
+  /* GUARD-8: the negative below used to take its window straight off an indexOf, which
+     is the whole of autoPlay minus one character the day that anchor is renamed. */
+  const head = region(auto, 'export function autoPlay', ['return st'],
+    { min: 400, what: "autoPlay's bonus handling" })
   for (const rule of ['c.restore &&', 'c.gripCut &&'])
-    ok(!auto.slice(0, auto.indexOf('return st')).includes(rule + ' st.piles'),
-      `the harness still applies ${rule} itself`)
+    ok(!head.includes(rule + ' st.piles'), `the harness still applies ${rule} itself`)
 })
 
 test('the preview and resolve read a hold the same way', () => {
@@ -3820,8 +3826,8 @@ test('the preview and resolve read a hold the same way', () => {
   // them. The preview was still reading HOLD_STATS directly, so it was blind
   // to every signature hold's ability from v8.0 until this was found.
   const src = readFileSync('src/engine.ts', 'utf8')
-  const previews = src.slice(src.indexOf('export function previewLane'),
-    src.indexOf('export function previewPump'))
+  const previews = region(src, 'export function previewLane', ['export function previewPump'],
+    { min: 300, what: 'the preview functions' })
   ok(/const ab = abilityOf\(hold\)/.test(previews),
     'the preview works out a hold ability by hand instead of asking abilityOf')
   ok(!/HOLD_STATS\[hold\.name\]\?\.ability/.test(previews),
@@ -4086,9 +4092,7 @@ test('GUARD-6: the balance ledger is gated on a release, not on a habit', () => 
     'ship can still build without the completion band ever being measured')
   // and the ledger must actually be behind that flag, i.e. the band lives there
   const slow = readFileSync('sim/test.mjs', 'utf8')
-  const at = slow.indexOf('if (SLOW)')
-  ok(at > 0, 'the slow block moved — this guard is reading nothing')
-  const block = slow.slice(at)
+  const block = tail(slow, 'if (SLOW)', { min: 400, what: 'the slow block' })
   for (const pin of ['has not drifted', 'no climber is twice as good', 'ROUTE-8'])
     ok(block.includes(pin), `the ledger no longer contains "${pin}"`)
   // the header must not under-advertise what it costs, or people skip it
@@ -4107,9 +4111,7 @@ test('UI-4: the map says what each stage ahead of you is', () => {
   ok(/function ActMap\(\{[^}]*kinds/.test(app), 'ActMap still cannot see what the stages are')
   ok(/<ActMap[\s\S]{0,400}kinds=\{/.test(app), 'the map is not told the stage kinds')
   // every node type that is NOT a plain climb must be distinguishable
-  const at = app.indexOf('const NODE_MARK')
-  ok(at > 0, 'the mark vocabulary is gone — this guard is reading nothing')
-  const marks = app.slice(at, app.indexOf('}', at))
+  const marks = region(app, 'const NODE_MARK', ['}'], { min: 60, what: 'the mark vocabulary' })
   for (const kind of ['camp', 'shop', 'event', 'project', 'fa', 'boss'])
     ok(new RegExp(`${kind}:`).test(marks), `${kind} has no mark, so it draws as a bare number`)
   // the boss is the one that must read from a distance, so it is a shape not a glyph
@@ -4134,11 +4136,7 @@ test('DEV-1: content is inset past the notch and the home indicator', () => {
   const app = readFileSync('src/App.tsx', 'utf8')
   const html = readFileSync('index.html', 'utf8')
   ok(/viewport-fit=cover/.test(html), 'the viewport no longer opts out — this guard needs rewriting')
-  const rule = name => {
-    const at = app.indexOf(name)
-    ok(at > 0, `${name} is gone — this guard is reading nothing`)
-    return app.slice(at, app.indexOf('}', at))
-  }
+  const rule = name => cssRule(app, name)
   // the page, the bottom-anchored sheets, and the sticky one-handed COMMIT bar
   ok(/env\(safe-area-inset-bottom\)/.test(rule('.wrap{max-width')),
     'the page is not padded past the home indicator')
@@ -4291,8 +4289,11 @@ test('SAVE-2: the run survives a boss, and so does winning the campaign', () => 
   eq(back.skin, 7, 'skin did not survive'); eq(back.psyche, 2, 'psyche did not survive')
   // and the screens that follow a send must be save phases — it is a denylist now
   const app = readFileSync('src/App.tsx', 'utf8')
-  const eff = app.slice(app.indexOf('if (st.saveBlocked) return'), app.indexOf('if (st.saveBlocked) return') + 220)
-  ok(eff.length > 40, 'the persist effect moved and this guard is not reading it')
+  /* GUARD-8: this read a fixed 220 characters, so the four negative assertions below
+     were only ever checking the first two lines of whatever followed. It ends where the
+     effect ends now. */
+  const eff = region(app, 'if (st.saveBlocked) return', ['\n  }'],
+    { min: 40, what: 'the persist effect' })
   ok(/phase !== 'climb'/.test(eff) && /phase !== 'burnEnd'/.test(eff),
     'the persist effect is an allowlist again — a screen after a send will not save')
   for (const p of ['gear', 'epilogue', 'pack', 'claim'])
@@ -4326,8 +4327,8 @@ test('SAVE-1: an unreadable slot is never overwritten, and an import is applied'
   const app = readFileSync('src/App.tsx', 'utf8')
   ok(/if \(st\.saveBlocked\) return/.test(app), 'nothing stops the game overwriting an unreadable slot')
   ok(/saveBlocked: (got|loaded) === null/.test(app), 'a failed read is not recorded anywhere')
-  const imp = app.slice(app.indexOf('if (!importSave('), app.indexOf('IMPORT</button>'))
-  ok(imp.length > 40, 'the import handler moved and this guard is not reading it')
+  const imp = region(app, 'if (!importSave(', ['IMPORT</button>'],
+    { min: 40, what: 'the import handler' })
   ok(/load\(st\.slot\)/.test(imp), 'IMPORT still does not reload, so the import gets overwritten')
   ok(!/Reloading the slot/.test(imp), 'IMPORT still claims to reload without reloading')
   E.wipeSlot(7)
@@ -4344,6 +4345,52 @@ test('tag counts add up to the tagged cards', () => {
   const counts = E.tagCounts(deck)
   const total = Object.values(counts).reduce((a, b) => a + b, 0)
   eq(total, deck.filter(c => E.tagOf(c)).length, 'the tally does not match the deck')
+})
+
+group('the suite')
+test('GUARD-8: no guard reads a window it cannot prove is the right one', () => {
+  /* This is the ticket. GUARD-3 found and fixed unchecked-anchor windows; GUARD-8 found
+     five more fixed-length ones and two more unchecked anchors, three of them written
+     during the ticket immediately before this. Fixing instances plainly does not work,
+     because the technique is fine and the mistake is invisible — a guard reading the
+     wrong text reads GREEN. So the suite reads itself.
+
+     The rule is: there is one way to take a source window (`region`, and the helpers
+     built on it), it validates its own anchors and its own size, and anything that
+     hand-rolls one is a failure here. A line that genuinely needs a raw slice — a string
+     being mutated, a deliberate lookahead — says `guard-8: allow` on that line with a
+     reason, which is a decision somebody has to write down rather than a habit. */
+  const files = ['sim/guard.mjs', 'sim/test-core.mjs', 'sim/test.mjs']
+    .map(f => [f, readFileSync(f, 'utf8')])
+  const bad = guardScan(files)
+  eq(bad.length, 0, `${bad.length} hand-rolled source window(s):\n    ${bad.join('\n    ')}`)
+
+  /* And the assertions themselves must keep demanding a message. That check is at CALL
+     time rather than in the scan above, which is what makes it exact — the audit that
+     opened this ticket reported two message-less assertions from a line-based scan and
+     both were false positives, a regex literal containing a quote being enough to fool
+     it. Every assertion in both suites executes, so nothing message-less can hide. */
+  for (const [name, call] of [['ok', () => ok(true)], ['eq', () => eq(1, 1)]]) {
+    let threw = ''
+    try { call() } catch (e) { threw = e.message }
+    ok(/no failure message/.test(threw), `${name}() accepts an assertion with no failure message`)
+  }
+  // a window that is there reads; one whose anchors are gone throws instead of lying
+  const src = readFileSync('sim/guard.mjs', 'utf8')
+  ok(region(src, 'export function region', ['export const declBody'],
+    { min: 200, what: 'region' }).includes('out.length < min'), 'region does not check its own size')
+  for (const [from, to, says, why] of [
+    ['export function noSuchThing', ['export const declBody'], /opening anchor is gone/,
+      'the opening anchor is gone'],
+    ['export function region', ['export const noSuchThing'], /closing anchors are left/,
+      'every closing anchor is gone, so it would read to the end of the file'],
+    ['export function region', ['('], /only \d+ chars/,
+      'the window came back far too small to assert over'],
+  ]) {
+    let threw = ''
+    try { region(src, from, to, { min: 200, what: 'a fixture' }) } catch (e) { threw = e.message }
+    ok(says.test(threw), `region handed back a window when ${why} — it said ${JSON.stringify(threw)}`)
+  }
 })
 
 /* ---- report ---------------------------------------------------------- */
