@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.17 — NARR-14: somebody is out there with you, and they would have gone
-//   a different way. Text only: a partner has an opinion, never a stat
+// SANDBAGGED v10.18 — MODE-1: no mode leaks into another. A daily could bank an FA's
+//   score and a daily result could quote somebody else's challenge
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -21,7 +21,7 @@ import {
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
   campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitZone, claimStep, claimVerdict,
   consumableById, KIT_MAX, useKitStep, secondWindStep,
-  challengeCode, challengeRoute, challengeShare, readChallenge, goalById, dailyScore,
+  challengeCode, challengeRoute, challengeShare, readChallenge, goalById, dailyScore, modeReset,
   partnerFor, partnerSays, partnerAgrees,
   coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyGoals, dailyRoute, dailySeed, dailyShare, dailyUsed, tomorrowKey, MOVE_GIFTS, CURSE_TAX,
   supportNow, bedFor,
@@ -1066,7 +1066,7 @@ export default function App() {
     const f = nodeIdx >= 0 ? forecastFor(st)[nodeIdx] : null
     const weather = f ? f.weather : rng.int(WEATHER.length)
     const rock = f ? f.rock : rng.int(ROCK.length)
-    const next = startBurn({ ...st, routeIdx, skirmish: null, onProject: false, weather, rock,
+    const next = startBurn({ ...st, ...modeReset(), routeIdx, weather, rock,
       line, burn: 1, beta: [], worked: [] }, rng)
     // write the "you abandoned it" state now, so quitting mid-climb costs the
     // node rather than letting you reroll a bad start
@@ -1082,13 +1082,16 @@ export default function App() {
        does not fit stays banked for the next trip. */
     const r = newRun(pickSeed(), st.loadouts[st.arch], st.style, st.arch, st.mutators)
     const take = st.larder.slice(0, KIT_MAX)
-    setSt({ ...r, ...carryOver(st), runs: st.runs + 1,
+    /* MODE-1: `newRun` already comes out of `freshRun` with every mode flag clear, and
+       `carryOver` deliberately carries none of them — but this says so out loud so that
+       every start reads the same way and the guard needs no exception for this one. */
+    setSt({ ...r, ...carryOver(st), ...modeReset(), runs: st.runs + 1,
       kit: take, larder: st.larder.slice(take.length) })
   }
-function startTutorial() {
+  function startTutorial() {
     const idx = ROUTES.findIndex(r => r.tutorial)
     const rng = new RNG(st.seed)
-    const next = startBurn({ ...st, routeIdx: idx, skirmish: null, inRun: false, onProject: false,
+    const next = startBurn({ ...st, ...modeReset(), routeIdx: idx, inRun: false,
       runDeck: TUTORIAL_DECK.map(spawn), skin: SKIN_MAX, burn: 1, beta: [], worked: [],
       weather: 1, rock: 0 }, rng)
     setSt({ ...next, seed: rng.s })
@@ -1101,14 +1104,17 @@ function startTutorial() {
        its stage. */
     if (st.circuit && st.runDeck.length) {
       const rng0 = new RNG(st.seed)
-      setSt({ ...startBurn({ ...st, skirmish: circuitRoute(st.circuitScore, rng0),
+      // MODE-1: reset first, then put back the one mode this IS — otherwise resuming a
+      // circuit could carry a daily or a challenge flag in with it
+      setSt({ ...startBurn({ ...st, ...modeReset(), circuit: true,
+        skirmish: circuitRoute(st.circuitScore, rng0),
         burn: 1, beta: [], worked: [] }, rng0), seed: rng0.s })
       return
     }
     const seed = pickSeed()
     const rng = new RNG(seed)
-    const base: GameState = { ...st, seed, runSeed: seed, circuit: true, circuitScore: 0, inRun: false,
-      onProject: false, tier: 0, act: 0, gear: [], cash: 0, psyche: PSYCHE_MAX,
+    const base: GameState = { ...st, ...modeReset(), seed, runSeed: seed, circuit: true,
+      circuitScore: 0, inRun: false, tier: 0, act: 0, gear: [], cash: 0, psyche: PSYCHE_MAX,
       skin: RUN_SKIN, runDeck: loadoutDeck(st.loadouts[st.arch]),
       skirmish: circuitRoute(0, rng), burn: 1, beta: [], worked: [],
       weather: rng.int(WEATHER.length), rock: rng.int(ROCK.length) }
@@ -1128,7 +1134,7 @@ function startTutorial() {
   function startFA() {
     const rng = new RNG(st.seed)
     const route = faRoute(Math.min(2, Math.floor(st.level / 7)), rng)
-    const next = startBurn({ ...st, skirmish: route, inRun: false, tier: 0,
+    const next = startBurn({ ...st, ...modeReset(), skirmish: route, inRun: false, tier: 0,
       runDeck: loadoutDeck(st.loadouts[st.arch]), skin: SKIN_MAX, burn: 1, beta: [], worked: [],
       weather: rng.int(WEATHER.length), rock: rng.int(ROCK.length) }, rng)
     setSt({ ...next, seed: rng.s })
@@ -1144,7 +1150,7 @@ function startTutorial() {
     
     const rng = new RNG(dailySeed(key))
     const route = dailyRoute(key)
-    const next = startBurn({ ...st, skirmish: route, inRun: false, tier: 0, daily: true,
+    const next = startBurn({ ...st, ...modeReset(), skirmish: route, inRun: false, tier: 0, daily: true,
       dailyTried: key,
       runDeck: loadoutDeck(st.loadouts[st.arch]), skin: SKIN_MAX, burn: 1, beta: [], worked: [],
       weather: rng.int(WEATHER.length), rock: rng.int(ROCK.length) }, rng)
@@ -1157,7 +1163,7 @@ function startTutorial() {
     if (!c) return false
     const rng = new RNG(c.seed)
     const route = challengeRoute(c.seed)
-    const next = startBurn({ ...st, skirmish: route, inRun: false, tier: 0, daily: false,
+    const next = startBurn({ ...st, ...modeReset(), skirmish: route, inRun: false, tier: 0,
       challenge: c, runDeck: loadoutDeck(st.loadouts[st.arch]), skin: SKIN_MAX,
       burn: 1, beta: [], worked: [],
       weather: rng.int(WEATHER.length), rock: rng.int(ROCK.length) }, rng)
@@ -1292,7 +1298,7 @@ function startTutorial() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.17 · RCJ Labs</div>
+          <div className="sfoot">v10.18 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1521,7 +1527,7 @@ function startTutorial() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.17 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.18 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

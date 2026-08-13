@@ -3653,6 +3653,26 @@ export function codeSeed(code: string): number | null {
   return Number.isFinite(n) ? (n >>> 0) : null
 }
 
+/* MODE-1. Five flags say what KIND of attempt this is — a daily, somebody's challenge,
+   an endless circuit, a project, a one-off skirmish — and each mode-start used to set
+   only its own. So the flags leaked into each other, and two of the leaks were live:
+
+     - climb a challenge, then the daily, and the end-of-burn screen rendered its
+       CHALLENGE block on a daily result, quoting somebody else's code and their terms;
+     - abandon a daily to the menu (`daily` stays true — it is session state, not saved)
+       and then climb an FA, and `endSession` BANKED THE FA'S SCORE AS YOUR DAILY. It
+       measured 581 against a real daily's ~353, and it corrupts the score, the streak
+       and the week together.
+
+   This is SAVE-2's shape exactly: a state built by hand-copying the fields somebody
+   remembered. The fix is the same shape as `carryOver` — one place that names all of
+   them, so a mode start cannot inherit another mode by forgetting a line. A guard now
+   requires every start to go through it. */
+export const MODE_FLAGS = ['daily', 'challenge', 'circuit', 'onProject', 'skirmish'] as const
+export function modeReset(): Pick<GameState, typeof MODE_FLAGS[number]> {
+  return { daily: false, challenge: null, circuit: false, onProject: false, skirmish: null }
+}
+
 /** Everything that belongs to you rather than to a run. A new expedition must
     carry all of it; hand-copying a subset is how it got lost. */
 export function carryOver(s: GameState): Partial<GameState> {

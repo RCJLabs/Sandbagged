@@ -2334,6 +2334,75 @@ test('a line-s description agrees with its own numbers (ROUTE-14)', () => {
     if (dc < 0) ok(!/more crux/.test(t), `${l.name} removes cruxes but says more`)
   }
 })
+test('no mode leaks into another mode (MODE-1)', () => {
+  /* MODE-1. Five flags say what KIND of attempt this is, and each mode-start set only
+     its own — so they leaked, and two of the leaks were live and user-visible:
+       - climb a challenge, then the daily, and the end-of-burn screen rendered its
+         CHALLENGE block on a daily result, quoting somebody else's code and terms;
+       - abandon a daily to the menu (`daily` is session state and stays true), then
+         climb an FA, and endSession BANKED THE FA'S SCORE AS YOUR DAILY — measured 581
+         against a real daily's ~353, corrupting score, streak and week together.
+     Same shape as SAVE-2: a state built from the fields somebody remembered. The fix is
+     the same shape as `carryOver` — one place naming all of them. */
+  eq([...E.MODE_FLAGS].sort().join(','), Object.keys(E.modeReset()).sort().join(','),
+    'MODE_FLAGS and modeReset disagree about what a mode is')
+  const r = E.modeReset()
+  eq(r.daily, false, 'modeReset leaves the daily flag set')
+  eq(r.challenge, null, 'modeReset leaves a challenge attached')
+  eq(r.circuit, false, 'modeReset leaves the circuit flag set')
+  eq(r.onProject, false, 'modeReset leaves you on a project')
+  eq(r.skirmish, null, 'modeReset leaves a one-off route attached')
+  // freshRun must agree with it, or a new run and a reset run are different things
+  const f = E.freshRun(0, 0, 1)
+  for (const k of E.MODE_FLAGS) {
+    eq(JSON.stringify(f[k]), JSON.stringify(r[k]), `freshRun and modeReset disagree about ${k}`)
+  }
+  // and carryOver must never carry one back in
+  const carried = E.carryOver({ ...f, daily: true, circuit: true, onProject: true,
+    challenge: { seed: 1, goal: 'flash' }, skirmish: E.dailyRoute() })
+  for (const k of E.MODE_FLAGS) {
+    eq(k in carried, false, `carryOver carries the ${k} flag into a new expedition`)
+  }
+
+  /* EVERY START GOES THROUGH IT. This is the part that makes the class of bug
+     impossible rather than the two instances of it fixed. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const starts = ['startDaily', 'startChallenge', 'startFA', 'startCircuit',
+    'startTutorial', 'startLostLine', 'startClimb']
+  for (const fn of starts) {
+    const at = app.indexOf('  function ' + fn)
+    ok(at > 0, `${fn} is gone or no longer a top-level function`)
+    let end = app.indexOf('\n  function ', at + 5)
+    if (end < 0) end = app.length
+    const body = app.slice(at, end)
+    ok(body.length > 80, `${fn} reads as only ${body.length} chars`)
+    ok(/modeReset\(\)/.test(body), `${fn} does not clear the other modes — it can inherit one`)
+  }
+  // the circuit has TWO entry paths (start and resume) and both need it
+  const cAt = app.indexOf('  function startCircuit')
+  const cBody = app.slice(cAt, app.indexOf('  function nextCircuitLine'))
+  eq((cBody.match(/modeReset\(\)/g) || []).length, 2,
+    'one of the two circuit entry paths does not clear the other modes')
+  ok(/circuit: true/.test(cBody), 'the circuit resets its own flag and never puts it back')
+
+  /* AND THE TWO BEHAVIOURS THAT WERE BROKEN. Asserted on the engine, so they hold
+     whatever the screens do. */
+  // (1) a state that had a challenge, reset, is not a challenge any more
+  const wasChal = { ...f, challenge: { seed: 4242, goal: 'flash' }, skirmish: E.challengeRoute(4242) }
+  eq(E.challengeShare({ ...wasChal, ...E.modeReset() }), '',
+    'a reset attempt still writes a challenge answer')
+  // (2) bankDaily cannot fire on an attempt that is not the daily
+  const faLike = { ...f, ...E.modeReset(), skirmish: E.challengeRoute(99),
+    result: 'send', cleared: 40, turn: 6, peakPump: 0, rests: 0, cruxFree: 1,
+    dailyDay: '', dailyScore: 0, dailyStreak: 0 }
+  const after = E.bankDaily(faLike)
+  eq(after.dailyScore, 0, 'a non-daily attempt banked a daily score')
+  eq(after.dailyDay, '', 'a non-daily attempt stamped the day as played')
+  eq(after.dailyStreak, 0, 'a non-daily attempt moved the streak')
+  // ...and it still banks a real one, so the guard above is not just "bankDaily is dead"
+  const realDaily = { ...faLike, daily: true, skirmish: E.dailyRoute() }
+  ok(E.bankDaily(realDaily).dailyScore > 0, 'bankDaily stopped banking actual dailies')
+})
 test('somebody is out there with you, and they wanted something else (NARR-14)', () => {
   /* NARR-14. Thirty-seven routes and nobody belayed. The game had a spotter (a hint
      system wearing a person) and TALKS (people you meet once), but nothing that was WITH
