@@ -2307,6 +2307,170 @@ test('FA-1: the FA is a real mode, and the grade you claim is an economy', () =>
     'an in-run FA claim did not drop back onto the map')
 })
 
+test('the feet lane is a trade, and it says what it is doing (ENG-32)', () => {
+  /* ENG-32. The ticket read "feet are a lane you fill, not a decision you make", and
+     measuring first showed the premise was half wrong in the useful direction: the
+     FEET lane works about 39% of every hold worked in a campaign. A third of the climb
+     was already down there and nothing said so.
+     What was actually missing was the trade. A foot paid its full Support the instant
+     it landed, so moving your feet cost nothing and leaving them cost nothing either.
+     Support is earned now: a fresh foot withholds FOOT_FRESH and pays in full once
+     settled — and because a high-Power foot tends to WORK its hold and leave the wall,
+     it never settles, so the pool's own Support-versus-Power shape finally bites. */
+  const H = (uid, grip, over = {}) => ({ uid, name: 'crimp', bite: 1, grip, crux: false, clean: false, ...over })
+  const F = (uid, over = {}) => ({ uid, name: 'foothold', bite: 2, grip: 2, crux: false, clean: false, ...over })
+  const base = { ...E.freshRun(6, 0, 5), inRun: true, skirmish: null, phase: 'climb',
+    weather: 1, rock: 0, turn: 2, flow: 0, pump: 4, gear: [], boons: [], mutators: [],
+    holdDeck: [], worked: [], order: [], fxLane: ['', '', ''], topRope: false,
+    piles: { draw: [], discard: [], exhaust: [], hand: [] } }
+  ok(E.FOOT_FRESH > 0, 'a fresh foot withholds nothing, so there is no trade')
+
+  // the premise the design rests on: the pool trades Support against Power
+  const feet = Object.keys(E.CARDS).map(n => E.spawn(n)).filter(c => c.lane === 'feet')
+  const mean = a => a.reduce((n, c) => n + c.power, 0) / a.length
+  const solid = feet.filter(c => c.support >= 2), loose = feet.filter(c => c.support < 2)
+  ok(solid.length > 3 && loose.length > 3, 'the feet pool has no two sides to trade off')
+  ok(mean(solid) < mean(loose),
+    `the feet pool no longer trades Support against Power (${mean(solid).toFixed(2)} vs ${mean(loose).toFixed(2)})`)
+
+  const solidFoot = feet.find(c => c.support >= 2)
+  const looseFoot = feet.find(c => c.support === 1)
+  ok(solidFoot && looseFoot, 'the pool no longer has both a solid and a loose foot')
+  const hand = E.spawn('Crimp Grip')
+  const withFoot = (c, planted) => ({ ...base, boardH: [H(1, 9), null, F(3)],
+    boardP: [hand, null, { ...c, set: planted }] })
+
+  /* A SOLID foot pays the settling cost; a LOOSE one is floored and does not. That
+     floor is the shippable version of this feature — see FOOT_FRESH's note for what
+     the unfloored form measured (2.0 points, and two other guards with it). */
+  const fresh = E.supportNow(withFoot(solidFoot, false))
+  const bedded = E.supportNow(withFoot(solidFoot, true))
+  eq(bedded - fresh, E.FOOT_FRESH, 'settling a solid foot is not worth what FOOT_FRESH says')
+  ok(fresh >= 1, 'a fresh foot dropped below one Support — the floor is gone')
+  eq(E.supportNow(withFoot(looseFoot, false)), E.supportNow(withFoot(looseFoot, true)),
+    'a one-Support foot was charged a settling cost — the floor is not holding')
+  ok(E.supportNow(withFoot(looseFoot, false)) >= 1, 'a smear now gives the hands nothing at all')
+  // and it reaches the hands through Power, which is the only thing Support does
+  const pFresh = E.powerAgainst(withFoot(solidFoot, false), hand, withFoot(solidFoot, false).boardH[0], 0)
+  const pBedded = E.powerAgainst(withFoot(solidFoot, true), hand, withFoot(solidFoot, true).boardH[0], 0)
+  eq(pBedded - pFresh, E.FOOT_FRESH, 'the settling difference never reaches the hands')
+
+  /* NOT ON THE OPENING TURN. There is no previous turn you could have kept your feet
+     from, so charging it on turn 1 taxes every burn's start rather than a choice — and
+     it landed hardest on the one thing that is nothing but opening turns, a Second Wind
+     burn, which begins part-pumped. That inverted CARD-9's contract (lift −1.3). */
+  eq(E.supportNow({ ...withFoot(solidFoot, false), turn: 1 }), bedded,
+    'a foot placed on the opening turn was charged for not having settled yet')
+  ok(E.supportNow({ ...withFoot(solidFoot, false), turn: 2 }) < bedded,
+    'the settling cost is not charged after the opening turn either — it does nothing')
+
+  /* THE BUY-BACK. The settling cost falls hardest on whoever moves their feet most,
+     and that is the Comp Kid (85 turns a run against the Trad Dad's 133). It cost that
+     climber ~0.9 points against ~1.1 of margin over its 5% floor, so the archetype is
+     bought back — the CARD-15 pattern — rather than the floor being lowered to meet it. */
+  const quick = E.ARCHETYPES.find(a => a.quickFeet)
+  ok(quick, 'no archetype has quickFeet, so the ENG-32 buy-back is gone')
+  ok(/feet/i.test(quick.sigText), `${quick.name} does not say its feet are different`)
+  const qIdx = E.ARCHETYPES.indexOf(quick)
+  const qSt = { ...base, inRun: true, arch: qIdx, boardH: [H(1, 9), null, F(3)],
+    boardP: [hand, null, { ...solidFoot, set: false }] }
+  eq(E.supportNow(qSt), bedded, `${quick.name} still pays the settling cost`)
+  // ...and only that climber
+  const other = E.ARCHETYPES.findIndex(a => !a.quickFeet)
+  ok(other >= 0, 'every archetype has quickFeet, so the cost applies to nobody')
+  ok(E.supportNow({ ...qSt, arch: other }) < bedded,
+    'the buy-back reached every climber, so ENG-32 does nothing in a run')
+  // outside a run there is no archetype, so nobody gets it for free
+  ok(E.supportNow({ ...qSt, inRun: false }) < bedded,
+    'a skirmish got the buy-back with no archetype in play')
+
+  /* PLANTED IS NOT SETTLED. The Trad Dad's signature is `settleMax: 0` — nothing it
+     places ever settles — which is about the Power bonus, not about whether a foot is
+     on the wall. Reading freshness off `settled` charged that climber the cost every
+     turn for ever as a side effect of its own identity, and measured it down to 6.2%.
+     A planted foot with no settle pays in FULL. */
+  const trad = E.ARCHETYPES.find(a => a.settleMax === 0)
+  ok(trad, 'no archetype has settleMax 0, so this interaction cannot be tested')
+  eq(E.supportNow({ ...base, boardH: [H(1, 9), null, F(3)],
+    boardP: [hand, null, { ...solidFoot, set: true, settled: 0 }] }), bedded,
+    `a planted foot that cannot settle was still charged — ${trad.name} pays for its own signature`)
+  // and resolve marks a foot that stood the turn as planted even at settleMax 0
+  const tradIdx = E.ARCHETYPES.indexOf(trad)
+  const stood = E.resolve({ ...base, arch: tradIdx, inRun: true,
+    boardH: [null, null, F(3, { grip: 9 })],
+    boardP: [null, null, { ...solidFoot, set: false }], feetDeck: [F(9)] }, new E.RNG(3))
+  eq(stood.boardP[2] && stood.boardP[2].set, true,
+    'a foot that stood the turn was not marked planted (settleMax 0 climber)')
+  eq(stood.boardP[2] && (stood.boardP[2].settled ?? 0), 0,
+    'the settleMax-0 climber started settling after all — the fields are conflated again')
+  const foot = solidFoot
+  // no feet at all is worse still, and the campus bite is separate from Support
+  eq(E.supportNow({ ...base, boardH: [H(1, 9), null, F(3)], boardP: [hand, null, null] }), 0,
+    'campusing still granted Support')
+
+  // ONE FORMULA. The screen prints this number; a second copy of the sum would drift
+  // (ENG-19), so powerAgainst must be its only consumer of the total.
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  const pa = eng.slice(eng.indexOf('export function powerAgainst'), eng.indexOf('export function biteAgainst'))
+  ok(pa.length > 400, 'powerAgainst moved out from under this guard')
+  ok(/supportNow\(s\)/.test(pa), 'powerAgainst no longer reads the shared Support formula')
+  ok(!/\.support\b/.test(pa), 'powerAgainst grew its own copy of the Support sum')
+
+  // the gift stance is not charged a settling cost — there was no placement to rush
+  const stanced = E.afterMove({ ...base, boardH: [H(1, 9), null, F(3)],
+    boardP: [hand, null, null], routeMove: { kind: 'stance', lane: 0, text: 'x' } }).s
+  eq(E.supportNow(stanced), E.STANCE_SUPPORT, 'a gifted stance was charged a settling cost')
+
+  // Featureless still means the lane gives nothing, settled or not
+  const blank = { ...base, boardH: [H(1, 9), null, F(3, { name: 'blank', grip: 4 })],
+    boardP: [hand, null, { ...foot, settled: 3 }] }
+  eq(E.powerAgainst(blank, hand, blank.boardH[0], 0), E.powerAgainst(
+    { ...blank, boardP: [hand, null, null] }, hand, blank.boardH[0], 0),
+    'a blank feet hold granted Support anyway')
+
+  // THE LANE ACTUALLY WORKS HOLDS — the finding that reframed this ticket. A foot that
+  // beats its hold's grip clears it, and that is real progress up the route.
+  const strongFoot = feet.reduce((a, b) => (b.power > a.power ? b : a))
+  const stepUp = { ...base, boardH: [null, null, F(3, { grip: 1 })],
+    boardP: [null, null, { ...strongFoot, settled: 0 }], holdDeck: [], feetDeck: [F(9)] }
+  const stepped = E.resolve(stepUp, new E.RNG(3))
+  ok(stepped.cleared > stepUp.cleared, 'working a feet hold is no longer progress up the route')
+  // ...and the preview says so, for the feet lane like any other
+  eq(E.previewLane(stepUp, 2).clears, true, 'the preview does not show the feet lane working its hold')
+
+  // the screen says what the feet are doing, using the shared number
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const board = app.slice(app.indexOf('<div className="board">'), app.indexOf('<div className="sect">YOUR HAND</div>'))
+  ok(board.length > 400, 'the board render moved out from under this guard')
+  ok(/supportNow\(st\)/.test(board), 'the feet lane does not print what the hands are getting')
+  ok(/SETTLING/.test(board), 'the feet lane does not say when a foot is still settling')
+  ok(/i === 2/.test(board), 'the feet reading is not scoped to the feet lane')
+  /* the "settling" note must be DERIVED, not assumed. The first cut keyed it on
+     `settled` and promised a Support-1 smear a point it can never gain, because the
+     floor exempts it — caught on a render, not in review. It has to ask the same
+     function resolve asks. */
+  ok(/set: true/.test(board), 'the settling note is not derived from the shared formula')
+  ok(/gain > 0/.test(board), 'the settling note is not conditional on there being a gain')
+  const reading = board.slice(board.indexOf('const now = supportNow(st)'))
+  ok(reading.length > 200, 'the feet reading moved out from under this guard')
+  ok(!/c\.settled/.test(reading),
+    'the feet reading keys the settling note on `settled`, which the floor makes a lie')
+
+  // and the preview still agrees with resolve with feet in play, fresh and settled
+  for (const settled of [0, 1, 2]) {
+    const st = { ...base, pump: 6, boardH: [H(1, 4), H(2, 6), F(3)],
+      boardP: [hand, E.spawn('Lock Off'), { ...foot, settled }],
+      feetDeck: [F(9)], holdDeck: [H(4, 5)] }
+    const lanes = [0, 1, 2].map(i => E.previewLane(st, i))
+    eq(E.previewPump(st, lanes), E.resolve(st, new E.RNG(5)).pump,
+      `the preview and resolve disagree on pump with a foot settled ${settled}`)
+    const predicted = lanes.filter(p => p.clears).length
+    const got = E.resolve(st, new E.RNG(5)).cleared - st.cleared
+    if (!lanes.some(p => p.stick !== undefined)) {
+      eq(got, predicted, `the preview mispredicted the clears with a foot settled ${settled}`)
+    }
+  }
+})
 test('a bonus curse is a tax you can pay off, not a dead card (CARD-17)', () => {
   /* CARD-17. The four BONUS curses were the last dead cards in the game and were
      actually WORSE than dead: they carry a pump cost and nothing else, and a played

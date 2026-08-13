@@ -118,6 +118,13 @@ export type Card = {
       two-lane one; this is what makes *which hand* a question. */
   opposes: boolean
   fx: Fx; targeted: boolean; text: string; latched?: boolean; settled?: number
+  /* ENG-32: has this card stood a full turn on the wall? Deliberately NOT `settled`.
+     The Trad Dad's whole signature is `settleMax: 0` — "nothing you place ever
+     settles" — which is a statement about the Power bonus, not about whether a foot is
+     planted. Reading freshness off `settled` charged that climber the settling cost
+     every turn for ever, as a side effect of its own identity (measured: 6.2%). Two
+     different questions, so now two fields. */
+  set?: boolean
   upgraded?: boolean
 }
 type Piles = { draw: Card[]; discard: Card[]; exhaust: Card[]; hand: Card[] }
@@ -303,15 +310,20 @@ export const FALL_PUMP = 0.5      // pump you keep after being caught
    quietly eaten all the headroom the band had left. You come back on part-pumped
    now, exactly as a caught roped fall does above: chalk up, shake out, tie back
    in — but you have already been fighting. */
-/* ENG-21 raised this from 0.4 to 0.55, and the reason is the contract rather than
-   the constant. CARD-9 says an extra burn is a leg-up, not a skip. Once the route can
-   reject a card and pin a rest, a single burn is a little less reliable, so a RETRY is
-   worth more — measured, the lift went 2.4 → 4.0 against a ceiling of 4 with the trio
-   at 12% of the move table. Trimming ENG-21 to 8% brought the lift to 3.8, which is
-   0.2 inside a standard error of about 2.3: a guard passing on a coin flip, which is
-   the fragility GUARD-1 was written to remove, not something to ship. So the item pays
-   instead — the dial BAL-15 established for exactly this reading. */
-export const WIND_PUMP = 0.55     // share of the meter you carry into a wind burn
+/* ENG-21 raised this 0.4 → 0.55 at v10.10 and ENG-32 put it BACK to 0.4 at v10.12.
+   The reason both times is the contract rather than the constant. CARD-9 says an extra
+   burn is a leg-up, not a skip. ENG-21 made a single burn less reliable, so a retry got
+   more valuable and the lift went 2.4 → 4.0 against a ceiling of 4; the item paid for
+   it. ENG-32 then made the START of a burn harder — a freshly placed foot gives the
+   hands less — and a wind burn is nothing BUT early turns, because it begins
+   part-pumped. The two stacked and inverted the contract: the lift measured −1.3, a
+   Second Wind actively worth buying against, which is a different failure from the one
+   the ceiling guards. ENG-32 now does the work the v10.10 nerf was doing, so the nerf
+   comes off rather than being paid twice. It sits at 0.45 rather than either end
+   because both ends are coin flips: 0.55 measured a lift of −1.3 (fails the floor) and
+   0.4 measured 3.8 against a ceiling of 4 (passes by 0.2 inside a ~2.3 standard error).
+   The value is chosen for MARGIN, which is the whole point of GUARD-1. */
+export const WIND_PUMP = 0.45     // share of the meter you carry into a wind burn
 export type MapNode = { type: NodeType; routeIdx: number }
 
 export type GameState = {
@@ -2009,6 +2021,14 @@ export type Archetype = {
   dPower?: number
   dHand?: number
   dContact?: number; settleMax?: number; ignoreWeather?: boolean; dSkin?: number
+  /* ENG-32: this climber's feet are trusted the moment they land, so they never pay the
+     settling cost. A buy-back, and a characterful one: the settling cost falls hardest
+     on whoever moves their feet most, and the Comp Kid plays the fastest game in the
+     roster (85 turns against the Trad Dad's 133). It cost that climber ~0.9 points and
+     it had ~1.1 of margin over its 5% floor, which is the CARD-15 pattern exactly —
+     a global change sinks one archetype, so that archetype is bought back rather than
+     the floor being lowered to meet it. */
+  quickFeet?: boolean
   dAttempts?: number
   /** META-6: a deed that earns this climber early. The `unlock` level stays as
       a backstop, so the deed is a faster, earned path — never the only one. */
@@ -2028,8 +2048,8 @@ export const ARCHETYPES: Archetype[] = [
       ['Shake Out', 2], ['Breathe', 2], ['Chalk Up', 1]) },
   { id: 'comp', name: 'The Comp Kid', unlock: 4, gear: 'downturn',
     text: 'Trained on plastic. Enormously strong, no patience at all.',
-    sig: 'Plastic', sigText: '+2 Power on every move, and one less burn a day. All engine, no patience.',
-    dPower: 2, dAttempts: -1, deed: 'strong',   // META-6: earned by sending V5+
+    sig: 'Plastic', sigText: '+2 Power on every move, and one less burn a day. All engine, no patience. Feet you trust the moment they land.',
+    dPower: 2, dAttempts: -1, quickFeet: true, deed: 'strong',   // META-6: earned by sending V5+
     loadout: L(['Deadpoint', 2], ['Lunge', 2], ['Bump', 1], ['Mantle', 1], ['Crimp Grip', 1],
       ['Smear', 2], ['High Step', 1], ['Shake Out', 2], ['Deep Breath', 1],
       ['Breathe', 1], ['Chalk Up', 1]) },
@@ -3992,6 +4012,31 @@ export const MOVE_SPIT = 3
     on Power: every feet card in the game is Power 0-3 and Support 1-2, so Power
     would have spat almost all of them and Support tells a smear from a solid edge. */
 export const MOVE_SPIT_SUPPORT = 2
+/* ENG-32. The feet lane read as "a lane you fill, not a decision you make", and
+   measuring it showed the premise was half wrong in a useful way: 38.9% of every hold
+   worked in a campaign is worked by the FEET lane. A third of the climb was already
+   happening down there and nothing said so.
+   What was missing was the trade. A foot gave its full Support the instant it landed,
+   so there was no cost to moving your feet and no reward for leaving them alone —
+   and the card pool already carries the shape of a trade (Support 2+ averages 1.0
+   Power, Support 1 averages 1.6), it just never bit.
+   Support is EARNED now: a foot placed this turn withholds this much, and pays in
+   full once it has settled. That is the climbing truth and it makes the pool's own
+   trade real — a high-Power foot tends to CLEAR its hold, which takes it off the wall
+   before it can ever settle, so stepping up costs you the Support that standing still
+   would have given you. Lane-local by construction: no cross-lane ordering, and it
+   rides `powerAgainst`, which the preview and resolve already share.
+   A FRESH FOOT NEVER DROPS BELOW ONE SUPPORT, and that floor is the whole difference
+   between a good idea and a shippable one. Charged flat, this measured 2.0 points of
+   completion (paired n=2700: 53.0 → 51.0) and took two other guards with it — the
+   weakest climber to 4.3% against its 5% floor, and CARD-9 to a NEGATIVE lift, because
+   a Second Wind burn starting part-pumped is worth less than nothing once the base is
+   that much harder. Support is load-bearing enough that one point of it, withheld
+   everywhere, is a difficulty change rather than a texture change. Floored, it bites
+   only the Support-2 placements — the ones whose Support is worth the most, and the
+   ones you would actually think twice about rushing — and a smear still does the
+   little it always did. */
+export const FOOT_FRESH = 1
 /** What a gifted no-hands stance is worth, as Support you did not have to place. */
 export const STANCE_SUPPORT = 1
 /** The moves that are good news, for anything that has to tell the two apart. */
@@ -4159,30 +4204,48 @@ export function gripShown(s: GameState, h: Hold): { lo: number; hi: number; sure
 }
 
 /** Power a card brings to a lane, after abilities and conditions. */
+/* What the feet are actually giving your hands, before the receiving hold's own
+   ability has its say. ENG-19's lesson is why this is a function and not a second
+   copy of the sum: the screen has to print this number, and two copies of one formula
+   drift. `powerAgainst` is the only consumer of the total; the per-hold parts
+   (Featureless, Two-finger) stay where the hold is known. */
+export function supportNow(s: GameState): number {
+  const feetCard = s.boardP[2]
+  /* ENG-21: a gifted stance is the feet you did not place, so it pays in SUPPORT —
+     which is what ENG-20 allows a condition to move (Bite and Support, never Power).
+     It rides the same conditions a real foot placement does, so wet rock devalues a
+     stance exactly as it devalues your feet. A gift arrives ready to stand on, so it
+     pays no ENG-32 settling cost — there is no placement to have rushed. */
+  const stanceSup = s.stance && !feetCard ? STANCE_SUPPORT : 0
+  if (!feetCard && !stanceSup) return 0
+  /* ENG-32: a foot pays in full only once it has settled — but never below one, so
+     the cost lands on the solid placements rather than flattening every smear to
+     nothing. See the note on FOOT_FRESH for what the unfloored version measured. */
+  /* ...and never on the opening turn: there was no previous turn you could have kept
+     your feet from, so charging it there taxes every burn's START rather than a choice
+     you made. It landed hardest on the one place that is nothing but opening turns —
+     a Second Wind burn, which begins part-pumped — and inverted CARD-9's contract. */
+  const quick = s.inRun && archOf(s).quickFeet === true
+  const fresh = feetCard && !feetCard.set && s.turn > 1 && !quick
+    ? Math.max(0, Math.min(FOOT_FRESH, feetCard.support - 1)) : 0
+  return Math.max(0, (feetCard ? feetCard.support : stanceSup) - fresh
+    + gearMods(s.boardP ? s.gear : []).dSupport
+    + (WEATHER[s.weather]?.dSupport ?? 0)
+    + (windowOf(s)?.dSupport ?? 0))           // ROUTE-6: the feet stop trusting it
+}
 export function powerAgainst(s: GameState, card: Card, hold: Hold, lane: number,
   live?: (Card | null)[]): number {
   const wb = boonMods(s.boons)
   const board = live ?? s.boardP
-  const feetCard = s.boardP[2]
   const feetHold = s.boardH[2]
   const featureless = feetHold ? abilityOf(feetHold) === 'Featureless' : false
   const bm = boonMods(s.boons)
   // wet rock: your feet are worth less, which every deck feels
-  /* ENG-21: a gifted stance is the feet you did not place, so it pays in SUPPORT —
-     which is what ENG-20 allows a condition to move (Bite and Support, never Power).
-     It rides the same conditions a real foot placement does, so wet rock devalues a
-     stance exactly as it devalues your feet. */
-  const stanceSup = s.stance && !feetCard ? STANCE_SUPPORT : 0
-  const sup = feetCard || stanceSup
-    ? Math.max(0, (feetCard ? feetCard.support : stanceSup)
-        + gearMods(s.boardP ? s.gear : []).dSupport
-        + (WEATHER[s.weather]?.dSupport ?? 0)
-        + (windowOf(s)?.dSupport ?? 0))       // ROUTE-6: the feet stop trusting it
-    : 0
+  const sup = supportNow(s)
   // Big Hands: Support normally favours one hand; this reaches both
   // Big Hands doubles what the feet give; it does not gate the default
   const eff = bm.wideSupport ? sup * 2 : sup
-  const support = lane < 2 && (feetCard || stanceSup) && !featureless
+  const support = lane < 2 && !featureless
     ? eff + (abilityOf(hold) === 'Two-finger' ? -eff : 0) : 0
   let p = card.power + (card.settled ?? 0) + support
   // ENG-16: was a binary +2 above pump 7 on two cards. It scales now, so
@@ -4242,7 +4305,7 @@ export function resolve(s: GameState, rng: RNG): GameState {
     /* a rejected card is HANDED BACK, not filed — see the note on `spit`. The lane
        going unanswered is the cost; the card is not. `settled` resets because it is
        off the wall, the same way an echo returns it. */
-    if (done.spat) piles = { ...piles, hand: [...piles.hand, { ...done.spat, settled: 0 }] }
+    if (done.spat) piles = { ...piles, hand: [...piles.hand, { ...done.spat, settled: 0, set: false }] }
   }
   // ENG-19: powerAgainst and biteAgainst read the feet hold (Support, campus)
   // out of the state they are handed. The move above has already changed the
@@ -4382,7 +4445,7 @@ export function resolve(s: GameState, rng: RNG): GameState {
       }
       boardH[i] = null
       if (card.fx === 'echo') {
-        piles = { ...piles, hand: [...piles.hand, { ...card, settled: 0 }] }
+        piles = { ...piles, hand: [...piles.hand, { ...card, settled: 0, set: false }] }
         boardP[i] = null; log.push(`${card.name} comes back to hand.`)
         continue
       }
@@ -4412,7 +4475,7 @@ export function resolve(s: GameState, rng: RNG): GameState {
           } else log.push(`${card.name} blows.`)
         } else log.push(`${card.name} — all of it, all at once.`)
       }
-    } else boardP[i] = { ...card, contact: c,
+    } else boardP[i] = { ...card, contact: c, set: true,   // ENG-32: it stood the turn
       settled: Math.min((card.settled ?? 0) + (card.fx === 'settle2' ? 2 : 1) + bm.settle,
         s.inRun ? (archOf(s).settleMax ?? SETTLE_MAX) : SETTLE_MAX) }
   }

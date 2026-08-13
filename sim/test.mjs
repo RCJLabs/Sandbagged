@@ -1866,7 +1866,25 @@ if (SLOW) {
        NOTE for the next person: the move roll's DRAW ORDER (lane, then kind) is
        load-bearing. An earlier cut of ENG-21 rolled the kind first and that
        reshuffle alone moved the CARD-9 wind arm +2.9 and read as this ticket
-       breaking the ceiling. A guard pins the order now. */
+       breaking the ceiling. A guard pins the order now.
+       v10.12 (ENG-32): Support is EARNED — a foot placed this turn gives the hands
+       less than one that has stood a turn. Measured on the ~52 pin: paired n=2700
+       53.0 → 51.7, about 1.3 harder, and the pin holds. Getting there took three
+       corrections and all three are worth knowing, because each one was a case of a
+       global change landing on something's IDENTITY rather than on player choice:
+       (1) charged flat it was 2.0 points and broke two other guards; a floor that
+       never takes a foot below 1 Support puts the cost on the solid placements only.
+       (2) freshness first read `settled`, which is pinned to 0 by the Trad Dad's own
+       signature — so that climber paid the cost every turn for ever as a side effect
+       of being itself. `set` is a separate field now; planted is not settled.
+       (3) charged on turn 1 it taxed every burn's START, which is nothing but opening
+       turns in a Second Wind burn — that inverted CARD-9 to a NEGATIVE lift. Exempt on
+       the opening turn: there is no previous turn you could have kept your feet from.
+       Then the cost still landed hardest on whoever moves their feet most, so the Comp
+       Kid (85 turns a run) was bought back with `quickFeet` rather than the 5% floor
+       being lowered to meet it — the CARD-15 pattern. And WIND_PUMP went 0.55 → 0.45
+       rather than back to 0.4: 0.55 read a lift of −1.3 and 0.4 read 3.8 against a
+       ceiling of 4, so both ends are coin flips and the middle is chosen for margin. */
     ok(full > 44 && full < 58,
       `the campaign completes ${full}% with a full journal — ~52-53, held at v9.98 (ROUTE-13)`)
     ok(pcts[0] < full - 5, `reading his journal is worth ${(full - pcts[0]).toFixed(1)} points`)

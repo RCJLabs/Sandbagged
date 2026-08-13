@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.11 — CARD-17: a bonus curse is a tax you can pay off — write it off
-//   mid-climb and it is gone for the burn instead of coming back round
+// SANDBAGGED v10.12 — ENG-32: the feet lane is a trade — Support is earned, a rushed
+//   placement gives the hands less, and the lane finally says what it is doing
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -22,6 +22,7 @@ import {
   campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitZone, claimStep, claimVerdict,
   consumableById, KIT_MAX, useKitStep, secondWindStep,
   coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyGoals, dailyRoute, dailySeed, dailyShare, dailyUsed, tomorrowKey, MOVE_GIFTS, CURSE_TAX,
+  supportNow,
   SEASON_WEEKS, seasonKey, seasonWeekOf, seasonTitle, nextSeasonTitle, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
   endSession, endingFor, endingStep, establishedIn, exportSave, exposed, exposureOf,
   faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
@@ -1148,7 +1149,7 @@ function startTutorial() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.11 · RCJ Labs</div>
+          <div className="sfoot">v10.12 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1341,7 +1342,7 @@ function startTutorial() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.11 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.12 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -3165,6 +3166,28 @@ function startTutorial() {
                       : lanes[i].stick! >= 0.45 ? 'var(--tan)' : 'var(--red)' }}>
                     STICK {Math.round(lanes[i].stick! * 100)}%</div>) : null}
                 {(c.settled ?? 0) > 0 && <div className="ab">SETTLED +{c.settled}</div>}
+                {/* ENG-32: the feet lane never said what it was doing for you, and it
+                    turns out to work a third of the holds in a campaign. It reads now:
+                    what your hands are getting, and whether the foot is still settling
+                    in — which is the whole trade, since a foot that works its hold
+                    leaves the wall before it can ever pay in full. */}
+                {i === 2 ? (() => {
+                  const now = supportNow(st)
+                  /* the gain is ASKED FOR, not assumed: a fresh foot is floored at one
+                     Support and exempt on the opening turn, so "settling" is only true
+                     when standing a turn would actually pay more. Deriving it from the
+                     same function resolve uses is the only way the label cannot lie —
+                     the first cut read `settled` and told a Support-1 smear it would
+                     gain a point it can never gain. */
+                  const planted = supportNow({ ...st,
+                    boardP: [st.boardP[0], st.boardP[1], { ...c, set: true }] })
+                  const gain = planted - now
+                  return (
+                    <div className="ab" style={{ color: now > 0 ? 'var(--green)' : 'var(--fade)' }}>
+                      {now > 0 ? `HANDS +${now}` : 'NOTHING FOR THE HANDS'}
+                      {gain > 0 ? ` · SETTLING (+${gain} NEXT TURN)` : ''}
+                    </div>)
+                })() : null}
                 <div className="tx" style={{ marginTop: 2 }}>{c.text}</div></div>
               <Pips o={h ? powerAgainst(st, c, h, i) : c.power} d={c.contact} />
               {(() => {
