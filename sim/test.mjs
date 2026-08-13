@@ -1867,6 +1867,23 @@ if (SLOW) {
        load-bearing. An earlier cut of ENG-21 rolled the kind first and that
        reshuffle alone moved the CARD-9 wind arm +2.9 and read as this ticket
        breaking the ceiling. A guard pins the order now.
+       v10.16 (SIM-6): the RULER changed, not the climb. `autoPlay` chose the feet by
+       max Support alone, so it could not see that a foot works its hold — and the feet
+       lane works about 38% of every hold worked. Correcting it is worth about +1.9
+       points measured (paired n=2700: 51.7 → 53.6 on the first value model), and the
+       final model reads n=2700 52.7 — so THE ~52 PIN STILL HOLDS and no re-pin was
+       needed. State it precisely, because the ticket as first logged overstated it: the
+       LANE is ~38% of the clears, the BLINDNESS was ~1.9 points. Different claims.
+       What it did break was the CALIBRATION of two other guards, because they were
+       measured through the same weak policy. A competent policy pulls the guide line
+       further ahead of the constrained ones, so ROUTE-8 read the traverse at −9.8 and
+       the direct at −7.8 against its −8 floor: both retuned (traverse dCrux −2 → −3,
+       direct dCrux 4 → 3), because that guard is a statement about the CONTENT and the
+       better measurement is the one to believe. And a better policy needs an extra burn
+       less, so CARD-9's lift went NEGATIVE at the old handicap; WIND_PUMP came down
+       0.45 → 0.22 to keep the wind a leg-up. Two rounds of that were spent because
+       refining the policy's value model moved the wind again — if you touch the policy,
+       expect to re-read CARD-9.
        v10.12 (ENG-32): Support is EARNED — a foot placed this turn gives the hands
        less than one that has stood a turn. Measured on the ~52 pin: paired n=2700
        53.0 → 51.7, about 1.3 harder, and the pin holds. Getting there took three

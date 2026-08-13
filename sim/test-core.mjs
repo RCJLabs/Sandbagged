@@ -2307,6 +2307,80 @@ test('FA-1: the FA is a real mode, and the grade you claim is an economy', () =>
     'an in-run FA claim did not drop back onto the map')
 })
 
+test('the tuning policy can see the feet lane (SIM-6)', () => {
+  /* SIM-6. `autoPlay` chose the feet by MAX SUPPORT and nothing else, so it could not
+     see that a foot works its hold — and the feet lane works about 38% of every hold
+     worked in a campaign. That is the ENG-25 failure mode aimed at the harness itself:
+     every band number in the ledger was measured by a policy under-playing one lane.
+     Correcting it was worth +1.9 points of measured completion (paired n=2700:
+     51.7 → 53.6) with NO game rule changed — the ruler got better, not the climb.
+     Recorded honestly, because I overstated this when I logged the ticket: the LANE is
+     ~38% of the clears; the BLINDNESS was worth 1.9 points. Different claims. */
+  const H = (uid, grip) => ({ uid, name: 'crimp', bite: 1, grip, crux: false, clean: false })
+  const F = (uid, grip) => ({ uid, name: 'foothold', bite: 1, grip, crux: false, clean: false })
+  const base = { ...E.freshRun(6, 0, 5), inRun: true, skirmish: null, phase: 'climb',
+    weather: 1, rock: 0, turn: 2, flow: 0, pump: 3, gear: [], boons: [], mutators: [],
+    boardH: [null, null, null], boardP: [null, null, null], holdDeck: [], feetDeck: [],
+    worked: [], order: [], fxLane: ['', '', ''], topRope: false }
+  ok(E.FOOT_CLEAR_VALUE > 0, 'a worked foothold is worth nothing to the policy')
+
+  const feet = Object.keys(E.CARDS).map(n => E.spawn(n)).filter(c => c.lane === 'feet')
+  const solid = feet.find(c => c.support >= 2 && c.power <= 1)     // Support, no reach
+  const strong = feet.find(c => c.power >= 3 && c.support === 1)   // reach, less Support
+  ok(solid && strong, 'the feet pool no longer has both a Support foot and a strong one')
+
+  /* THE DECIDING CASE: a foothold this reachable foot WORKS and the Support foot does
+     not. Blind-to-Support-only picks the wrong one; a policy that can see the lane
+     takes the hold. This is the whole ticket in one assertion. */
+  const easyFoot = F(9, 1)
+  const st = { ...base, boardH: [H(1, 99), null, easyFoot],
+    piles: { draw: [], discard: [], exhaust: [], hand: [solid, strong] } }
+  ok(E.powerAgainst(st, strong, easyFoot, 2) >= E.gripFor(st, easyFoot),
+    'the strong foot does not work this foothold, so the fixture proves nothing')
+  ok(E.powerAgainst(st, solid, easyFoot, 2) < E.gripFor(st, easyFoot),
+    'the Support foot also works it, so the two choices are not distinguishable')
+  eq(E.autoPlay(st, new E.RNG(3)).boardP[2].name, strong.name,
+    'the policy left a workable foothold to take Support instead — it still cannot see the lane')
+
+  /* ...and it has NOT just become "always take the strongest foot". With nothing
+     workable under you, Support is what a foot is for, and the policy takes it. */
+  const hardFoot = F(10, 99)
+  /* the strong foot is FIRST in hand on purpose: `reduce` keeps its accumulator on a
+     tie, so with `[solid, strong]` this passed even when Support was not being scored
+     at all — it was hand order doing the work, not the policy. Proved by injection. */
+  const st2 = { ...base, boardH: [H(1, 99), null, hardFoot],
+    piles: { draw: [], discard: [], exhaust: [], hand: [strong, solid] } }
+  ok(E.powerAgainst(st2, strong, hardFoot, 2) < E.gripFor(st2, hardFoot),
+    'the strong foot works even this foothold, so the fixture proves nothing')
+  eq(E.autoPlay(st2, new E.RNG(3)).boardP[2].name, solid.name,
+    'the policy chased an unreachable foothold instead of taking the Support')
+  // with no foothold at all, Support is still the only thing a foot can give
+  const st3 = { ...base, boardH: [H(1, 99), null, null],
+    piles: { draw: [], discard: [], exhaust: [], hand: [strong, solid] } }
+  eq(E.autoPlay(st3, new E.RNG(3)).boardP[2].name, solid.name,
+    'with nothing under you the policy did not take the most Support')
+
+  // it prices Support through the SHARED function, so ENG-32's settling cost is in it
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  const pick = eng.slice(eng.indexOf('export function autoPlay'), eng.indexOf('const order = [0, 1]'))
+  ok(pick.length > 300, 'the feet pick moved out from under this guard')
+  ok(/supportNow\(/.test(pick), 'the policy scores Support with its own copy of the sum')
+  ok(/powerAgainst\(st, c, h2, 2\)/.test(pick), 'the policy does not ask whether the foot works its hold')
+  ok(!/b\.support > a\.support/.test(pick), 'the policy is back to picking on raw Support alone')
+
+  // a settled foot is never thrown away — the policy only fills an EMPTY feet lane,
+  // which is what makes ENG-32's "leave them alone" trade available to it at all
+  const held = { ...base, boardH: [H(1, 99), null, easyFoot],
+    boardP: [null, null, { ...solid, set: true }],
+    piles: { draw: [], discard: [], exhaust: [], hand: [strong] } }
+  eq(E.autoPlay(held, new E.RNG(3)).boardP[2].name, solid.name,
+    'the policy replaced a planted foot, which it cannot do in the real game either')
+
+  // and the harness still only ever calls the shipping engine (SIM-1/SIM-5)
+  const sim = readFileSync('sim/run.mjs', 'utf8')
+  ok(/autoPlay/.test(sim), 'the harness no longer plays through the shipping policy')
+  ok(!/support/i.test(sim), 'the harness grew its own opinion about the feet')
+})
 test('a challenge is a problem and its terms, and a typo is refused (SOCIAL-2)', () => {
   /* SOCIAL-2. SOCIAL-1 let you paste a RESULT — people could compare numbers but
      nobody could climb your thing. A challenge code is a seed and one objective: the

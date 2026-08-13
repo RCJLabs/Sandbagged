@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.15 — SOCIAL-2: challenge codes — a seed and one objective, short
-//   enough to read out, and a mistyped one is refused rather than climbed
+// SANDBAGGED v10.16 — SIM-6: the tuning policy can see the feet lane. A better ruler,
+//   not an easier climb — and it re-calibrated two other guards on the way
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1291,7 +1291,7 @@ function startTutorial() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.15 · RCJ Labs</div>
+          <div className="sfoot">v10.16 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1520,7 +1520,7 @@ function startTutorial() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.15 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.16 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

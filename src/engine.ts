@@ -288,10 +288,10 @@ export type Line = { id: string; name: string; text: string
    line's identity is now the cruxes alone, and it lands ~2 under the guide. */
 export const LINES: Line[] = [
   { id: 'guide', name: 'As it goes', text: 'The line in the book. No arguments.' },
-  { id: 'direct', name: 'The direct', dClear: 0, dCrux: 4,
+  { id: 'direct', name: 'The direct', dClear: 0, dCrux: 3,
     text: 'Straight up it. Same height, but four more cruxes on the way.' },
-  { id: 'traverse', name: 'The traverse', dCrux: -2, dClear: 1,
-    text: 'Out left and back in, past the worst of it. Two fewer cruxes, but the long way — more holds to work before the top.' },
+  { id: 'traverse', name: 'The traverse', dCrux: -3, dClear: 1,
+    text: 'Out left and back in, past the worst of it. Three fewer cruxes, but the long way — more holds to work before the top.' },
 ]
 export type RunRecord = {
   seed: number; arch: number; style: number; rope: boolean; circuit: boolean
@@ -323,7 +323,7 @@ export const FALL_PUMP = 0.5      // pump you keep after being caught
    because both ends are coin flips: 0.55 measured a lift of −1.3 (fails the floor) and
    0.4 measured 3.8 against a ceiling of 4 (passes by 0.2 inside a ~2.3 standard error).
    The value is chosen for MARGIN, which is the whole point of GUARD-1. */
-export const WIND_PUMP = 0.45     // share of the meter you carry into a wind burn
+export const WIND_PUMP = 0.22   // share of the meter you carry into a wind burn
 export type MapNode = { type: NodeType; routeIdx: number }
 
 export type GameState = {
@@ -4806,11 +4806,44 @@ export function playBonusStep(s: GameState, c: Card, lane: number, rng: RNG): Ga
 }
 
 /** Headless policy — used by the sim so it exercises the shipping engine. */
+/* SIM-6. What a worked FOOTHOLD is worth to the policy, against a point of Support.
+   A cleared foothold is one hold of progress, certain. A point of Support is +1 Power
+   on both hand lanes for a turn, which turns a near miss into a hold sometimes. So the
+   certain thing is worth a little more than the point that might pay — that is the whole
+   content of this number, and it is measured rather than reasoned (see the ledger). */
+export const FOOT_CLEAR_VALUE = 3
 export function autoPlay(s: GameState, rng: RNG): GameState {
   let st = { ...s, boardP: s.boardP.slice(), piles: { ...s.piles, hand: s.piles.hand.slice() } }
   const feet = st.piles.hand.filter(c => c.kind === 'move' && c.lane === 'feet')
   if (!st.boardP[2] && feet.length) {
-    const pick = feet.reduce((a, b) => (b.support > a.support ? b : a))
+    /* SIM-6: the policy used to take the most Support in hand and nothing else, which
+       made it blind to the fact that a foot WORKS ITS HOLD — measured, the feet lane
+       works about 39% of every hold worked in a campaign, so a third of the climb was
+       being chosen for by a rule that could not see it. That is the ENG-25 failure mode
+       and it means every band number was measured by a policy under-playing the feet.
+       It scores the same two things the hand lanes are scored on: does this clear, and
+       what does it leave behind. Support is read through `supportNow` with the card in
+       place, so ENG-32's settling cost is priced in rather than assumed away. */
+    const h2 = st.boardH[2]
+    /* A foot is worth what it gives you NOW plus what it will give you if it stays —
+       and those are different numbers, which is the whole ENG-32 trade. A fresh
+       Support-2 foot and a fresh Support-1 foot pay the hands exactly the same on the
+       turn they land, because the settling cost is floored at one Support; they only
+       separate once PLANTED. Scoring the placement turn alone therefore cannot tell a
+       Flag from a Rock Over, which is what this guard caught. So: a foot that works its
+       hold leaves the wall and is scored on the hold, and a foot that stays is scored on
+       what it will pay once it is bedded in. */
+    const supWith = (c: Card, set: boolean) => {
+      const live = st.boardP.slice(); live[2] = { ...c, set }
+      return supportNow({ ...st, boardP: live })
+    }
+    const footValue = (c: Card) => {
+      const now = supWith(c, false)
+      if (!h2) return now + supWith(c, true)    // nothing under you; it can only stand there
+      const clears = powerAgainst(st, c, h2, 2) >= gripFor(st, h2)
+      return clears ? now + FOOT_CLEAR_VALUE : now + supWith(c, true)
+    }
+    const pick = feet.reduce((a, b) => (footValue(b) > footValue(a) ? b : a))
     st.boardP[2] = pick; st.piles = pileFromHand(st.piles, pick.uid)
   }
   const order = [0, 1].sort((a, b) => (st.boardH[b]?.bite ?? 0) - (st.boardH[a]?.bite ?? 0))
