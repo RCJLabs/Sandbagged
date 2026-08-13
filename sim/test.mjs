@@ -1115,11 +1115,50 @@ test('the game can build you a deck that actually works', () => {
       for (const n of new Set(d)) ok(d.filter(x => x === n).length <= E.copyLimit(E.CARDS[n].rarity ?? 'common'),
         `${label}: too many copies of ${n}`)
       ok(!d.some(n => (E.CARDS[n].rarity ?? '') === 'curse'), `${label}: it put a curse in your deck`)
+      /* SIM-7: THE SLOT RULES, which this guard did not check and the builder did not
+         obey. `copyLimit` caps copies of ONE card; RARE_SLOTS and UNCOMMON_SLOTS cap how
+         many rares and uncommons the whole loadout may hold — "without this a full
+         collection fields eight distinct rares and every route sends at ~100%". The card
+         picker enforces them in three places; the builder enforced neither, so BUILD ME
+         ONE handed a full collection TEN rares against a limit of one.
+         Note WHY it was invisible: every case here and in the send guard below used a
+         beginner's collection of starters and commons, which contains no rares at all. */
+      const slots = r => d.filter(n => (E.CARDS[n].rarity ?? 'common') === r).length
+      ok(slots('rare') <= E.RARE_SLOTS,
+        `${label}: ${slots('rare')} rares against a limit of ${E.RARE_SLOTS} — the picker would refuse this deck`)
+      ok(slots('uncommon') <= E.UNCOMMON_SLOTS,
+        `${label}: ${slots('uncommon')} uncommons against a limit of ${E.UNCOMMON_SLOTS}`)
+      ok(!d.some(n => (E.CARDS[n].rarity ?? '') === 'beta'), `${label}: it put a beta card in your deck`)
     }
   }
+  /* SIM-7: the beta check above cannot fail on its own, because every `owned` set here
+     already excludes beta — found by injecting exactly that and watching it stay green.
+     `buildable` is what refuses them, whatever you claim to own, so that is asserted
+     against a collection that DOES claim them. It matters because the balance harness's
+     own stat sort had no such filter and measured the pinned band on a deck that was six
+     beta cards out of fifteen. */
+  const claimBeta = [...all, ...Object.keys(E.CARDS).filter(n => (E.CARDS[n].rarity ?? '') === 'beta')]
+  ok(claimBeta.length > all.length, 'there are no beta cards, so this exclusion covers nothing')
+  const withBeta = E.buildLoadout(st(claimBeta), [], claimBeta)
+  eq(withBeta.filter(n => (E.CARDS[n].rarity ?? '') === 'beta').length, 0,
+    'claiming beta cards as owned put them in the deck the game builds')
+
   const fifteen = E.DEFAULT_LOADOUT.slice(0, E.DECK_SIZE)
   eq(E.buildLoadout(st(all), fifteen, all).join('|'), fifteen.join('|'),
     'it rebuilt a deck that was already full')
+  /* and a seed that is ALREADY over the limit must not be topped up with more — a save
+     written before this fix can carry one, and the builder is the thing that has to not
+     make it worse. */
+  const rares = Object.keys(E.CARDS).filter(n => (E.CARDS[n].rarity ?? '') === 'rare').slice(0, 5)
+  const over = E.buildLoadout(st(all), rares, all)
+  eq(over.filter(n => (E.CARDS[n].rarity ?? '') === 'rare').length, rares.length,
+    'it added more rares to a loadout that was already over the limit')
+  // ONE RULE, in one place: the picker screen must still gate on the same constants
+  const app = readFileSync('src/App.tsx', 'utf8')
+  for (const k of ['RARE_SLOTS', 'UNCOMMON_SLOTS'])
+    ok(app.includes(k), `the picker no longer reads ${k}, so it and the builder have drifted`)
+  ok(/slotsUsed\(deck, 'rare'\) >= RARE_SLOTS/.test(readFileSync('src/engine.ts', 'utf8')),
+    'the builder no longer counts its rares against the limit')
 })
 test('a built deck climbs at least as well as the one it replaces', () => {
   // the only measurement that matters: does the thing it hands a new player
@@ -1142,6 +1181,19 @@ test('a built deck climbs at least as well as the one it replaces', () => {
   const auto = send(built, idx), hand = send(E.DEFAULT_LOADOUT, idx)
   ok(auto >= hand, `the built deck sends ${auto.toFixed(0)}% against the default's ${hand.toFixed(0)}%`)
   ok(auto > 20, `the built deck only sends ${auto.toFixed(0)}% of an early boulder`)
+  /* SIM-7: this instrument CANNOT see the bug that ticket found, and that is worth
+     writing down rather than papering over with an assertion that passes.
+     The builder fielded ten rares against a limit of one, and that deck completed 18.9%
+     of CAMPAIGNS against the starter deck's 28.1%. Measured on one early boulder, the
+     same rare-stuffed deck sends 99% against the commons-built deck's 93% — it is BETTER
+     here and much worse over a trip. Which is exactly what RARE_SLOTS was written for:
+     "without this a full collection fields eight distinct rares and every route sends at
+     ~100%". A single climb rewards raw stats; a campaign is attrition, and fifteen
+     singleton rares draw badly and carry almost no shed.
+     So the full-collection case is guarded two other ways instead: STRUCTURALLY above
+     (the slot rules, negative-tested), and MEASURED over campaigns in the slow ledger
+     ('SIM-7: the deck the game builds you beats the one it replaces'). Adding a send
+     comparison here would have read green through the entire bug. */
 })
 
 test('you can find a card in a pool this size', () => {
@@ -1950,7 +2002,40 @@ if (SLOW) {
        engine's real `cardValue`. Every keyword card in the game is therefore outside the
        band's starting deck unless its raw stats carry it there — which is why all four of
        these are off-band by construction, and also why that is a gap rather than a
-       feature. Logged as SIM-7. */
+       feature. Logged as SIM-7.
+       v10.22 (SIM-7): the band did not move, and what moved instead was a live bug.
+       Going to point the harness at the engine's own `buildLoadout` — the builder behind
+       the BUILD ME ONE button — turned up that its deck completes 18.0% (n=2700) against
+       the 53.4% the band was pinned at, and against 28.1% for the STARTER DECK it offers
+       to replace. Cause: `copyLimit` caps copies of one card, but RARE_SLOTS (1) and
+       UNCOMMON_SLOTS (3) cap how many rares and uncommons a whole loadout may hold, and
+       `buildLoadout` enforced neither — it fielded TEN rares and four uncommons, a deck
+       the card picker would refuse at every step after the first. Obeying the rule takes
+       it to 45.1 (n=900) / 44.3 (n=2700), so the fix is worth +26 points to anyone who
+       presses that button. Off-band by construction: `buildLoadout` is called from the
+       App and from these guards, never from the measured campaign, which still rides
+       `buildBest` in run.mjs. `DECK=builder` measures the game's builder on purpose.
+       TRIAGE, recorded so nobody re-runs it: the structural caps are NOT the problem —
+       MAX_TECH 3->1 read 20.8, MAX_RESTS 3->2 read 17.9, both 20.0, MIN_HANDS 8->9 read
+       18.9, bonus saturation from the first card 20.2, all against a baseline of 18.9.
+       Adding `power * 3` to the build read 34.1, which is what pointed at the real cause.
+       Do not tune the caps; the rule was simply missing.
+       TWO THINGS ABOUT INSTRUMENTS, both of which cost me a wrong assertion first.
+       (1) A SINGLE-CLIMB SEND RATE CANNOT SEE THIS, AND POINTS THE WRONG WAY. The
+       rare-stuffed deck sends 99% of an early boulder against the commons-built deck's
+       93% — better — while completing 18.9% of campaigns against 45%. That is exactly
+       what RARE_SLOTS was written for ("every route sends at ~100%"): one climb rewards
+       raw stats, a campaign is attrition. Both send-rate assertions I first added to the
+       DECK-1 guard were therefore vacuous and were removed rather than kept.
+       (2) THE PINNED BAND ITSELF IS MEASURED ON AN ILLEGAL DECK, and that decision is
+       still open. `buildBest` caps rares and uncommons but not BETA rarity, and
+       `copyLimit('beta')` is 3 — so the measured deck carries three `Beta · Going Alone`
+       (4/8) and three `Beta · Being Frightened` (3/7), six of fifteen slots, in cards
+       `buildable()` refuses outright. Measured, those six are worth +10.5 points: the
+       same stat sort restricted to legal cards reads 42.9 (n=2700). So the honest band
+       for a legal deck is ~43 stat-sorted or ~44 as the game builds it, against a pin of
+       ~52. Re-pointing the harness is therefore a RE-PIN and needs a decision, and it
+       will also recalibrate ROUTE-8, CARD-9 and the climber spread the way SIM-6 did. */
     ok(full > 44 && full < 58,
       `the campaign completes ${full}% with a full journal — ~52-53, held at v9.98 (ROUTE-13)`)
     ok(pcts[0] < full - 5, `reading his journal is worth ${(full - pcts[0]).toFixed(1)} points`)
@@ -1972,6 +2057,29 @@ if (SLOW) {
     ok(a2 >= a1, `act 2 kills ${a2}% against act 1's ${a1}% — the curve is inverted`)
     ok(a3 >= a2, `act 3 kills ${a3}% against act 2's ${a2}% — the last act is not the hardest`)
     ok(a3 > 15, `act 3 kills only ${a3}% — nothing is at stake at the end`)
+  })
+  test('SIM-7: the deck the game builds you beats the one it replaces', () => {
+    /* THE GUARD THAT WAS MISSING. `buildLoadout` is what BUILD ME ONE calls, and nothing
+       had ever measured its deck over a campaign — the two DECK-1 guards check SHAPE, and
+       the one send measurement uses a beginner's collection of starters and commons, which
+       contains no rares, so the slot bug could not appear in it.
+       With a full collection the builder fielded TEN rares against a limit of one and
+       completed 18.9% against the starter deck's 28.1% — nine points WORSE than the deck
+       it offered to replace. Obeying the slot rules takes it to 45.0%.
+       `DECK=builder` measures the game's builder specifically; the pinned band still rides
+       `buildBest` in run.mjs, so this guard cannot move it. 300 runs an arm: the gap is 18
+       points against a ~3.7-point difference SE, so the margin is not the tight part. */
+    const pct = cmd => {
+      const out = execSync(cmd, { encoding: 'utf8' })
+      const m = [...out.matchAll(/completion\s+([\d.]+)%/g)].map(x => Number(x[1]))
+      ok(m.length >= 1, `could not read completion from: ${cmd}`)
+      return m[m.length - 1]
+    }
+    const built = pct('DECK=builder PAGES=14 node sim/run.mjs campaign 300')
+    const deflt = pct('PAGES=14 node sim/run.mjs campaign 300 default')
+    ok(built > deflt + 8,
+      `the deck the game builds completes ${built}% against the starter deck's ${deflt}% — it is offering to make you worse`)
+    ok(built > 30, `the built deck completes only ${built}% of campaigns`)
   })
   test('campaign completion stays in a sane band', () => {
 

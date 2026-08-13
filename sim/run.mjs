@@ -485,6 +485,17 @@ if (mode === 'campaign') {
   LOADOUT = buildBest()
   const label = process.argv[4] ?? 'built'
   if (label === 'default') LOADOUT = undefined
+  /* SIM-7: `DECK=builder` measures the deck THE GAME builds — `buildLoadout`, what the
+     BUILD ME ONE button calls — rather than this file's own stat sort. It is a separate
+     switch on purpose: the pinned band is measured through `buildBest` and re-pointing it
+     is a re-pin decision, but the game's builder needs a measured floor under it or a
+     repeat of the bug SIM-7 found goes unnoticed. See the ledger. */
+  if (process.env.DECK === 'builder') {
+    const owned = Object.keys(E.CARDS)
+      .filter(n => ['common', 'uncommon', 'rare'].includes(E.CARDS[n].rarity ?? 'common'))
+    LOADOUT = E.buildLoadout({ ...E.freshRun(0, 0, 1), owned, gear: [], boons: [],
+      mutators: [], arch: ARCH }, [], owned)
+  }
   console.log(`Full campaign — ${label} loadout, Working It\n`)
   /* GUARD-6: most guards read only the full-journal band but paid for all three,
      so two runs in three were thrown away. `PAGES=14` measures one band, which

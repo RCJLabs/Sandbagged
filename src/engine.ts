@@ -5407,6 +5407,18 @@ export function buildLoadout(s: GameState, seed: string[], owned: string[]): str
       const d = CARDS[n]
       if (!d || d.rarity === 'curse') continue
       if (copies(n) >= copyLimit(d.rarity ?? 'common')) continue
+      /* SIM-7: THE SLOT RULES. `copyLimit` caps copies of one card; RARE_SLOTS and
+         UNCOMMON_SLOTS cap how many rares and uncommons the whole loadout may hold, and
+         they exist for a stated reason — "without this a full collection fields eight
+         distinct rares and every route sends at ~100%". The card picker enforces them in
+         three places. This builder enforced neither, so BUILD ME ONE handed you TEN rares
+         against a limit of one and four uncommons against three: a loadout the picker
+         would have refused at every step after the first. Measured, it completed 18.9%
+         of campaigns against 28.1% for the starter deck it replaced — the button that
+         says "not sure where to start? let it pick" was actively making you worse. */
+      const r = d.rarity ?? 'common'
+      if (r === 'rare' && slotsUsed(deck, 'rare') >= RARE_SLOTS) continue
+      if (r === 'uncommon' && slotsUsed(deck, 'uncommon') >= UNCOMMON_SLOTS) continue
       const c = spawn(n)
       /* A deck that cannot work a hold is not a deck. The first version had no
          structural limits and `cardValue` plus an uncapped synergy bonus built
