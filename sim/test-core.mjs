@@ -2415,7 +2415,9 @@ test('somebody is out there with you, and they wanted something else (NARR-14)',
      one mechanic is an OPINION — they would go a particular way up, and they have
      something to say whether you took it or not. */
   ok(E.PARTNERS.length >= 3, `only ${E.PARTNERS.length} partners — a run would always draw the same one`)
-  const MOMENTS = ['tie', 'agree', 'differ', 'send', 'fall', 'camp', 'top', 'died']
+  // SKIRM-7 added the two the Circuit needs: it has no line choice and no camp,
+  // so `tie` and `camp` never fire there, but it has a go-again decision nothing else has.
+  const MOMENTS = ['tie', 'agree', 'differ', 'send', 'fall', 'camp', 'top', 'died', 'again', 'enough']
   for (const p of E.PARTNERS) {
     ok(p.name && p.who.length > 15, `${p.id} is not a person`)
     ok(p.line >= 0 && p.line < E.LINES.length, `${p.name} favours a line that does not exist: ${p.line}`)
@@ -2439,10 +2441,30 @@ test('somebody is out there with you, and they wanted something else (NARR-14)',
 
   /* THEY ARE TEXT. A partner must carry no field that could reach the resolution — no
      Power, Contact, Grip, Bite, Support, skin, psyche or pump anywhere in the table. */
-  const allowed = new Set(['id', 'name', 'who', 'line', 'says'])
+  /* SKIRM-7 widened this by one — `enough`, the circuit score from which THIS person
+     would rather you walked off. Widening an allowlist to admit your own field is
+     exactly how a guard gets quietly relaxed, so it comes with the two assertions that
+     make it safe: `enough` is the same shape as `line` (a number whose only job is to
+     SELECT A LINE OF TEXT), and the way that is proved is below — every value the new
+     consumer can return has to be a key of `says` and nothing else. A field that
+     selected anything other than text would fail that. */
+  const allowed = new Set(['id', 'name', 'who', 'line', 'enough', 'says'])
   for (const p of E.PARTNERS) {
     for (const k of Object.keys(p)) ok(allowed.has(k), `${p.name} carries a field a partner should not have: ${k}`)
+    ok(typeof p.enough === 'number' && p.enough > 0, `${p.name} would never think it was enough`)
   }
+  // the numeric fields only ever choose words: whatever partnerPush returns must be a line
+  for (const p of E.PARTNERS) {
+    for (const n of [0, p.enough - 1, p.enough, p.enough + 5]) {
+      const got = E.partnerPush({ ...E.freshRun(0, 0, 5), circuit: true, circuitScore: n,
+        runSeed: E.PARTNERS.indexOf(p) })
+      ok(got === null || typeof p.says[got] === 'string',
+        `partnerPush returned ${got}, which is not something a partner can say`)
+    }
+  }
+  // and they disagree about when to stop, or the threshold is decoration
+  ok(new Set(E.PARTNERS.map(p => p.enough)).size >= 3,
+    'the partners all stop at the same point, so who you are out with does not matter')
   const eng = readFileSync('src/engine.ts', 'utf8')
   const table = region(eng, 'export const PARTNERS', ['export function partnerFor'],
     { min: 800, what: 'the partner table' })
@@ -2457,7 +2479,7 @@ test('somebody is out there with you, and they wanted something else (NARR-14)',
     const body = declBody(eng, fn, fn)
     /* match the API, not the English word: autoPlay's opposition comments call the other
        hand lane a "partner", which is a different thing entirely. */
-    ok(!/\b(partnerFor|partnerSays|partnerAgrees|PARTNERS)\b/.test(body),
+    ok(!/\b(partnerFor|partnerSays|partnerAgrees|partnerPush|PARTNERS)\b/.test(body),
       `${fn} reads the partner — that is power, not narrative`)
   }
 
@@ -2502,6 +2524,105 @@ test('somebody is out there with you, and they wanted something else (NARR-14)',
     { min: 800, what: 'the run-end screen' })
   ok(/partnerSays\(st, won \? 'top' : 'died'\)/.test(endScreen),
     'the trip ends without a word from whoever was there')
+})
+test('the Circuit is not the mode nobody bothered with (SKIRM-7)', () => {
+  /* SKIRM-7. The Circuit runs `inRun: false` — which is correct, it is not a campaign —
+     and every feature that gated on `inRun` therefore skipped it silently. By v10.20 it
+     was the least-served mode in the game: no partner (NARR-14), no ambience bed (AUD-2),
+     nothing between lines but a zone name. It is also the LONGEST single sitting there
+     is, so it is the mode that most wanted somebody standing there. */
+  const circ = (n) => ({ ...E.freshRun(0, 0, 5), ...E.modeReset(), circuit: true,
+    circuitScore: n, inRun: false, runSeed: 7, skirmish: E.circuitRoute(n, new E.RNG(1)) })
+
+  // A PARTNER. The bug, asserted directly: this returned null for the whole mode.
+  ok(E.partnerFor(circ(0)), 'the Circuit still goes out alone')
+  ok(E.partnerFor({ ...circ(0), inRun: true }), 'a campaign lost its partner')
+  // and every other non-campaign mode still gets nobody — the gate widened by exactly one
+  for (const mode of ['daily', 'onProject']) {
+    eq(E.partnerFor({ ...E.freshRun(0, 0, 5), ...E.modeReset(), runSeed: 7, [mode]: true }), null,
+      `${mode} picked up a partner, so the gate widened further than the Circuit`)
+  }
+  eq(E.partnerFor({ ...E.freshRun(0, 0, 5), ...E.modeReset(), runSeed: 7 }), null,
+    'a state in no mode at all has a partner')
+  /* the same person all the way through, including across a resume. DEV-3 saves and
+     restores the circuit's runSeed, which is the only reason this can hold — if it were
+     ever dropped, coming back to a circuit would hand you a stranger. */
+  const who = E.partnerFor(circ(0)).id
+  for (const n of [1, 5, 9, 14, 30]) eq(E.partnerFor(circ(n)).id, who, `the partner changed at line ${n}`)
+  ok(new Set([0, 1, 2, 3].map(sd => E.partnerFor({ ...circ(0), runSeed: sd }).id)).size > 1,
+    'every circuit draws the same partner regardless of seed')
+
+  // AN OPINION about the one decision this mode has, and it is THEIRS, not the zone's
+  for (const p of E.PARTNERS) {
+    const seed = E.PARTNERS.indexOf(p)
+    const at = n => E.partnerPush({ ...circ(n), runSeed: seed })
+    eq(at(p.enough - 1), 'again', `${p.name} wants to stop before they said they would`)
+    eq(at(p.enough), 'enough', `${p.name} does not stop when they said they would`)
+    eq(at(p.enough + 3), 'enough', `${p.name} changes their mind back further in`)
+  }
+  // it is an opinion and not a rule: nothing outside the circuit can be pushed
+  eq(E.partnerPush({ ...circ(20), circuit: false }), null, 'a non-circuit has a push')
+  eq(E.partnerPush({ ...circ(0), runSeed: 7 }), 'again', 'a fresh circuit has no opinion on going again')
+
+  // A PLACE. Keyed to the Circuit's own zones, so the bed says how deep you are.
+  eq(E.bedFor({ ...circ(0), phase: 'climb' }), E.circuitBed(0), 'the Circuit climbs in silence again')
+  ok(E.bedFor({ ...circ(0), phase: 'climb' }) !== 'none', 'the Circuit has no place to be')
+  eq(E.bedFor({ ...circ(12), phase: 'circuitNext' }), E.circuitBed(12),
+    'the between-lines screen is silent, though it is the Circuit\'s map')
+  // it CHANGES with depth, or it is not saying anything
+  ok(new Set([0, 6, 12].map(E.circuitBed)).size >= 3,
+    'the Circuit sounds the same at every depth, so the bed carries no information')
+  /* every zone has a bed, keyed off the zone's own floor rather than a second copy of
+     the ladder (ENG-19) — so adding a zone fails here instead of falling through to the
+     default and sounding like the warm-up for ever. */
+  for (let n = 0; n <= 40; n++) {
+    const floor = E.circuitZone(n).floor
+    ok(E.CIRCUIT_BEDS[floor], `${E.circuitZone(n).name} (floor ${floor}) has no bed of its own`)
+  }
+  // the deliberate exceptions still hold: a skirmish and a daily have nowhere to be,
+  // and the finale's silence outranks everything (AUD-2)
+  for (const mode of ['daily', 'skirmish']) {
+    const st = { ...E.freshRun(0, 0, 5), ...E.modeReset(), phase: 'climb',
+      [mode]: mode === 'skirmish' ? E.circuitRoute(0, new E.RNG(1)) : true }
+    eq(E.bedFor(st), 'none', `${mode} picked up an ambience bed it is meant not to have`)
+  }
+
+  /* THEY ARE ON THE SCREEN. A partner present in the data and absent from the render is
+     CARD-17's failure mode, and the Circuit is where it would be least noticed. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const next = region(app, "st.phase === 'circuitNext'", ["if (st.phase === '"],
+    { min: 600, what: 'the circuit between-lines screen' })
+  /* assert the RENDER, not the call. The first cut of this checked that `partnerFor(st)`
+     appeared in the screen — which stays true when the block is gated off, because the
+     screen calls it into a local either way. Gating the block to `{false && mate ? (`
+     left this guard green, and the negative test is the only reason I know that. So the
+     gate itself is pinned: `mate` and nothing else may decide whether they are there. */
+  ok(/\{mate \? \(/.test(next), 'nobody is standing there between lines')
+  ok(/const mate = partnerFor\(st\)/.test(next), 'the screen does not ask who came out with you')
+  ok(/partnerSays\(st, push === 'enough' \? 'enough' : 'again'\)/.test(next),
+    'the partner says nothing about going again')
+  // and their opinion is marked on the choice, the way NARR-14 marks the line they favour
+  eq((next.match(/push === 'again'|push === 'enough'/g) ?? []).length, 3,
+    'their view is not marked on both buttons, so it is flavour rather than an opinion')
+  // the run-end screen must still keep the circuit OUT — a walk-off is not a death
+  const end = region(app, "if (st.phase === 'runEnd')", ["if (st.phase === '"],
+    { min: 800, what: 'the run-end screen' })
+  ok(/partnerFor\(st\) && !st\.circuit/.test(end),
+    'the circuit reaches run-end with a partner saying you died')
+
+  /* OFF-BAND BY CONSTRUCTION, and this one is absolute: the balance harness does not
+     contain the word. There is no path from any of this to the measured campaign. */
+  const sim = readFileSync('sim/run.mjs', 'utf8')
+  ok(!/circuit/i.test(sim), 'the balance harness plays the Circuit now, so this is on-band')
+
+  /* SCOPE, said out loud. The audit item also listed "no season or daily hook" and that
+     is deliberately NOT done: the Circuit is ENDLESS, so feeding its score into a bounded
+     four-week season (DAILY-3) turns the season into a grind test that can be farmed,
+     and the season is meant to measure a habit. Asserted so the carve-out is a decision
+     on the record rather than something I forgot. */
+  ok(!/circuitScore/.test(declBody(readFileSync('src/engine.ts', 'utf8'),
+    'export function bankDaily', 'bankDaily')),
+    'the Circuit feeds the season score now — that is farmable, and it wants a decision first')
 })
 test('the tuning policy can see the feet lane (SIM-6)', () => {
   /* SIM-6. `autoPlay` chose the feet by MAX SUPPORT and nothing else, so it could not

@@ -1685,16 +1685,33 @@ export const LANE_NAMES = ['LEFT HAND', 'RIGHT HAND', 'FEET']
    oscillators; this owns the decision — which means the part that can be wrong can be
    tested, and I cannot hear a test. */
 export type Bed = 'none' | 'forest' | 'desert' | 'alpine' | 'camp' | 'van' | 'post'
+const ACT_BEDS = ['forest', 'desert', 'alpine'] as const
+const actBed = (act: number): Bed => ACT_BEDS[Math.min(2, Math.max(0, act))]
+
+/* SKIRM-7: the Circuit gets a place too, and it is keyed to its own ZONES rather than
+   to an act it does not have — so the bed tells you how deep you are. Keyed off
+   `circuitZone(n).floor` rather than repeating the thresholds, because two copies of
+   one ladder drift (ENG-19); a guard asserts every zone floor has an entry, so adding
+   a zone fails loudly instead of falling through to the default.
+   Into the Dark shares alpine with The Business on purpose: there is no fourth
+   synthesised bed, and inventing one is oscillator work AUD-2 deliberately left
+   outside the tested part of the game. Said out loud rather than left to be noticed. */
+export const CIRCUIT_BEDS: Record<number, Bed> = { 0: 'forest', 3: 'forest', 6: 'desert', 10: 'alpine', 14: 'alpine' }
+export const circuitBed = (n: number): Bed => CIRCUIT_BEDS[circuitZone(n).floor] ?? 'forest'
+
 export function bedFor(s: GameState): Bed {
   // the finale is silent ON PURPOSE, and it outranks everything below it
   if (s.phase === 'climb' || s.phase === 'burnEnd') {
     if (specOf(s).finale) return 'none'
-    if (s.inRun) return (['forest', 'desert', 'alpine'] as const)[Math.min(2, Math.max(0, s.act))]
+    if (s.inRun) return actBed(s.act)
+    if (s.circuit) return circuitBed(s.circuitScore)
     return 'none'                       // a skirmish, a daily, the tutorial: no place to be
   }
   if (s.phase === 'camp') return 'camp'
   if (s.phase === 'shop') return 'post'
-  if (s.phase === 'map' && s.inRun) return (['forest', 'desert', 'alpine'] as const)[Math.min(2, Math.max(0, s.act))]
+  if (s.phase === 'map' && s.inRun) return actBed(s.act)
+  // the circuit's between-lines screen is its map, so it keeps the place it is in
+  if (s.phase === 'circuitNext' && s.circuit) return circuitBed(s.circuitScore)
   return 'none'
 }
 
@@ -2655,6 +2672,10 @@ export type Talk = {
    person the same partner; deriving it also means no new save field to drift and no
    chance of a reload changing who is standing there. */
 export type PartnerMoment = 'tie' | 'agree' | 'differ' | 'send' | 'fall' | 'camp' | 'top' | 'died'
+  /* SKIRM-7: the Circuit has no line choice and no camp, so `tie` and `camp` never
+     fire there — but it has a decision no other mode has, which is whether to go
+     again. These are the two things they say to that. */
+  | 'again' | 'enough'
 export type Partner = {
   id: string
   name: string
@@ -2662,11 +2683,20 @@ export type Partner = {
   who: string
   /** Which of the three lines they would take. Their opinion, and nothing more. */
   line: number
+  /* SKIRM-7: the circuit score from which THIS person would rather you walked off.
+     A fixed per-partner push would be static — Kit always says go, Ade always says
+     stop — and deriving it from the zone alone would make it the game's opinion
+     rather than theirs. A threshold is both: the same person says go early and
+     enough later, and where that line falls is who they are. */
+  enough: number
   says: Record<PartnerMoment, string>
 }
 export const PARTNERS: Partner[] = [
   { id: 'wren', name: 'Wren', who: 'Belays like she is being timed. Has opinions about your feet.', line: 1,
+    enough: 10,
     says: {
+      again: 'She is already pulling the rope through. "One more. You are climbing well and it will not last."',
+      enough: '"That is the good one to stop on." She starts coiling before you answer.',
       tie: 'She flakes the rope without being asked. "Straight up it, if you have any sense."',
       agree: '"Good. I hate traversing." She sits down and watches your feet, not your hands.',
       differ: '"Fine. I will be here." She does not look up from her book until you are off the ground.',
@@ -2677,7 +2707,10 @@ export const PARTNERS: Partner[] = [
       died: 'She carries the pads down without saying anything. At the car: "Next time you go first."',
     } },
   { id: 'ade', name: 'Ade', who: 'Been coming here thirty years. Knows where the water is.', line: 0,
+    enough: 6,
     says: {
+      again: '"Go on then, while it is cool." He does not get up.',
+      enough: '"You have had the best of the day." He is looking at the light, not at you.',
       tie: '"The book has it right, you know. People forget the book was written by somebody who was here."',
       agree: '"Sensible." He settles in with the flask and does not offer you any.',
       differ: '"Hm." He watches you go the other way and says nothing at all, which is worse.',
@@ -2688,7 +2721,10 @@ export const PARTNERS: Partner[] = [
       died: '"Thirty years I have been failing on things here." He means it to be comforting, and it is.',
     } },
   { id: 'moss', name: 'Moss', who: 'Would rather be looking at the rock than climbing it.', line: 2,
+    enough: 3,
     says: {
+      again: '"If you must." He has found something in the scree and is not really listening.',
+      enough: '"Right — come and see this instead." He has been waiting an hour to show you.',
       tie: '"There is a way round the side, you know. It is nicer over there."',
       agree: '"Oh good." He points out three things on the way that have nothing to do with climbing.',
       differ: '"Suit yourself." He wanders off left anyway and describes it to you while you are pumped.',
@@ -2699,7 +2735,10 @@ export const PARTNERS: Partner[] = [
       died: '"Shame." He is already photographing something in the moss.',
     } },
   { id: 'kit', name: 'Kit', who: 'Nineteen, terrifyingly strong, no idea how lucky that is.', line: 1,
+    enough: 14,
     says: {
+      again: '"Go again go again go again." It is not a question and she is not tired.',
+      enough: '"Wait, we are stopping? Oh." She gets over it in about four seconds.',
       tie: '"Just go up it? Why would you not just go up it." Genuine question.',
       agree: '"Obviously." She is already thinking about the next one.',
       differ: '"Weird flex but okay." She spots you properly, though, which she does not have to.',
@@ -2712,8 +2751,21 @@ export const PARTNERS: Partner[] = [
 ]
 /** Who is out with you. Derived from the run seed — see the note above. */
 export function partnerFor(s: GameState): Partner | null {
-  if (!s.inRun) return null
+  /* SKIRM-7: the Circuit was the least-served mode in the game — it runs
+     `inRun: false`, so it got no partner and no ambience while every other mode
+     got both. It is also the LONGEST single sitting there is, which is the mode
+     that most wants somebody there. Its `runSeed` is saved and restored with the
+     rest of the circuit (DEV-3), so resuming one keeps the same person. */
+  if (!s.inRun && !s.circuit) return null
   return PARTNERS[(s.runSeed >>> 0) % PARTNERS.length]
+}
+/** SKIRM-7: whether they would go again or walk off — their opinion, nothing more.
+    RUN-13 established that walking off is the GOOD circuit outcome and that nothing
+    in the game ever said so; somebody saying it is the cheapest honest way to. */
+export function partnerPush(s: GameState): 'again' | 'enough' | null {
+  const p = partnerFor(s)
+  if (!p || !s.circuit) return null
+  return s.circuitScore >= p.enough ? 'enough' : 'again'
 }
 /** What they have to say about a moment, or '' if nobody is there. */
 export function partnerSays(s: GameState, m: PartnerMoment): string {

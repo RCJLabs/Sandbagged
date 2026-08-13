@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.20 — CARD-18: four mechanics the game had and you would never meet
-//   twice — reading the wall, latching, chipping a hold, paying in skin
+// SANDBAGGED v10.21 — SKIRM-7: the Circuit had nobody in it. A partner, a place keyed
+//   to its own zones, and an opinion about the one decision the mode has
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -22,7 +22,7 @@ import {
   campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitZone, claimStep, claimVerdict,
   consumableById, KIT_MAX, useKitStep, secondWindStep,
   challengeCode, challengeRoute, challengeShare, readChallenge, goalById, dailyScore, modeReset,
-  partnerFor, partnerSays, partnerAgrees,
+  partnerFor, partnerSays, partnerAgrees, partnerPush,
   coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyGoals, dailyRoute, dailySeed, dailyShare, dailyUsed, tomorrowKey, MOVE_GIFTS, CURSE_TAX,
   supportNow, bedFor,
   SEASON_WEEKS, seasonKey, seasonWeekOf, seasonTitle, nextSeasonTitle, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
@@ -1298,7 +1298,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.20 · RCJ Labs</div>
+          <div className="sfoot">v10.21 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1527,7 +1527,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.20 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.21 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2496,6 +2496,8 @@ export default function App() {
     const ahead = circuitZone(st.circuitScore + 1)
     const nextZone = ahead.name !== zone.name ? ahead : null
     const beatsBest = st.circuitScore >= st.bestCircuit && st.bestCircuit > 0
+    // SKIRM-7: whoever came out with you has a view on whether that is enough
+    const mate = partnerFor(st), push = partnerPush(st)
     return (
       <div className={skin}>
         <div className="row"><span className="h1" role="heading" aria-level={1}><Lettered t="THE CIRCUIT" seed={71} /></span>
@@ -2505,6 +2507,14 @@ export default function App() {
         <div className="spot" style={{ borderLeftColor: 'var(--tan)' }}>
           <b style={{ color: 'var(--tan)' }}>{zone.name.toUpperCase()}{justEntered ? ' — YOU JUST ARRIVED' : ''}</b>
           {zone.text}{nextZone ? ` ${nextZone.name} is one line up.` : ''}</div>
+        {/* SKIRM-7: the Circuit ran `inRun: false`, so it got no partner and no ambience
+            while every other mode got both — and it is the longest sitting in the game.
+            Their opinion here is about the one decision this mode has, and where their
+            "that is enough" falls is who they are, not what the zone is. */}
+        {mate ? (
+          <div className="spot" style={{ borderLeftColor: 'var(--tan)' }} role="status">
+            <b style={{ color: 'var(--tan)' }}>{mate.name.toUpperCase()}</b>
+            {partnerSays(st, push === 'enough' ? 'enough' : 'again')}</div>) : null}
         <div className="sub" style={{ marginTop: 4 }}>skin {st.skin} · psyche {st.psyche} · deck {st.runDeck.length}
           {beatsBest ? ' · past your best now — all of this is new ground' : st.bestCircuit ? ` · best ${st.bestCircuit}` : ''}</div>
         {nxt ? (
@@ -2517,9 +2527,15 @@ export default function App() {
           </div>) : null}
         <button className="btn go" style={{ width: '100%', marginTop: 10 }} onClick={nextCircuitLine}>
           PULL ON ▸</button>
+        {mate && push === 'again' ? (
+          <div className="sub" style={{ color: 'var(--tan)', marginTop: 3 }}>
+            ▸ {mate.name} would go again.</div>) : null}
         <button className="btn" style={{ width: '100%', marginTop: 6 }}
           onClick={() => setSt(walkAwayStep)}>
           WALK AWAY WITH {st.circuitScore}{beatsBest ? ' — A NEW BEST' : ''}</button>
+        {mate && push === 'enough' ? (
+          <div className="sub" style={{ color: 'var(--tan)', marginTop: 3 }}>
+            ▸ {mate.name} would stop here.</div>) : null}
         <style>{CSS}</style>
       </div>
     )
