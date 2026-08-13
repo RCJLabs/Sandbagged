@@ -2307,6 +2307,246 @@ test('FA-1: the FA is a real mode, and the grade you claim is an economy', () =>
     'an in-run FA claim did not drop back onto the map')
 })
 
+test('the route acts on the climber, not just the stone (ENG-21)', () => {
+  /* ENG-21. All four original moves did the same KIND of thing — mutate a hold's
+     numbers — so the route could make the wall harder or easier and that was the
+     entire vocabulary. Three that act on YOU: `spit` throws a weak card off the
+     hold, `pin` denies the shake-out in a lane, `stance` is the gift (draw one).
+     The rules this holds: board and lane effects only with NO per-turn pump term
+     (that compounds — measured five times, ENG-23 last); the preview must agree with
+     resolve on every one of them; and a spat card must be filed, not vanished. */
+  const H = (uid, grip, over = {}) => ({ uid, name: 'crimp', bite: 1, grip, crux: false, clean: false, ...over })
+  const base = { ...E.freshRun(6, 0, 5), inRun: true, skirmish: null, phase: 'climb',
+    weather: 1, rock: 0, turn: 1, flow: 0, pump: 10, gear: [], boons: [], mutators: [],
+    holdDeck: [], worked: [], order: [0, 1, 2], fxLane: ['', '', ''],
+    piles: { draw: [], discard: [], exhaust: [], hand: [] } }
+
+  // every kind is reachable, and the seven weights are a fixed 100 in every condition
+  const kinds = new Set()
+  for (let w = 0; w < E.WEATHER.length; w++) for (let r = 0; r < E.ROCK.length; r++) {
+    const ws = E.moveWeights({ ...base, weather: w, rock: r })
+    eq(ws.length, 7, 'there are not seven move weights')
+    eq(ws.reduce((a, b) => a + b, 0), 100, `the weights do not sum to 100 at weather ${w} rock ${r}`)
+    for (const n of ws) ok(n >= 0, `a move weight went negative at weather ${w} rock ${r}: ${ws}`)
+    const rng = new E.RNG(700 + w * 17 + r)
+    for (let n = 0; n < 3000; n++) {
+      const m = E.rollRouteMove({ ...base, weather: w, rock: r,
+        boardH: [H(1, 5), H(2, 5), H(3, 5)] }, rng)
+      if (m) kinds.add(m.kind)
+    }
+  }
+  eq(kinds.size, 7, `only ${[...kinds].sort().join(',')} can ever be rolled`)
+
+  /* THE DRAW ORDER IS THE LOAD-BEARING PART. rollRouteMove must take exactly two
+     draws, lane first then kind, exactly as it did before ENG-21. An earlier cut
+     rolled the kind first so spit could be kept off the feet lane, and swapping two
+     draws reshuffles every roll after it: measured against the shipped build it moved
+     the CARD-9 wind arm +2.9 points and took the Second Wind's lift from 2.4 to over
+     5 — which reads as this ticket breaking that ceiling when it was the reshuffle.
+     This pins the order by replaying the stream by hand. */
+  const boardFull = [H(1, 5), H(2, 5), H(3, 5)]
+  for (const seed of [3, 17, 91, 404]) {
+    const a = new E.RNG(seed)
+    const got = E.rollRouteMove({ ...base, boardH: boardFull }, a)
+    const b = new E.RNG(seed)
+    const lanes = [0, 1, 2].filter(i => boardFull[i])
+    const wantLane = lanes[b.int(lanes.length)]     // draw 1 is the LANE
+    b.next()                                        // draw 2 is the kind
+    eq(got.lane, wantLane, 'rollRouteMove no longer draws the lane first')
+    // and exactly two draws: a third RNG advanced twice must now agree with the first
+    const c = new E.RNG(seed); c.int(lanes.length); c.next()
+    eq(c.s, a.s, 'rollRouteMove no longer takes exactly two draws')
+  }
+  /* Spit reaches every lane, judged on what that lane is judged on: Power in the
+     hands, Support on the feet. A Power rule on the feet would have been near-total —
+     asserted here rather than assumed, because it is why the rule is split. */
+  const feet = Object.keys(E.CARDS).map(n => E.spawn(n)).filter(c => c.lane === 'feet')
+  ok(feet.length > 5, 'there are not enough feet cards to test this')
+  // the rationale, asserted: Power is the BLUNTER measure on the feet, Support the
+  // one that actually tells a smear from a solid edge
+  const byPower = feet.filter(c => c.power < E.MOVE_SPIT).length
+  const bySupport = feet.filter(c => (c.support ?? 0) < E.MOVE_SPIT_SUPPORT).length
+  ok(byPower > bySupport,
+    `Power is no blunter than Support on the feet (${byPower} vs ${bySupport} of ${feet.length}) — the split rule is unjustified`)
+  ok(bySupport > 0 && bySupport < feet.length,
+    `the Support rule spits ${bySupport} of ${feet.length} feet — it does not discriminate`)
+  eq(E.spitRejects(E.spawn('Flag'), 2), false, 'a two-Support foot was popped off')
+  eq(E.spitRejects(E.spawn('Smear'), 2), true, 'a one-Support smear held on')
+  eq(E.spitRejects(null, 0), false, 'an empty lane was spat')
+  let spits = 0, onFeet = 0
+  const rngS = new E.RNG(11)
+  for (let n = 0; n < 20000; n++) {
+    const m = E.rollRouteMove({ ...base, boardH: boardFull }, rngS)
+    if (m && m.kind === 'spit') { spits++; if (m.lane === 2) onFeet++ }
+  }
+  ok(spits > 100, `spit only came up ${spits} times, so this is not testing much`)
+  ok(onFeet > 0, 'spit never reached the feet lane, so the Support rule is dead')
+
+  // spit throws off anything UNDER the threshold and nothing at or above it
+  const weak = E.spawn('Shake Out')            // a rest: power 0
+  ok(weak.power < E.MOVE_SPIT, 'the weak fixture is not weak enough to be spat')
+  const allCards = Object.keys(E.CARDS).map(n => E.spawn(n))
+  const strong = allCards.find(c => c.lane === 'hand' && c.power >= E.MOVE_SPIT)
+  ok(strong, 'no hand card is strong enough to survive a spit')
+  const spitMove = { kind: 'spit', lane: 0, text: 'x' }
+  const gone = E.applyRouteMove(spitMove, [H(1, 5), null, null], [weak, null, null])
+  eq(gone.boardP[0], null, 'a card under the threshold was not spat off')
+  eq(gone.spat && gone.spat.name, weak.name, 'the spat card was not handed back to be filed')
+  const held = E.applyRouteMove(spitMove, [H(1, 5), null, null], [strong, null, null])
+  eq(held.boardP[0] && held.boardP[0].name, strong.name, 'a strong card was spat off anyway')
+  eq(held.spat, null, 'a card that held on was still filed as spat')
+  // exactly at the threshold is safe — the text says UNDER
+  const atThresh = { ...weak, power: E.MOVE_SPIT }
+  eq(E.applyRouteMove(spitMove, [H(1, 5), null, null], [atThresh, null, null]).spat, null,
+    'a card exactly on the threshold was spat')
+  /* a rejected card is HANDED BACK, never destroyed. This is a balance requirement,
+     not a kindness: moves fire on a timer, so net cost in the move table scales with
+     how long a climb takes — and burning the card broke ROUTE-8 outright (guide 55.4
+     against direct 49 and traverse 47) and put an archetype on 5%. The cost is the
+     lane going unanswered for a turn; it is not the card. */
+  const stSpit = { ...base, boardH: [H(1, 5), null, null], boardP: [weak, null, null],
+    piles: { draw: [], discard: [], exhaust: [], hand: [] }, routeMove: spitMove }
+  const after = E.resolve(stSpit, new E.RNG(3))
+  ok(after.piles.hand.some(c => c.name === weak.name), 'a rejected card did not come back to hand')
+  eq(after.piles.exhaust.some(c => c.name === weak.name), false, 'a rejected card was burned')
+  const settled = after.piles.hand.find(c => c.name === weak.name)
+  eq(settled.settled ?? 0, 0, 'a rejected card kept the settle it had earned on the wall')
+  // and it is off the wall, so the lane it was in goes unanswered
+  eq(after.boardP[0], null, 'a rejected card was still on the wall')
+
+  // PIN denies the shed, and denies the CARD-11 chip with it
+  const pinMove = { kind: 'pin', lane: 0, text: 'x' }
+  eq(E.applyRouteMove(pinMove, [H(1, 5), null, null], [weak, null, null]).noRestLane, 0,
+    'a pin did not pin its lane')
+  eq(E.applyRouteMove({ kind: 'grease', lane: 0, text: 'x' }, [H(1, 5), null, null]).noRestLane, -1,
+    'a move that is not a pin pinned a lane anyway')
+  const restIn = l => ({ ...base, pump: 20,
+    boardH: [H(1, 9), H(2, 9), null], boardP: l === 0 ? [weak, null, null] : [null, weak, null] })
+  const pinned = E.resolve({ ...restIn(0), routeMove: pinMove }, new E.RNG(3))
+  const free = E.resolve({ ...restIn(0), routeMove: null }, new E.RNG(3))
+  ok(pinned.pump > free.pump, 'a pinned rest still shed pump')
+  // ...but only in the lane it pinned
+  const elsewhere = E.resolve({ ...restIn(1), routeMove: pinMove }, new E.RNG(3))
+  const elseFree = E.resolve({ ...restIn(1), routeMove: null }, new E.RNG(3))
+  eq(elsewhere.pump, elseFree.pump, 'a pin in one lane stopped a rest in another')
+  // a pinned rest still breaks flow, exactly as the noRest phases do
+  const chip = allCards.find(c => c.restChip)
+  ok(chip, 'no card carries restChip, so the chip half cannot be tested')
+  const chipSt = l => ({ ...base, boardH: [H(1, 9), null, null], boardP: [chip, null, null] })
+  const chipPinned = E.resolve({ ...chipSt(), routeMove: pinMove }, new E.RNG(3))
+  const chipFree = E.resolve({ ...chipSt(), routeMove: null }, new E.RNG(3))
+  const gripOf = st => (st.boardH[0] ? st.boardH[0].grip : -1)
+  ok(gripOf(chipPinned) >= gripOf(chipFree), 'a pinned lane still let the rest chip its hold')
+
+  /* STANCE is the gift, and it has to be a gift that SURVIVES THE TURN. The first
+     cut paid a card draw and shipped dead: `refillAndDraw` tops the hand back up to
+     HAND_SIZE at the end of every turn, so the extra card was absorbed the same turn
+     it arrived and the move did nothing at all. It pays in Support now — spent inside
+     the turn, and through `powerAgainst`, which the preview and resolve share. This
+     asserts the EFFECT, so a gift that gets absorbed again fails here. */
+  const stanceMove = { kind: 'stance', lane: 0, text: 'x' }
+  const hand = E.spawn('Crimp Grip')
+  const stanceSt = { ...base, boardH: [H(1, 9), null, null], boardP: [hand, null, null] }
+  const { s: withSt } = E.afterMove({ ...stanceSt, routeMove: stanceMove })
+  const { s: without } = E.afterMove({ ...stanceSt, routeMove: null })
+  eq(withSt.stance, true, 'afterMove did not hand the stance to the preview')
+  const powSt = E.powerAgainst(withSt, hand, withSt.boardH[0], 0)
+  const powNo = E.powerAgainst(without, hand, without.boardH[0], 0)
+  ok(powSt > powNo, `a stance was worth no Power at all (${powNo} -> ${powSt}) — it shipped dead`)
+  eq(powSt - powNo, E.STANCE_SUPPORT, 'a stance is not worth what STANCE_SUPPORT says')
+  // ...and it is not campusing while you have it
+  const biteSt = E.biteAgainst(withSt, hand, withSt.boardH[0], 0)
+  const biteNo = E.biteAgainst(without, hand, without.boardH[0], 0)
+  ok(biteSt < biteNo, 'a stance still counted as campusing')
+  // a real foot placement is not double-paid by a stance on top of it
+  const footed = { ...stanceSt, boardP: [hand, null, E.spawn('Edge')] }
+  const { s: bothFeet } = E.afterMove({ ...footed, routeMove: stanceMove })
+  const { s: justFeet } = E.afterMove({ ...footed, routeMove: null })
+  eq(E.powerAgainst(bothFeet, hand, bothFeet.boardH[0], 0),
+    E.powerAgainst(justFeet, hand, justFeet.boardH[0], 0),
+    'a stance paid on top of the feet you had already placed')
+  /* The gift pays in Support and Bite, never in a flat pump term. A stance DOES lower
+     the pump you take off an unanswered hand hold — that is the Bite pathway every
+     weather condition uses (ENG-20 sanctions Bite and Support explicitly), not the
+     flat clock relief ENG-23 measured at +7 to +13 and cut. The two are told apart
+     here: with nothing on the wall to bite there must be no difference at all, and
+     where there IS something to bite the difference must be exactly CAMPUS_BITE and
+     no more. */
+  const pumpWith = (boardH, move) => E.resolve({ ...base, boardH,
+    boardP: [null, null, null], routeMove: move }, new E.RNG(3)).pump
+  eq(pumpWith([null, null, null], stanceMove), pumpWith([null, null, null], null),
+    'a stance moved the pump with nothing on the wall — that is a flat clock term')
+  const unanswered = [H(1, 99), null, null]
+  eq(pumpWith(unanswered, null) - pumpWith(unanswered, stanceMove), E.CAMPUS_BITE,
+    'a stance is worth something other than exactly the campus bite it cancels')
+  const untouched = E.applyRouteMove(stanceMove, [H(1, 5), H(2, 5), H(3, 5)], [weak, null, null])
+  eq(untouched.boardH.map(h => h.grip).join(','), '5,5,5', 'a stance changed the stone')
+  eq(untouched.boardP[0].name, weak.name, 'a stance changed your board')
+  eq(untouched.spat, null, 'a stance spat a card')
+  eq(untouched.noRestLane, -1, 'a stance pinned a lane')
+  // and it never outlives its turn — it is a transient, not a stored field
+  E.saveGame({ ...base, slot: 1, stance: true })
+  eq(E.loadGame(1).stance, undefined, 'a stance survived a save')
+  eq(E.resolve({ ...base, boardH: [H(1, 9), null, null], boardP: [hand, null, null],
+    routeMove: stanceMove }, new E.RNG(3)).stance, undefined, 'a stance outlived the turn it was given')
+
+  // NO MOVE CARRIES A PUMP TERM. The three new branches are read off the source,
+  // because "it happens not to add pump today" is what a guard is for.
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  const fn = eng.slice(eng.indexOf('export function applyRouteMove'), eng.indexOf('export function afterMove'))
+  ok(fn.length > 600, 'applyRouteMove moved out from under this guard')
+  ok(!/\bpump\b/.test(fn), 'a route move now touches the pump directly')
+
+  // THE PREVIEW AGREES WITH RESOLVE on every kind — the exactness pillar
+  const rngP = new E.RNG(97)
+  for (const kind of ['grease', 'dry', 'gust', 'crumble', 'spit', 'pin', 'stance']) {
+    for (const lane of [0, 1, 2]) {
+      const st = { ...base, pump: 14,
+        boardH: [H(1, 4), H(2, 6), H(3, 5)],
+        boardP: [weak, E.spawn('Crimp Grip'), E.spawn('Edge')],
+        piles: { draw: [E.spawn('Lock Off')], discard: [], exhaust: [], hand: [] },
+        routeMove: { kind, lane, text: 'x' } }
+      const lanes = [0, 1, 2].map(i => E.previewLane(st, i))
+      eq(E.previewPump(st, lanes), E.resolve(st, new E.RNG(5)).pump,
+        `the preview and resolve disagree on pump after a ${kind} on lane ${lane}`)
+      const predicted = lanes.filter(p => p.clears).length
+      const got = E.resolve(st, new E.RNG(5)).cleared - st.cleared
+      if (!lanes.some(p => p.stick !== undefined)) {
+        eq(got, predicted, `the preview mispredicted the clears after a ${kind} on lane ${lane}`)
+      }
+    }
+  }
+  // and previewPump computing its own lanes must match previewPump handed them —
+  // the move used to be applied twice down that path
+  for (const kind of ['grease', 'dry', 'spit', 'pin']) {
+    const st = { ...base, pump: 14, boardH: [H(1, 4), H(2, 6), H(3, 5)],
+      boardP: [weak, E.spawn('Crimp Grip'), E.spawn('Edge')],
+      routeMove: { kind, lane: 0, text: 'x' } }
+    eq(E.previewPump(st), E.previewPump(st, [0, 1, 2].map(i => E.previewLane(st, i))),
+      `previewPump applies a ${kind} twice when it computes its own lanes`)
+  }
+  // afterMove hands back a state the move cannot land on again
+  const moved = E.afterMove({ ...base, boardH: [H(1, 5), null, null],
+    boardP: [null, null, null], routeMove: { kind: 'grease', lane: 0, text: 'x' } })
+  eq(moved.s.routeMove, null, 'afterMove left the move set, so it can be applied twice')
+  eq(moved.s.boardH[0].grip, 5 + E.MOVE_GRIP, 'afterMove did not apply the move')
+
+  // every kind says what it is about to do, and the gifts are marked as gifts
+  const seen = new Map()
+  const rngT = new E.RNG(13)
+  for (let n = 0; n < 20000; n++) {
+    const m = E.rollRouteMove({ ...base, boardH: [H(1, 5), H(2, 5), H(3, 5)] }, rngT)
+    if (m && !seen.has(m.kind)) seen.set(m.kind, m.text)
+  }
+  eq(seen.size, 7, 'not every kind produced a telegraph')
+  for (const [k, text] of seen) {
+    ok(text && text.length > 12, `${k} does not say what it is about to do: ${text}`)
+    ok(/[.!]$/.test(text), `${k}'s telegraph is not a sentence: ${text}`)
+  }
+  ok(seen.get('spit').includes(String(E.MOVE_SPIT)), 'the spit telegraph does not say what it will spit')
+  eq(E.MOVE_GIFTS.slice().sort().join(','), 'dry,stance', 'the gifts are no longer dry and stance')
+  for (const k of E.MOVE_GIFTS) ok(seen.has(k), `${k} is called a gift but cannot be rolled`)
+})
 test('the route telegraphs, then acts, exactly once', () => {
   // ENG-11. A move announced one turn and applied the next — if it can fire
   // twice it is a hidden penalty rather than a fight you can read.

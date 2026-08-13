@@ -290,7 +290,15 @@ export const FALL_PUMP = 0.5      // pump you keep after being caught
    quietly eaten all the headroom the band had left. You come back on part-pumped
    now, exactly as a caught roped fall does above: chalk up, shake out, tie back
    in — but you have already been fighting. */
-export const WIND_PUMP = 0.4      // share of the meter you carry into a wind burn
+/* ENG-21 raised this from 0.4 to 0.55, and the reason is the contract rather than
+   the constant. CARD-9 says an extra burn is a leg-up, not a skip. Once the route can
+   reject a card and pin a rest, a single burn is a little less reliable, so a RETRY is
+   worth more — measured, the lift went 2.4 → 4.0 against a ceiling of 4 with the trio
+   at 12% of the move table. Trimming ENG-21 to 8% brought the lift to 3.8, which is
+   0.2 inside a standard error of about 2.3: a guard passing on a coin flip, which is
+   the fragility GUARD-1 was written to remove, not something to ship. So the item pays
+   instead — the dial BAL-15 established for exactly this reading. */
+export const WIND_PUMP = 0.55     // share of the meter you carry into a wind burn
 export type MapNode = { type: NodeType; routeIdx: number }
 
 export type GameState = {
@@ -402,6 +410,10 @@ export type GameState = {
   rests: number
   /** Crux holds taken with nothing in the feet lane. */
   cruxFree: number
+  /* ENG-21: a no-hands stance is live for the turn the route hands it to you. A
+     TRANSIENT — it is set on the local post-move state that resolve and the preview
+     both build, never on the state that is stored, so it cannot outlive its turn. */
+  stance?: boolean
   /** You just clipped. You are above a bomber piece and you can go for it. */
   clipped: boolean
   bonusUsed: boolean
@@ -3924,10 +3936,53 @@ export const OPPOSE_PAIR = 2
    opponent has never done anything: holds are static numbers and only a boss
    phase ever changes one. The route now makes a move — telegraphed a full turn
    ahead, so it is a fight you can read rather than a dice roll in your face. */
-export type RouteMove = { kind: 'grease' | 'dry' | 'gust' | 'crumble'; lane: number; text: string }
+/* ENG-21. The four original moves all did the same KIND of thing: they mutated a
+   hold's numbers. The route could make the wall harder or easier and that was the
+   whole vocabulary — it never engaged the climber, only the stone. Three moves that
+   act on YOU:
+     spit    — the hold REJECTS a placement that is not positive enough: the card comes
+               back to your hand and the lane goes unanswered this turn. Judged on what
+               each lane is actually judged on — Power in the hands, Support on the feet
+               — because every feet card is Power 0-3, so a Power rule would have spat
+               nearly all of them. Rests are Power 0, so a spitting hold will not hold a
+               shake-out, which is the decision it asks for.
+               IT RETURNS THE CARD RATHER THAN BURNING IT, and that is a balance
+               requirement, not a kindness. Moves fire on a TIMER (MOVE_EVERY), so any
+               net cost in the move table scales with how long a climb takes — which
+               punishes the long lines and the slow climbers, not the player's choices.
+               Destroying the card broke ROUTE-8 outright (guide 55.4 against direct 49
+               and traverse 47, both traps) and put an archetype on 5%. Costing the
+               TEMPO and not the card keeps the decision and drops the damage.
+     pin     — no shaking out in that lane this turn. The rest still costs you the
+               card and the position; it just does not pay.
+     stance  — the gift. A no-hands stance: the hand lanes get the Support you never
+               placed, and you are not campusing while you have it. It paid a DRAW in
+               the first cut and that shipped dead — `refillAndDraw` tops the hand
+               back to HAND_SIZE at the end of every turn, so the extra card was
+               absorbed the same turn it arrived. Support survives because it is spent
+               inside the turn, and it rides `powerAgainst`/`biteAgainst`, which the
+               preview and resolve already share.
+   BOARD AND LANE EFFECTS ONLY, and no per-turn pump term anywhere in them — that
+   compounds, which this project has measured five separate times (ENG-23 last).
+   `stance` pays in a CARD rather than pump relief for the same reason: ENG-23 put
+   clock relief at +7 to +13 points of completion, which is a lever, not a gift. */
+export type RouteMove = {
+  kind: 'grease' | 'dry' | 'gust' | 'crumble' | 'spit' | 'pin' | 'stance'
+  lane: number; text: string
+}
 export const MOVE_EVERY = 3        // roughly one telegraph every this many turns
 export const MOVE_GRIP = 2
 export const MOVE_BITE = 1
+/** A hold that spits rejects a hand card under this much Power... */
+export const MOVE_SPIT = 3
+/** ...and a foot under this much Support. Feet are judged on what they hold, not
+    on Power: every feet card in the game is Power 0-3 and Support 1-2, so Power
+    would have spat almost all of them and Support tells a smear from a solid edge. */
+export const MOVE_SPIT_SUPPORT = 2
+/** What a gifted no-hands stance is worth, as Support you did not have to place. */
+export const STANCE_SUPPORT = 1
+/** The moves that are good news, for anything that has to tell the two apart. */
+export const MOVE_GIFTS: RouteMove['kind'][] = ['dry', 'stance']
 /* ROUTE-11. How hard the live condition leans on which move comes. A trade
    inside an opposed pair (grease↔dry for the air, crumble↔gust for the stone),
    so the four still sum to a fixed 100 and the roll still draws exactly one
@@ -3939,8 +3994,26 @@ export const MOVE_FRIABLE = 12     // soft stone flakes instead of gusting
 
 /** How the four moves are weighted for the condition you are actually in.
     grease/dry/gust/crumble, out of a fixed total. */
-export function moveWeights(s: GameState): [number, number, number, number] {
-  let grease = 34, dry = 24, gust = 22, crumble = 20
+export function moveWeights(s: GameState): [number, number, number, number, number, number, number] {
+  /* ENG-21 gives the three new kinds a fixed 25 of the 100 and scales the old four
+     onto the remaining 75, keeping their ratios. The conditional trades below still
+     run INSIDE the old opposed pairs, so the seven sum to a fixed 100 and the roll
+     still draws exactly one number. Both leans stay smaller than the weight they
+     lean on, so no kind can go negative:
+       grease 26 ± MOVE_WET(14) · dry 18 ± 14 · gust 16 ± MOVE_FRIABLE(12) · crumble 15 ± 12
+
+     THESE WEIGHTS ARE PRICED ON MEASURED BITE RATE, NOT ON THE NOMINAL NUMBER — the
+     finding that cost two tuning passes. `grease` and `dry` do something 100% of the
+     times they fire; the new costs are CONDITIONAL, and measured over 900 climbs
+     `spit` bit 30% of the time at MOVE_SPIT 2 and `pin` 26%. So the first cut swapped
+     ~10 points of always-biting cost for ~9 of always-paying gift and only ~6 of
+     effective cost, and the band went 53.7 → 56.1. Raising MOVE_SPIT to 3 takes
+     spit's bite to 69% (4 would be 86% — near-unconditional, and a guaranteed card
+     loss is not a decision), and `pin` is deliberately small: it constrains where a
+     HUMAN shakes out, and the harness policy rests 0.3× a run, so it is close to
+     inert on-band by nature rather than by mistake. Stated, not hidden. */
+  let grease = 30, dry = 21, gust = 19, crumble = 18
+  const spit = 5, pin = 3, stance = 4
   const wx = WEATHER[s.weather], rk = ROCK[s.rock]
   // humid and drizzle seep (sloper friction up, feet going); crisp and freezing
   // come into nick — the two conditions the player already sees on the paper
@@ -3950,39 +4023,89 @@ export function moveWeights(s: GameState): [number, number, number, number] {
   else if (dryAir) { grease -= MOVE_WET; dry += MOVE_WET }
   // sandstone is the friable one — it is what flakes; the harder rock gusts
   if (rk && rk.name === 'sandstone') { crumble += MOVE_FRIABLE; gust -= MOVE_FRIABLE }
-  return [grease, dry, gust, crumble]
+  return [grease, dry, gust, crumble, spit, pin, stance]
 }
+/** Whether a spitting hold rejects what you put on it: Power in the hands, Support
+    on the feet. One rule — the hold will not take a placement that is not positive
+    enough — read through the measure that lane is actually judged on. */
+export const spitRejects = (c: Card | null, lane: number) =>
+  !!c && (lane < 2 ? c.power < MOVE_SPIT : (c.support ?? 0) < MOVE_SPIT_SUPPORT)
 
 /** What the route is about to do. Rolled from the run RNG at the end of a turn. */
 export function rollRouteMove(s: GameState, rng: RNG): RouteMove | null {
   const lanes = [0, 1, 2].filter(i => s.boardH[i])
   if (!lanes.length) return null
+  /* THE DRAW ORDER IS LOAD-BEARING: lane first, then kind, exactly as it was before
+     ENG-21, and exactly two draws. An earlier cut rolled the KIND first so that
+     `spit` could be kept off the feet lane — and swapping two draws reshuffles every
+     roll after it in the run. That is not free: measured against the shipped build it
+     moved the CARD-9 wind arm by +2.9 points on its own and took the Second Wind's
+     lift from 2.4 to over 5, which reads as ENG-21 breaking the ceiling when it was
+     the reshuffle. Spit is judged per lane instead (see `spitRejects`), so the stream
+     is untouched and what the ledger measures is the feature. */
   const lane = lanes[rng.int(lanes.length)]
   const where = LANE_NAMES[lane].toLowerCase()
-  const [wg, wd, wgu] = moveWeights(s)
-  const total = 100
-  const r = rng.next() * total
-  if (r < wg) return { kind: 'grease', lane,
-    text: `The ${where} hold is greasing up.` }
-  if (r < wg + wd) return { kind: 'dry', lane,
-    text: `A breeze on the ${where} hold. It is coming into condition.` }
-  if (r < wg + wd + wgu) return { kind: 'gust', lane,
-    text: 'Wind coming up the face. All of it is about to bite.' }
-  return { kind: 'crumble', lane, text: `Something is flaking off the ${where} hold.` }
+  const [wg, wd, wgu, wc, wsp, wpi] = moveWeights(s)
+  const r = rng.next() * 100
+  const kind: RouteMove['kind'] =
+      r < wg ? 'grease'
+    : r < wg + wd ? 'dry'
+    : r < wg + wd + wgu ? 'gust'
+    : r < wg + wd + wgu + wc ? 'crumble'
+    : r < wg + wd + wgu + wc + wsp ? 'spit'
+    : r < wg + wd + wgu + wc + wsp + wpi ? 'pin'
+    : 'stance'
+  if (kind === 'grease') return { kind, lane, text: `The ${where} hold is greasing up.` }
+  if (kind === 'dry') return { kind, lane, text: `A breeze on the ${where} hold. It is coming into condition.` }
+  if (kind === 'gust') return { kind, lane, text: 'Wind coming up the face. All of it is about to bite.' }
+  if (kind === 'crumble') return { kind, lane, text: `Something is flaking off the ${where} hold.` }
+  if (kind === 'spit') return { kind, lane, text: lane < 2
+    ? `The ${where} hold is not holding much — it will spit anything under ${MOVE_SPIT} Power.`
+    : `The ${where} hold is greasy — a foot with less than ${MOVE_SPIT_SUPPORT} Support will pop off it.` }
+  if (kind === 'pin') return { kind, lane, text: `No shaking out on the ${where} hold this turn.` }
+  return { kind, lane, text: `A no-hands stance off the ${where} hold. Time for a look up.` }
 }
 
 /** Apply what was telegraphed last turn. Returns the holds and any log lines. */
-export function applyRouteMove(m: RouteMove, boardH: (Hold | null)[]): {
-  boardH: (Hold | null)[]; log: string[]
+/** Apply what was telegraphed last turn. ONE function for resolve and both preview
+    entry points, so they cannot disagree about what the route just did — the ENG-19
+    lesson. `spat` is handed back rather than filed here, because only resolve holds
+    the piles; `noRestLane` is -1 when nothing is pinned. */
+export function applyRouteMove(m: RouteMove, boardH: (Hold | null)[],
+  boardP: (Card | null)[] = [null, null, null]): {
+  boardH: (Hold | null)[]; boardP: (Card | null)[]; log: string[]
+  spat: Card | null; noRestLane: number
 } {
   const out = boardH.slice(), log: string[] = []
+  const outP = boardP.slice()
+  const none = { boardP: outP, spat: null, noRestLane: -1 }
   const h = out[m.lane]
   if (m.kind === 'gust') {
     for (let i = 0; i < 3; i++) if (out[i]) out[i] = { ...out[i]!, bite: out[i]!.bite + MOVE_BITE }
     log.push('The wind arrives. Everything bites harder.')
-    return { boardH: out, log }
+    return { boardH: out, log, ...none }
   }
-  if (!h) return { boardH: out, log }
+  // ENG-21: the three that act on you rather than on the stone
+  if (m.kind === 'spit') {
+    const c = outP[m.lane]
+    if (spitRejects(c, m.lane)) {
+      outP[m.lane] = null
+      log.push(`${h ? holdLabel(h) : 'The hold'} spits ${c!.name} off. Back in your hand — put it somewhere else.`)
+      return { boardH: out, log, boardP: outP, spat: c, noRestLane: -1 }
+    }
+    if (c) log.push(`${c.name} holds on where a weaker one would not.`)
+    return { boardH: out, log, ...none }
+  }
+  if (m.kind === 'pin') {
+    log.push(`${h ? holdLabel(h) : 'That hold'} — no rest to be had there this turn.`)
+    return { boardH: out, log, boardP: outP, spat: null, noRestLane: m.lane }
+  }
+  // the stance itself is a flag on the post-move state (see afterMove); nothing here
+  if (m.kind === 'stance') {
+    log.push('You get your weight over your feet. Hands off, and it feels solid.')
+    return { boardH: out, log, ...none }
+  }
+  if (!h) return { boardH: out, log, ...none }
   if (m.kind === 'grease') {
     out[m.lane] = { ...h, grip: h.grip + MOVE_GRIP }
     log.push(`${holdLabel(h)} greases up. Harder than it was.`)
@@ -3993,7 +4116,19 @@ export function applyRouteMove(m: RouteMove, boardH: (Hold | null)[]): {
     out[m.lane] = { ...h, bite: h.bite + MOVE_BITE, clean: true }
     log.push(`${holdLabel(h)} loses a flake. Sharper, and whatever it did is gone.`)
   }
-  return { boardH: out, log }
+  return { boardH: out, log, ...none }
+}
+/* ENG-21. The board as the telegraphed move leaves it, for the two preview entry
+   points. `routeMove` is CLEARED on the way out: previewPump builds this state and
+   then calls previewLane on it, which used to apply the same move a second time —
+   unreachable today because every caller passes precomputed lanes, but a grease
+   would have counted twice the moment one did not. Closed rather than left set. */
+export function afterMove(s: GameState): { s: GameState; noRestLane: number } {
+  if (!s.routeMove) return { s, noRestLane: -1 }
+  const d = applyRouteMove(s.routeMove, s.boardH, s.boardP)
+  return { s: { ...s, routeMove: null, boardH: d.boardH, boardP: d.boardP,
+      stance: s.routeMove.kind === 'stance' },
+    noRestLane: d.noRestLane }
 }
 /** Only beta makes a hold readable. Anything else would let you tell the
     wobbled holds from the flat ones by whether they showed a span at all. */
@@ -4020,15 +4155,21 @@ export function powerAgainst(s: GameState, card: Card, hold: Hold, lane: number,
   const featureless = feetHold ? abilityOf(feetHold) === 'Featureless' : false
   const bm = boonMods(s.boons)
   // wet rock: your feet are worth less, which every deck feels
-  const sup = feetCard
-    ? Math.max(0, feetCard.support + gearMods(s.boardP ? s.gear : []).dSupport
+  /* ENG-21: a gifted stance is the feet you did not place, so it pays in SUPPORT —
+     which is what ENG-20 allows a condition to move (Bite and Support, never Power).
+     It rides the same conditions a real foot placement does, so wet rock devalues a
+     stance exactly as it devalues your feet. */
+  const stanceSup = s.stance && !feetCard ? STANCE_SUPPORT : 0
+  const sup = feetCard || stanceSup
+    ? Math.max(0, (feetCard ? feetCard.support : stanceSup)
+        + gearMods(s.boardP ? s.gear : []).dSupport
         + (WEATHER[s.weather]?.dSupport ?? 0)
         + (windowOf(s)?.dSupport ?? 0))       // ROUTE-6: the feet stop trusting it
     : 0
   // Big Hands: Support normally favours one hand; this reaches both
   // Big Hands doubles what the feet give; it does not gate the default
   const eff = bm.wideSupport ? sup * 2 : sup
-  const support = lane < 2 && feetCard && !featureless
+  const support = lane < 2 && (feetCard || stanceSup) && !featureless
     ? eff + (abilityOf(hold) === 'Two-finger' ? -eff : 0) : 0
   let p = card.power + (card.settled ?? 0) + support
   // ENG-16: was a binary +2 above pump 7 on two cards. It scales now, so
@@ -4055,7 +4196,8 @@ export function powerAgainst(s: GameState, card: Card, hold: Hold, lane: number,
 /** Bite a hold deals into a lane, after abilities and conditions. */
 export function biteAgainst(s: GameState, card: Card | null, hold: Hold, lane: number): number {
   let b = hold.bite
-  if (lane < 2 && !s.boardP[2] && !boonMods(s.boons).noCampus) b += CAMPUS_BITE
+  // ENG-21: a gifted stance means your weight is on your feet — that is not campusing
+  if (lane < 2 && !s.boardP[2] && !s.stance && !boonMods(s.boons).noCampus) b += CAMPUS_BITE
   if (abilityOf(hold) === 'Squeeze' && s.boardH[0] && s.boardH[1]
     && !(card && card.fx === 'balance')) b += 1
   if (card && card.fx === 'static') b -= 1
@@ -4078,10 +4220,16 @@ export function resolve(s: GameState, rng: RNG): GameState {
   const worked = s.worked.slice(), log: string[] = []
   // ENG-11: what the route said it would do last turn, it does now — before
   // anything of yours resolves, so the telegraph was worth reading
+  let noRestLane = -1                                      // ENG-21: a pinned lane
   if (s.routeMove) {
-    const done = applyRouteMove(s.routeMove, boardH)
-    for (let i = 0; i < 3; i++) boardH[i] = done.boardH[i]
+    const done = applyRouteMove(s.routeMove, boardH, boardP)
+    for (let i = 0; i < 3; i++) { boardH[i] = done.boardH[i]; boardP[i] = done.boardP[i] }
     log.push(...done.log)
+    noRestLane = done.noRestLane
+    /* a rejected card is HANDED BACK, not filed — see the note on `spit`. The lane
+       going unanswered is the cost; the card is not. `settled` resets because it is
+       off the wall, the same way an echo returns it. */
+    if (done.spat) piles = { ...piles, hand: [...piles.hand, { ...done.spat, settled: 0 }] }
   }
   // ENG-19: powerAgainst and biteAgainst read the feet hold (Support, campus)
   // out of the state they are handed. The move above has already changed the
@@ -4089,7 +4237,14 @@ export function resolve(s: GameState, rng: RNG): GameState {
   // now — so they must read the post-move board, not s. previewLane does the
   // same thing; without this the preview and resolve disagree on exactly the
   // turn a feet hold flakes off.
-  const sMove: GameState = s.routeMove ? { ...s, boardH: boardH.slice() } : s
+  /* ENG-21: carries the post-move boardP and the stance as well as the holds. The
+     boardP matters because `spit` removes a card and both `fx: 'weight'` and the
+     opposition term count the OTHER lanes — reading the pre-move board there would
+     have paid a card that is no longer on the wall. */
+  const sMove: GameState = s.routeMove
+    ? { ...s, boardH: boardH.slice(), boardP: boardP.slice(),
+        stance: s.routeMove.kind === 'stance' }
+    : s
   const fxLane = ['', '', '']
   let restedThis = false, clearedThis = 0
   /* DAILY-2: "feet off" is a decision you made when you committed the turn, so it
@@ -4120,6 +4275,8 @@ export function resolve(s: GameState, rng: RNG): GameState {
   // where you actually rest, and only if there is a rest to be had here.
   if (!noRest) for (let i = 0; i < 3; i++) {
     const c = boardP[i], h = boardH[i]
+    // ENG-21: a pinned lane is no rest, so there is no chip to be had from it either
+    if (i === noRestLane) continue
     if (c && c.restChip && h) boardH[i] = { ...h, grip: Math.max(0, h.grip - c.restChip) }
   }
   // CARD-13: a curse dumped onto a lane sharpens the hold there — the tweak, the
@@ -4131,8 +4288,15 @@ export function resolve(s: GameState, rng: RNG): GameState {
       log.push(`${c.name} · the ${holdLabel(h)} is worse for it now.`)
     }
   }
-  for (const c of boardP) if (c && c.shed) {
-    if (noRest) { restedThis = true; log.push(`${c.name} · nowhere to shake out up here.`); continue }
+  for (let i = 0; i < 3; i++) {
+    const c = boardP[i]
+    if (!c || !c.shed) continue
+    // ENG-21: a pinned lane is the same deal the noRest phases already strike — the
+    // rest costs you the card and the position and pays nothing, and it still counts
+    // as having shaken out, so flow breaks exactly as it does everywhere else
+    if (noRest || i === noRestLane) {
+      restedThis = true; log.push(`${c.name} · nowhere to shake out up here.`); continue
+    }
     pump = Math.max(0, pump - c.shed); restedThis = true
     log.push(`${c.name} · −${c.shed} pump, no progress.`)
   }
@@ -4629,9 +4793,7 @@ export function laneBlows(s: GameState, i: number): boolean {
 
 export function previewLane(s0: GameState, i: number): LanePreview {
   // a telegraphed move is information the player has, so the preview uses it
-  const s = s0.routeMove
-    ? { ...s0, boardH: applyRouteMove(s0.routeMove, s0.boardH).boardH }
-    : s0
+  const { s, noRestLane } = afterMove(s0)
   const hold = s.boardH[i], card = s.boardP[i]
   const blank: LanePreview = { hold: false, clears: false, gripLeft: 0,
     card: false, blows: false, contactLeft: 0, biteToPump: 0 }
@@ -4660,6 +4822,7 @@ export function previewLane(s0: GameState, i: number): LanePreview {
      clamps (rest chips floor at 0; hex does not). */
   const bmL = boonMods(s.boons)
   const noRestL = phaseOf(s)?.noRest === true || mutMods(s.mutators).noShakes || bmL.noRests
+    || i === noRestLane                                    // ENG-21: pinned, so no chip either
   let g0 = hold.grip
   if (bmL.restChips && card.shed > 0) g0 = Math.max(0, g0 - bmL.restChips)
   if (!noRestL && card.restChip) g0 = Math.max(0, g0 - card.restChip)
@@ -4680,16 +4843,18 @@ export function previewLane(s0: GameState, i: number): LanePreview {
 /** Predicted pump after COMMIT — rests, unanswered lanes, and the clock.
     Takes precomputed lanes so a render does not recompute them per call. */
 export function previewPump(s0: GameState, lanes?: LanePreview[]): number {
-  const s = s0.routeMove
-    ? { ...s0, boardH: applyRouteMove(s0.routeMove, s0.boardH).boardH }
-    : s0
+  const { s, noRestLane } = afterMove(s0)
   const L = lanes ?? [0, 1, 2].map(i => previewLane(s, i))
   let pump = s.pump
   const noRest = phaseOf(s)?.noRest === true || mutMods(s.mutators).noShakes
     || boonMods(s.boons).noRests
   // resolve clamps at zero on EACH shed, then adds the clock — clamping only
   // at the end silently under-reports by however far it went negative
-  for (const c of s.boardP) if (c && c.shed && !noRest) pump = Math.max(0, pump - c.shed)
+  // ENG-21: and a pinned lane sheds nothing, exactly as resolve has it
+  for (let i = 0; i < 3; i++) {
+    const c = s.boardP[i]
+    if (c && c.shed && !noRest && i !== noRestLane) pump = Math.max(0, pump - c.shed)
+  }
   let cleared = 0
   for (let i = 0; i < 3; i++) {
     const p = L[i]

@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.9 — DAILY-3: four weeks make a season that finishes — a board, a
-//   title at the end of it, and tomorrow's conditions posted on the menu
+// SANDBAGGED v10.10 — ENG-21: the route acts on the climber, not just the stone — it
+//   rejects a card it will not hold, denies a shake-out, or hands you a stance
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -21,7 +21,7 @@ import {
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
   campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitZone, claimStep, claimVerdict,
   consumableById, KIT_MAX, useKitStep, secondWindStep,
-  coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyGoals, dailyRoute, dailySeed, dailyShare, dailyUsed, tomorrowKey,
+  coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyGoals, dailyRoute, dailySeed, dailyShare, dailyUsed, tomorrowKey, MOVE_GIFTS,
   SEASON_WEEKS, seasonKey, seasonWeekOf, seasonTitle, nextSeasonTitle, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
   endSession, endingFor, endingStep, establishedIn, exportSave, exposed, exposureOf,
   faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
@@ -1146,7 +1146,7 @@ function startTutorial() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.9 · RCJ Labs</div>
+          <div className="sfoot">v10.10 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1339,7 +1339,7 @@ function startTutorial() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.9 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.10 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -3343,11 +3343,16 @@ function startTutorial() {
           a hazard you must answer this turn (the route's next move, a shut
           weather window) sits at the top and carries the `urgent` weight; the
           plan, the phase note and the read-ahead follow. */}
-      {st.routeMove ? (
-        <div className={`spot${st.routeMove.kind !== 'dry' ? ' urgent' : ''}`} role="status" aria-live="polite"
-          style={{ borderLeftColor: st.routeMove.kind === 'dry' ? 'var(--green)' : 'var(--red)' }}>
-          <b style={{ color: st.routeMove.kind === 'dry' ? 'var(--green)' : 'var(--red)' }}>
-            NEXT TURN</b>{st.routeMove.text}</div>) : null}
+      {/* ENG-21: two of the seven moves are gifts, so the banner reads the kind
+          rather than testing for the one gift there used to be. */}
+      {st.routeMove ? (() => {
+        const good = MOVE_GIFTS.includes(st.routeMove.kind)
+        const tint = good ? 'var(--green)' : 'var(--red)'
+        return (
+          <div className={`spot${good ? '' : ' urgent'}`} role="status" aria-live="polite"
+            style={{ borderLeftColor: tint }}>
+            <b style={{ color: tint }}>NEXT TURN</b>{st.routeMove.text}</div>)
+      })() : null}
       {/* ROUTE-6: the weather window — telegraphed a hold ahead, then live. */}
       {st.phase === 'climb' ? (windowOf(st) ? (
         <div className="spot urgent" role="status" aria-live="polite"

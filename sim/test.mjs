@@ -1845,7 +1845,28 @@ if (SLOW) {
        an ordinary hold, so mild ones make routes easier — pitched at dGrip 2–3
        they land the band at n=300 52.7 / n=600 53.3, still on the ~52 pin. The
        binding constraint on the way up is no longer this guard but CARD-9's
-       ceiling (~1.7 clear); read its comment before lifting the base again. */
+       ceiling (~1.7 clear); read its comment before lifting the base again.
+       v10.10 (ENG-21): the route acts on the climber now — it can reject a card it
+       will not hold, deny a shake-out in a lane, and hand you a stance. On-band by
+       nature, so it was measured against the SHIPPED build rather than reasoned
+       about, and both halves are worth recording.
+       (1) The band moved ~0.8 HARDER (n=900 53.7 → 52.9; a paired n=2700 pass read
+       55.6 → 54.1). Everything else on the ledger holds — lines, climbers, spread.
+       Do not read the n=900 numbers finer than that: the SE on one arm is ~1.7, and
+       an earlier tuning pass chased five configs that all sat inside one SE of each
+       other and concluded the opposite sign. n=2700 is the smallest sample that
+       resolves a 1.5-point question here.
+       (2) A retry got more valuable, because a burn is now slightly less reliable:
+       CARD-9's lift went 2.4 → 4.0 against its ceiling of 4. Shrinking ENG-21 to 8%
+       of the move table only brought it to 3.8 — 0.2 inside a ~2.3 SE, which is a
+       guard passing on a coin flip rather than a fix. So the ITEM pays: WIND_PUMP
+       0.4 → 0.55, BAL-15's own dial, and the lift is back to 2.0. That is a
+       deliberate nerf to the Second Wind in service of the contract CARD-9 states,
+       recorded here rather than buried in the constant.
+       NOTE for the next person: the move roll's DRAW ORDER (lane, then kind) is
+       load-bearing. An earlier cut of ENG-21 rolled the kind first and that
+       reshuffle alone moved the CARD-9 wind arm +2.9 and read as this ticket
+       breaking the ceiling. A guard pins the order now. */
     ok(full > 44 && full < 58,
       `the campaign completes ${full}% with a full journal — ~52-53, held at v9.98 (ROUTE-13)`)
     ok(pcts[0] < full - 5, `reading his journal is worth ${(full - pcts[0]).toFixed(1)} points`)
