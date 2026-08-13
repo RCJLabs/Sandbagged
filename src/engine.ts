@@ -468,6 +468,8 @@ export type GameState = {
   dailyDay: string
   /** DAILY-2: which of today's objectives the attempt met, by id. */
   dailyMet: string[]
+  /** SOCIAL-2: the challenge being climbed, if this is one. */
+  challenge: Challenge | null
   /** DAILY-1: consumables earned from a streak, waiting for your next trip. Kept
       out of `newRun` on purpose — the App hands them over, so the balance harness
       never receives them. */
@@ -580,6 +582,7 @@ type SaveData = {
   ticked?: string[]; established?: Established[]; hints?: boolean; grades?: GradeScale
   tweak?: Tweak | null
   larder?: string[]; titles?: string[]; graceWeek?: string; dailyMet?: string[]
+  challenge?: Challenge | null
   dailyDay?: string; dailyTried?: string; dailyScore?: number; dailyBest?: number; dailyStreak?: number
   weekId?: string; weekScore?: number; weekBest?: number
   seasonId?: string; seasonScore?: number; seasonBest?: number
@@ -619,6 +622,7 @@ export function saveGame(s: GameState) {
       tutorialDone: s.tutorialDone, motion: s.motion, textScale: s.textScale, reach: s.reach,
       arch: s.arch, loadouts: s.loadouts, book: s.book, bestCircuit: s.bestCircuit, ticked: s.ticked, established: s.established, hints: s.hints, grades: s.grades, tweak: s.tweak,
       larder: s.larder, titles: s.titles, graceWeek: s.graceWeek, dailyMet: s.dailyMet,
+      challenge: s.challenge,
       dailyDay: s.dailyDay, dailyTried: s.dailyTried, dailyScore: s.dailyScore, dailyBest: s.dailyBest, dailyStreak: s.dailyStreak,
       weekId: s.weekId, weekScore: s.weekScore, weekBest: s.weekBest,
       seasonId: s.seasonId, seasonScore: s.seasonScore, seasonBest: s.seasonBest,
@@ -728,6 +732,8 @@ export function loadGame(slot = 0): Partial<GameState> | null {
       grades: d.grades ?? 'v', tweak: d.tweak ?? null,
       larder: d.larder ?? [], titles: d.titles ?? [], graceWeek: d.graceWeek ?? '',
       dailyMet: d.dailyMet ?? [],
+      // SOCIAL-2: a code from a newer build could name a goal this one does not have
+      challenge: d.challenge && goalById(d.challenge.goal) ? d.challenge : null,
       dailyDay: d.dailyDay ?? '', dailyTried: d.dailyTried ?? '', dailyScore: d.dailyScore ?? 0,
       dailyBest: d.dailyBest ?? 0, dailyStreak: d.dailyStreak ?? 0,
       weekId: d.weekId ?? '', weekScore: d.weekScore ?? 0, weekBest: d.weekBest ?? 0,
@@ -3053,9 +3059,12 @@ export function dailySeed(key = dayKey()): number {
   }
   return (h >>> 0) || 1
 }
-/** Today's problem. Harder than a skirmish and the same for everyone. */
-export function dailyRoute(key = dayKey()): RouteSpec {
-  const rng = new RNG(dailySeed(key))
+/* One problem generator, two doors into it. SOCIAL-2 needed a shareable one-off
+   problem and the daily already had exactly the right generator; a second copy of it
+   would have been a second set of tables to drift (the ENG-19 lesson). Only the seed
+   and the note differ, so only those are arguments. */
+function problemFrom(seed: number, note: string): RouteSpec {
+  const rng = new RNG(seed >>> 0)
   const styles: StyleKey[] = ['mixed', 'slab', 'crimp ladder', 'compression', 'power', 'jug haul']
   const feet: FeetKey[] = ['normal', 'hard']
   const grade = 3 + rng.int(5)
@@ -3063,9 +3072,12 @@ export function dailyRoute(key = dayKey()): RouteSpec {
     name: `${SK_A[rng.int(SK_A.length)]} ${SK_B[rng.int(SK_B.length)]}`,
     grade, style: styles[rng.int(styles.length)],
     clear: 9 + rng.int(5), crux: 1 + rng.int(3), feet: feet[rng.int(feet.length)],
-    note: 'Today only. Everybody is on this one.',
+    note,
   }
 }
+/** Today's problem. Harder than a skirmish and the same for everyone. */
+export const dailyRoute = (key = dayKey()): RouteSpec =>
+  problemFrom(dailySeed(key), 'Today only. Everybody is on this one.')
 /** What a daily attempt was worth. Topping out matters most; being quick and
     unpumped is the tiebreak, which is how people actually compare a session. */
 export function dailyScore(s: GameState): number {
@@ -3178,6 +3190,83 @@ export function dailyShare(s: GameState): string {
   if (tail.length) lines.push(tail.join(' · '))
   return lines.join('\n')
 }
+/* SOCIAL-2. SOCIAL-1 let you paste a RESULT and that was the whole social surface:
+   people could compare numbers but nobody could climb your thing. A challenge is the
+   other direction — a problem and the terms it has to be done on, short enough to say
+   out loud, and it needs no server either.
+
+   A code carries a seed and one objective, and the objective is the point: a seed alone
+   is just "try this problem", where a seed plus "and do it without shaking out" is a
+   thing to beat. The objectives are DAILY-2's, so a challenge asks for something the
+   game already knows how to judge and show.
+
+   IT CARRIES A CHECK CHARACTER, which is the SAVE-1 lesson in miniature: without one a
+   mistyped code parses as a perfectly valid DIFFERENT problem, so two people compare
+   scores on two different boulders and neither can tell.
+   The scheme is ISO 7064 MOD 37,36, and it is that rather than something hand-rolled
+   for a measured reason. The first cut summed `seed % 36`, which ignores every digit
+   above the last — so changing a high-order character left the check valid and 210 of
+   the single-character typos in the guard's sweep read back as a different challenge.
+   MOD 37,36 PROVABLY detects every single-character substitution and every adjacent
+   transposition, which is exactly the class of mistake a person makes reading a code
+   over a phone. The 37th symbol is why the check alphabet has a `*` in it: 37 is prime
+   and base36 only has 36 digits to spend. */
+export type Challenge = { seed: number; goal: string }
+export const CHALLENGE_NOTE = 'Somebody else-s problem, on their terms.'
+/** The problem a challenge seed names. Same generator the daily uses. */
+export const challengeRoute = (seed: number): RouteSpec =>
+  problemFrom(seed, CHALLENGE_NOTE)
+const CHK = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*'
+/** ISO 7064 MOD 37,36 over the base-36 payload. */
+function checkChar(payload: string): string {
+  let pp = 36
+  for (const ch of payload) {
+    const a = parseInt(ch, 36)
+    if (!Number.isFinite(a)) return ''
+    const sum = (pp + a) % 36
+    pp = ((sum === 0 ? 36 : sum) * 2) % 37
+  }
+  return CHK[(38 - pp) % 37]
+}
+export function challengeCode(c: Challenge): string {
+  const gi = DAILY_GOALS.findIndex(g => g.id === c.goal)
+  if (gi < 0) return ''
+  const seed = c.seed >>> 0
+  const body = `${seed.toString(36).toUpperCase()}${gi.toString(36).toUpperCase()}`
+  return `${seed.toString(36).toUpperCase()}-${gi.toString(36).toUpperCase()}${checkChar(body)}`
+}
+export function readChallenge(code: string): Challenge | null {
+  // the check alphabet includes `*`, so it must survive normalising
+  const raw = (code || '').toUpperCase().replace(/[^0-9A-Z*-]/g, '')
+  const parts = raw.split('-').filter(Boolean)
+  if (parts.length !== 2 || parts[1].length !== 2) return null
+  if (!/^[0-9A-Z]+$/.test(parts[0]) || !/^[0-9A-Z]$/.test(parts[1][0])) return null
+  const seed = parseInt(parts[0], 36)
+  const gi = parseInt(parts[1][0], 36)
+  if (!Number.isFinite(seed) || !Number.isFinite(gi)) return null
+  if (seed > 0xffffffff) return null
+  if (gi < 0 || gi >= DAILY_GOALS.length) return null
+  // a typo is REFUSED, never climbed as a different problem
+  if (checkChar(parts[0] + parts[1][0]) !== parts[1][1]) return null
+  return { seed: seed >>> 0, goal: DAILY_GOALS[gi].id }
+}
+/** What you did on somebody's challenge, in a line they can compare against theirs. */
+export function challengeShare(s: GameState): string {
+  const c = s.challenge
+  if (!c) return ''
+  const spec = specOf(s)
+  const holds = Math.max(0, Math.min(s.cleared, spec.clear))
+  const grid = '\u25aa'.repeat(holds) + '\u25ab'.repeat(Math.max(0, spec.clear - holds))
+  const g = goalById(c.goal)
+  const met = g ? g.met(s, spec) : false
+  return [
+    `Sandbagged \u00b7 challenge ${challengeCode(c)}`,
+    `${grid} ${holds}/${spec.clear} \u00b7 ${gradeText(spec.grade, s.grades)}`,
+    `${g ? `${met ? '\u2713' : '\u2717'} ${g.text.toLowerCase()}` : ''}`,
+    `${dailyScore(s)} pts${s.result === 'send' ? ' \u00b7 topped it' : ''}`,
+  ].filter(Boolean).join('\n')
+}
+
 /* RUN-12. The weekly ladder was accumulated, saved and printed — and nothing
    else. The daily has a streak deed and a share; the week gets its own now: a
    share of the running total (a week is an aggregate, so no per-hold grid — it
@@ -3534,7 +3623,7 @@ export function freshRun(routeIdx: number, deckTier: number, seed: number): Game
     tutorialDone: false,
     fxLane: ['', '', ''], fxTick: 0, gear: [], boons: [], gearOffers: [], savedBlow: false, peakPump: 0, rests: 0, cruxFree: 0, clipped: false, bonusUsed: false, line: 0, rerolls: 0, mutators: [], seq: null, readAhead: 0, order: [], routeMove: null, arch: 0,
     loadouts: ARCHETYPES.map(a => a.loadout.slice()), reroll: 0, book: {}, ticked: [], hints: true, grades: 'v',
-    larder: [], titles: [], graceWeek: '', dailyMet: [],
+    larder: [], titles: [], graceWeek: '', dailyMet: [], challenge: null,
     dailyDay: '', dailyTried: '', dailyScore: 0, dailyBest: 0, dailyStreak: 0, weekId: '', weekScore: 0, weekBest: 0,
     seasonId: '', seasonScore: 0, seasonBest: 0, seasonDays: 0, seasonWeeks: [],
     daily: false, trail: [],

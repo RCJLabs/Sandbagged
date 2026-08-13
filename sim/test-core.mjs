@@ -2307,6 +2307,142 @@ test('FA-1: the FA is a real mode, and the grade you claim is an economy', () =>
     'an in-run FA claim did not drop back onto the map')
 })
 
+test('a challenge is a problem and its terms, and a typo is refused (SOCIAL-2)', () => {
+  /* SOCIAL-2. SOCIAL-1 let you paste a RESULT — people could compare numbers but
+     nobody could climb your thing. A challenge code is a seed and one objective: the
+     objective is what makes it a challenge rather than a link, because a seed alone is
+     only "try this" where a seed plus "and no shaking out" is something to beat.
+     THE CHECKSUM IS THE LOAD-BEARING PART, and it is SAVE-1's lesson in miniature:
+     without it a mistyped code parses as a perfectly valid DIFFERENT problem, so two
+     people compare scores on two different boulders and neither can tell. */
+  const goals = E.DAILY_GOALS.map(g => g.id)
+  ok(goals.length > 1, 'there is only one objective, so a challenge carries no terms')
+
+  // a code round-trips, for every objective and across the whole seed range
+  for (const goal of goals) {
+    for (const seed of [0, 1, 42, 999983, 0x7fffffff, 0xfffffffe, 0xffffffff]) {
+      const code = E.challengeCode({ seed, goal })
+      ok(code.length > 2, `no code for seed ${seed} goal ${goal}`)
+      const back = E.readChallenge(code)
+      ok(back, `code ${code} does not read back`)
+      eq(back.seed, seed >>> 0, `seed ${seed} did not survive the code`)
+      eq(back.goal, goal, `goal ${goal} did not survive the code`)
+    }
+  }
+  // it is short enough to say out loud, and case and spacing do not matter
+  const code = E.challengeCode({ seed: 0x51ABCD, goal: goals[1] })
+  ok(code.length <= 12, `a challenge code is ${code.length} characters — too long to read out`)
+  eq(JSON.stringify(E.readChallenge(code.toLowerCase())), JSON.stringify(E.readChallenge(code)),
+    'a lowercase code does not read')
+  eq(JSON.stringify(E.readChallenge(`  ${code} `)), JSON.stringify(E.readChallenge(code)),
+    'a code with spaces around it does not read')
+
+  /* A TYPO IS REFUSED. Every single-character change to a valid code must either read
+     back as the SAME challenge or not read at all — never as a different one. */
+  const alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  let silentlyDifferent = 0, refused = 0
+  for (const seed of [7, 12345, 0xabcdef]) {
+    const good = E.challengeCode({ seed, goal: goals[0] })
+    const want = JSON.stringify({ seed, goal: goals[0] })
+    for (let i = 0; i < good.length; i++) {
+      if (good[i] === '-') continue
+      for (const ch of alphabet) {
+        if (ch === good[i]) continue
+        const typo = good.slice(0, i) + ch + good.slice(i + 1)
+        const got = E.readChallenge(typo)
+        if (!got) { refused++; continue }
+        if (JSON.stringify(got) !== want) silentlyDifferent++
+      }
+    }
+  }
+  ok(refused > 50, `only ${refused} typos were refused — the checksum is not doing anything`)
+  eq(silentlyDifferent, 0,
+    `${silentlyDifferent} single-character typos read back as a DIFFERENT challenge — two people would compare scores on two different boulders`)
+  /* ...and so is a TRANSPOSITION, the other mistake people make reading a code out.
+     MOD 37,36 guarantees adjacent transpositions too, so this can demand zero as well. */
+  let swapped = 0
+  for (const seed of [7, 12345, 0xabcdef, 0x5f3759df]) {
+    const good = E.challengeCode({ seed, goal: goals[0] })
+    const want = JSON.stringify({ seed: seed >>> 0, goal: goals[0] })
+    for (let i = 0; i + 1 < good.length; i++) {
+      if (good[i] === '-' || good[i + 1] === '-' || good[i] === good[i + 1]) continue
+      const t = good.slice(0, i) + good[i + 1] + good[i] + good.slice(i + 2)
+      const got = E.readChallenge(t)
+      if (got && JSON.stringify(got) !== want) swapped++
+    }
+  }
+  eq(swapped, 0, `${swapped} adjacent transpositions read back as a DIFFERENT challenge`)
+
+  // and outright rubbish is refused rather than guessed at
+  for (const bad of ['', '-', 'ABC', 'ABC-', '-2F', 'ZZZZ-99-1', 'ABC-2FG', '!!!']) {
+    eq(E.readChallenge(bad), null, `rubbish read as a challenge: ${JSON.stringify(bad)}`)
+  }
+  /* A goal index past the end of the table is refused — a code from a newer build. The
+     first version of this used one guessed check character, so it was rejected by the
+     CHECKSUM and never exercised the bounds test at all (proved by injection: removing
+     the upper bound left it green). It tries every check symbol now, so the only thing
+     that can refuse it is the bounds test. */
+  const CHK = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*'
+  for (const gi of [E.DAILY_GOALS.length, E.DAILY_GOALS.length + 1, 35]) {
+    if (gi < E.DAILY_GOALS.length) continue
+    let accepted = null
+    for (const ch of CHK) {
+      const got = E.readChallenge(`AAAA-${gi.toString(36).toUpperCase()}${ch}`)
+      if (got) { accepted = got; break }
+    }
+    eq(accepted, null, `a code naming objective #${gi}, which this build does not have, was accepted`)
+  }
+
+  /* ONE PROBLEM GENERATOR. The daily already had the right one; a second copy would be
+     a second set of tables to drift. Same seed in, same problem out — and the daily's
+     own snapshot pin (DAILY-2) is what proves the refactor changed nothing. */
+  const spec = E.challengeRoute(12345)
+  eq(JSON.stringify(E.challengeRoute(12345)), JSON.stringify(spec), 'the same seed gave two problems')
+  ok(spec.clear > 0 && spec.grade > 0 && spec.name.length > 2, 'a challenge seed names no problem')
+  ok(spec.note !== E.dailyRoute().note, 'a challenge reads as the daily')
+  // different seeds are different problems (not a constant)
+  const names = new Set([1, 2, 3, 4, 5, 6, 7, 8].map(n => JSON.stringify(E.challengeRoute(n * 7919))))
+  ok(names.size >= 6, `eight seeds only made ${names.size} problems`)
+  // and it is the DAILY's generator: the daily for a key equals the challenge for that key's seed
+  eq(JSON.stringify({ ...E.challengeRoute(E.dailySeed('2026-07-29')), note: '' }),
+    JSON.stringify({ ...E.dailyRoute('2026-07-29'), note: '' }),
+    'the challenge and the daily are no longer the same generator')
+
+  /* THE RESULT SAYS WHETHER THE TERMS WERE MET. A score alone is not an answer to a
+     challenge, which is the entire difference between this and SOCIAL-1. */
+  const c = { seed: 4242, goal: 'flash' }
+  const base = { ...E.freshRun(0, 0, 1), skirmish: E.challengeRoute(c.seed), challenge: c,
+    inRun: false, result: 'send', turn: 12, peakPump: 3, rests: 0, cruxFree: 1, grades: 'v' }
+  base.cleared = E.specOf(base).clear
+  const out = E.challengeShare(base)
+  ok(out.includes(E.challengeCode(c)), 'the answer does not carry the code it is answering')
+  ok(/\u2713/.test(out), 'a met objective is not ticked in the answer')
+  const missed = E.challengeShare({ ...base, result: 'fall', cleared: 1 })
+  ok(/\u2717/.test(missed), 'a missed objective is not marked in the answer')
+  ok(missed !== out, 'the answer reads the same whether you met the terms or not')
+  eq(E.challengeShare({ ...base, challenge: null }), '', 'a non-challenge produced a challenge answer')
+  // the grid is one mark per hold, like SOCIAL-1's
+  const grid = out.split('\n')[1]
+  eq((grid.match(/[\u25aa\u25ab]/g) || []).length, E.specOf(base).clear,
+    'the answer grid is not one mark per hold')
+
+  // it survives a save, and a goal this build does not know is dropped rather than kept
+  E.saveGame({ ...base, slot: 1 })
+  eq(JSON.stringify(E.loadGame(1).challenge), JSON.stringify(c), 'the challenge did not survive a save')
+  E.saveGame({ ...base, slot: 1, challenge: { seed: 5, goal: 'not-a-goal' } })
+  eq(E.loadGame(1).challenge, null, 'a challenge naming an unknown objective survived a load')
+
+  /* OFF-BAND BY CONSTRUCTION: a challenge is a skirmish, and the harness climbs the
+     campaign. Nothing here can reach the guided line. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const start = app.slice(app.indexOf('function startChallenge'), app.indexOf('const setMine'))
+  ok(start.length > 200, 'startChallenge moved out from under this guard')
+  ok(/inRun: false/.test(start), 'a challenge starts as a campaign run')
+  ok(/skirmish: route/.test(start), 'a challenge does not ride the skirmish path')
+  ok(/readChallenge\(code\)/.test(start), 'a challenge starts without reading the code first')
+  const sim = readFileSync('sim/run.mjs', 'utf8')
+  ok(!/challenge/i.test(sim), 'the balance harness now plays challenges')
+})
 test('no two screens fight over a class name (VIS-8)', () => {
   /* VIS-8. `.board` has named the climb screen's lane rows — a 3-column grid — since
      v0. DAILY-3 (v10.9) added a season board and called it `.board` too. The later rule

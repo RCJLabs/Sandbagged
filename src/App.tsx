@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.14 — VIS-8: the climb screen is not broken any more. A season board
-//   added at v10.9 was called .board, which the lane rows have owned since v0
+// SANDBAGGED v10.15 — SOCIAL-2: challenge codes — a seed and one objective, short
+//   enough to read out, and a mistyped one is refused rather than climbed
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -21,6 +21,7 @@ import {
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
   campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitZone, claimStep, claimVerdict,
   consumableById, KIT_MAX, useKitStep, secondWindStep,
+  challengeCode, challengeRoute, challengeShare, readChallenge, goalById, dailyScore,
   coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyGoals, dailyRoute, dailySeed, dailyShare, dailyUsed, tomorrowKey, MOVE_GIFTS, CURSE_TAX,
   supportNow, bedFor,
   SEASON_WEEKS, seasonKey, seasonWeekOf, seasonTitle, nextSeasonTitle, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
@@ -878,6 +879,9 @@ export default function App() {
     `${st.reach !== 'off' ? ` reach reach-${st.reach[0]}` : ''}` +
     `${onRock ? ` wx-${WEATHER[st.weather].name.replace(/ /g, '')}` : ''}`
   const [seedIn, setSeedIn] = useState('')
+  const [chalIn, setChalIn] = useState('')     // SOCIAL-2: a pasted challenge code
+  const [chalBad, setChalBad] = useState(false)
+  const [sharedChal, setSharedChal] = useState(false)
   /* UI-2: the title card, shown once per load before anything else. It is not
      only decoration — a browser will not start an AudioContext until the player
      has touched the page, so this is the honest place to open one. */
@@ -1145,6 +1149,20 @@ function startTutorial() {
       weather: rng.int(WEATHER.length), rock: rng.int(ROCK.length) }, rng)
     setSt({ ...next, seed: rng.s })
   }
+  /* SOCIAL-2: somebody else's problem on their terms. One go, like the daily, and it
+     rides the skirmish path — so it is off the guarded campaign line by construction. */
+  function startChallenge(code: string) {
+    const c = readChallenge(code)
+    if (!c) return false
+    const rng = new RNG(c.seed)
+    const route = challengeRoute(c.seed)
+    const next = startBurn({ ...st, skirmish: route, inRun: false, tier: 0, daily: false,
+      challenge: c, runDeck: loadoutDeck(st.loadouts[st.arch]), skin: SKIN_MAX,
+      burn: 1, beta: [], worked: [],
+      weather: rng.int(WEATHER.length), rock: rng.int(ROCK.length) }, rng)
+    setSt({ ...next, seed: rng.s })
+    return true
+  }
   const setMine = (s: GameState, list: string[]) =>
     ({ ...s, loadouts: s.loadouts.map((l, i) => i === s.arch ? list : l) })
   function addCard(name: string) {
@@ -1273,7 +1291,7 @@ function startTutorial() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.14 · RCJ Labs</div>
+          <div className="sfoot">v10.15 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1456,6 +1474,42 @@ function startTutorial() {
             onClick={startCircuit} />
         </div>
 
+        {/* SOCIAL-2: somebody else's problem, on their terms. A code is a seed and one
+            objective — short enough to say out loud, and refused if it is mistyped. */}
+        <div style={{ marginTop: 5 }}>
+          <Tile mark={MENU_MARKS.day} seed={306} name="A CHALLENGE"
+            sub={(() => {
+              const c = readChallenge(chalIn)
+              if (chalIn && !c) return 'That code does not read. Check it and try again.'
+              if (c) {
+                const r = challengeRoute(c.seed), g = goalById(c.goal)
+                return `${r.name} · ${gradeText(r.grade, st.grades)} · ${r.clear} holds. ${g ? g.text + '.' : ''}`
+              }
+              return 'Paste somebody\u2019s code and climb their problem, on their terms.'
+            })()}
+            disabled={!readChallenge(chalIn)}
+            onClick={() => { if (!startChallenge(chalIn)) setChalBad(true) }} />
+        </div>
+        <div className="row" style={{ marginTop: 6 }}>
+          <input className="inp" value={chalIn} aria-label="Challenge code"
+            placeholder="CHALLENGE CODE"
+            onChange={e => { setChalIn(e.target.value); setChalBad(false) }} />
+          <button className="btn" style={{ padding: '9px 12px' }}
+            {...tap(() => {
+              /* your own challenge to hand out: this seed, and the objective the day is
+                 already asking for, so the two are comparable. */
+              const seed = (st.seed * 1664525 + 1013904223) >>> 0
+              const goal = dailyGoals()[0]
+              const code = challengeCode({ seed, goal: goal.id })
+              setChalIn(code)
+              try { void navigator.clipboard?.writeText(code) } catch { /* blocked */ }
+            }, 'Make a challenge code and copy it')}>MAKE ONE ▸</button>
+        </div>
+        {chalBad ? (
+          <div className="spot"><b>THAT CODE DOES NOT READ</b>
+            A challenge code is a seed, a dash, and two more characters. One wrong
+            character is refused rather than sending you up a different boulder.</div>) : null}
+
         <div className="lbl" style={{ marginTop: 12 }}>BEFORE YOU GO</div>
         <div style={{ marginTop: 5 }}>
           <Tile quiet mark={MENU_MARKS.pack} seed={306}
@@ -1466,7 +1520,7 @@ function startTutorial() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.14 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.15 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -3082,6 +3136,23 @@ function startTutorial() {
                   'Copy your week to share')}>
                 {sharedWeek ? 'COPIED ✓' : 'SHARE THE WEEK ▸'}</button>) : null}
           </div>) : null}
+        {/* SOCIAL-2: a challenge is somebody's problem AND their terms, so the result
+            has to say whether you met the terms — a score alone is not an answer. */}
+        {st.challenge ? (() => {
+          const g = goalById(st.challenge.goal)
+          const met = !!g && g.met(st, spec)
+          return (
+            <div className="spot" style={{ borderLeftColor: met ? 'var(--green)' : 'var(--red)' }}>
+              <b style={{ color: met ? 'var(--green)' : 'var(--red)' }}>
+                CHALLENGE {challengeCode(st.challenge)}</b>
+              {g ? `${met ? 'Their terms, met: ' : 'Their terms, missed: '}${g.text.toLowerCase()}. ` : ''}
+              {dailyScore(st)} points.
+              <button className="btn" style={{ width: '100%', marginTop: 8, padding: 10 }}
+                {...tap(() => { try { void navigator.clipboard?.writeText(challengeShare(st)) } catch { /* blocked */ } setSharedChal(true) },
+                  'Copy your answer to their challenge')}>
+                {sharedChal ? 'COPIED ✓' : 'SEND IT BACK ▸'}</button>
+            </div>)
+        })() : null}
         <hr className="rule" />
         <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.6, margin: '9px 0' }}>
           {sent ? `Topped out on burn ${st.burn}.`
