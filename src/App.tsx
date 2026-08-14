@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.27 — SAVE-6: every array a save carries is clamped to what the game can
-//   actually make, and the larder no longer grows for ever
+// SANDBAGGED v10.28 — ROUTE-15: the first four lines in the book have a named feature
+//   too, tagged onto a hold rather than replacing one so they move no number
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1298,7 +1298,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.27 · RCJ Labs</div>
+          <div className="sfoot">v10.28 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1527,7 +1527,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.27 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.28 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -1976,9 +1976,16 @@ export default function App() {
                   <span className="big">{r.name}</span>
                   <span className="big" style={{ color: 'var(--red)' }}>
                     {n.type === 'boss' ? 'BOSS · ' : ''}{gradeLabel(r, st.grades)}</span></div>
-                {r.signature && sigById(r.signature) ? (
-                  <div className="sub" style={{ color: 'var(--red)' }}>
-                    {sigById(r.signature)!.name} · {sigById(r.signature)!.note}</div>) : null}
+                {/* ROUTE-15: `sigTag` is a named feature too — it is tagged onto a hold the
+                    line already has rather than replacing one, which is what makes it
+                    band-neutral, but it reads in the book exactly the same way. Written as
+                    one lookup so the two cannot drift apart on this screen. */}
+                {(() => {
+                  const sg = sigById(r.signature ?? r.sigTag ?? '')
+                  return sg ? (
+                    <div className="sub" style={{ color: 'var(--red)' }}>
+                      {sg.name} · {sg.note}</div>) : null
+                })()}
                 {r.phases?.length ? (
                   <div className="sub" style={{ color: 'var(--tan)' }}>
                     it changes at {phaseSummary(r)}</div>) : null}

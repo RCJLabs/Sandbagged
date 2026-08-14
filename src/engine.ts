@@ -855,8 +855,36 @@ export type Signature = {
      the sequence you suss from that one good stance. Information, not power:
      it moves readAhead only, which resolution never reads, so it is band-safe. */
   read?: number
+  /* ROUTE-15: this feature belongs to the line it was written for and is never
+     tagged onto a generated one, because its NOTE names a specific place or a
+     specific moment — "you start from the floor" is a start, not a hold you meet
+     halfway up somebody else's circuit. The rest of the pool is written loosely
+     enough to land anywhere, which is why they are shared. */
+  local?: boolean
 }
 export const SIGNATURES: Signature[] = [
+  /* ROUTE-15: the first four lines in the book had no named feature, which is the sameness
+     ROUTE-5 set out to kill — you meet them before you meet anything else. STAT-LESS on
+     purpose: they are TAGGED onto a hold that is already there rather than replacing one
+     (see the tagger in buildRoute), so a dGrip here would move a number on the four routes
+     a new player meets first, and nothing reads a signature's dGrip outside `placeSig`
+     anyway. What they DO is ROUTE-12's answer to what a signature is for: `read`. It is
+     information, which is free — the resolution never consults readAhead — and on the four
+     earliest lines in the book it is the mechanic teaching itself, at the point where you
+     have the fewest cards that can do it. The notes deliberately do not name a hold type,
+     because the tag lands on whatever the line actually rolled — and for the same reason
+     they do not name a POSITION either. The holds are shuffled, so a note that says "you
+     start from the floor" reads wrong four moves up; that was the first draft of The
+     Sit-Down and the render is what caught it. The line is called The Sit Start; the
+     feature only has to be a hold on it. */
+  { id: 'therail', local: true, name: 'The Rail', base: 'jug', read: 1,
+    note: 'Polished pale. Forty years of people warming up on the same hold.' },
+  { id: 'thesitdown', local: true, name: 'The Sit-Down', base: 'jug', read: 1,
+    note: 'Big enough for two hands and a breather. Everybody uses it. Nobody rushes it.' },
+  { id: 'thegreen', local: true, name: 'The Green Patch', base: 'sloper', read: 1,
+    note: 'Damp nine months of the year. Brush it and it is back by spring.' },
+  { id: 'theflake', local: true, name: 'The Flake', base: 'crimp', read: 1,
+    note: 'It was bigger last season. Nobody has written that down.' },
   { id: 'rattler', name: 'The Rattler', base: 'crimp', dBite: 2, ability: 'Sharp', read: 1,
     note: 'A flake the size of a dinner plate. It moves when you pull on it.' },
   { id: 'twofinger', name: 'The Two-Finger Pocket', base: 'pocket', dGrip: 1, read: 2,
@@ -935,7 +963,7 @@ export const SIGNATURES: Signature[] = [
    ability must be empty, so a tagged hold resolves exactly as the plain hold it
    already was. So: the ability-less signatures, matched to a hold of their own
    base type so the note still fits what is under your hand. */
-export const GEN_SIG_IDS = SIGNATURES.filter(s => !s.ability).map(s => s.id)
+export const GEN_SIG_IDS = SIGNATURES.filter(s => !s.ability && !s.local).map(s => s.id)
 export const sigById = (id: string) => SIGNATURES.find(x => x.id === id)
 
 export const FEET_STATS: Record<string, HoldDef> = {
@@ -1029,8 +1057,13 @@ export type RouteSpec = {
   roped?: boolean; pitches?: number
   /** An unclimbed line: no grade shown, dirty holds, yours to name. */
   fa?: boolean
-  /** The one feature on this line that people talk about. */
+  /** The one feature on this line that people talk about. Placed by REPLACING a hold, so
+      it carries its own stats and is band-active. */
   signature?: string
+  /** ROUTE-15: a named feature TAGGED onto a hold the line already has — same numbers, only
+      a name, a note and a read hook. Band-neutral by construction, which is the whole reason
+      it is a separate field from `signature` rather than a flag on it. */
+  sigTag?: string
   /** A line you put up. Reads at the grade you claimed, climbs at the real one. */
   established?: boolean; shownGrade?: number
   /** An authored hold sequence. Only the tutorial uses this — everything
@@ -1095,16 +1128,16 @@ export const gradeLabel = (r: RouteSpec, scale: GradeScale = 'v') =>
   (r.finale || r.fa) ? '?' : gradeText(r.shownGrade ?? r.grade, scale)
 export const ROUTES: RouteSpec[] = [
   { name: 'Warm-Up Rail', grade: 0, style: 'jug haul', clear: 5, crux: 0, feet: 'easy',
-    note: 'Everyone starts here. Nobody writes it in the book.' },
+    note: 'Everyone starts here. Nobody writes it in the book.', sigTag: 'therail' },
   { name: 'The Sit Start', grade: 1, style: 'mixed', clear: 6, crux: 0, feet: 'normal',
-    note: 'Two moves off the ground and already honest.' },
+    note: 'Two moves off the ground and already honest.', sigTag: 'thesitdown' },
   { name: 'Mossback', grade: 1, style: 'slab', clear: 6, crux: 1, feet: 'hard',
-    note: 'No handholds worth the name. Just faith and rubber.' },
+    note: 'No handholds worth the name. Just faith and rubber.', sigTag: 'thegreen' },
   { name: 'Chossmaster', grade: 2, style: 'mixed', clear: 7, crux: 1, feet: 'normal',
     signature: 'rattler',
     note: 'Half of it came off in my hand. The half that stayed was good.' },
   { name: 'Peeler', grade: 2, style: 'crimp ladder', clear: 7, crux: 1, feet: 'normal',
-    note: 'Named for what it does to you, not for what it looks like.' },
+    note: 'Named for what it does to you, not for what it looks like.', sigTag: 'theflake' },
   { name: 'The Fridge', grade: 3, style: 'compression', clear: 9, crux: 1, feet: 'normal',
     signature: 'deathblock',
     note: "You don't hold the fridge. You hug it and hope." },
@@ -3774,14 +3807,50 @@ export function buildRoute(s: GameState, rng: RNG): { holds: Hold[]; feet: Hold[
   // base type, so NOTHING about the numbers changes — only the name, the note
   // and the read hook. Chosen from an ISOLATED rng keyed to the line, so it
   // draws nothing from the run stream (the daily and the seed replay identically).
-  const generated = !spec.signature && (!!s.skirmish || spec.fa === true)
-  if (generated) {
+  /* ROUTE-15: and the SCRIPTED lines that never got one either. ROUTE-13 named 31 of the 37
+     and left six: the first four (Warm-Up Rail, The Sit Start, Mossback, Peeler), the finale,
+     and the tutorial. Those five are guidebook routes with no named feature at all, which is
+     the sameness ROUTE-5 set out to kill — and the tagging above is exactly the tool for it,
+     because it is band-neutral BY CONSTRUCTION: it renames a hold that is already there
+     (`{ ...holds[at], sig: id }`) rather than replacing one the way a scripted `signature`
+     does, and it draws from an rng keyed to the line rather than the run stream. Nothing
+     reads a signature's dGrip or dBite outside `placeSig`, so the numbers cannot move.
+     The TUTORIAL is left out on purpose: its holds are authored one at a time to teach one
+     thing at a time (`spec.holds`), and a named feature with a note to read is the one place
+     in the game where more text is not a gift. */
+  /* ROUTE-15: a scripted line can name its own feature with `sigTag`, and the four earliest
+     ones now do. Where there is no tag, the ROUTE-12 behaviour stands for the grind lines.
+     TWO CARVE-OUTS, both because of what the line IS rather than for convenience:
+     the TUTORIAL, whose holds are authored one at a time to teach one thing at a time and
+     where another note to read is the one thing it does not need; and THE LOST LINE, whose
+     own note is "No chalk. No tick marks. No trail. Exactly as he left it." A named feature
+     means people have been there and named it. Nothing on that line is named — that IS the
+     line, and it is almost certainly why ROUTE-13 left it out. (If it ever gets one, the
+     name should come out of HIS pages, which the player may or may not have read.) */
+  /* WHICH feature and WHETHER to tag are two questions, and running them together is how
+     the first cut of this silently switched the grind lines off — an empty candidate list
+     and "do not tag" are not the same thing, and `[] || undefined` is falsy. */
+  const own = spec.sigTag ?? null
+  const generated = !own && !spec.signature && !spec.tutorial && !spec.finale
+  if (own || generated) {
     let h = 2166136261
     for (const ch of spec.name) h = Math.imul(h ^ ch.charCodeAt(0), 16777619)
     const sigRng = new RNG(((h ^ (spec.grade * 2654435761) ^ (spec.clear * 40503)) >>> 0) || 1)
-    for (const id of sigRng.shuffle(GEN_SIG_IDS.slice())) {
+    const ids = own ? [own] : sigRng.shuffle(GEN_SIG_IDS.slice())
+    let placed = false
+    for (const id of ids) {
       const at = holds.findIndex(x => !x.crux && !x.sig && x.name === sigById(id)!.base)
-      if (at >= 0) { holds[at] = { ...holds[at], sig: id }; break }
+      if (at >= 0) { holds[at] = { ...holds[at], sig: id }; placed = true; break }
+    }
+    /* a line's OWN feature has to be on it every time, or it is not a named feature. The
+       preferred base is what the style usually rolls, not what it guarantees — `mixed` rolls
+       a jug on only about four holds in five — so if it did not come up, the name goes on
+       whatever the line did roll. That is why these notes never say what kind of hold it is.
+       A generated line has the whole pool to try and does not get this fallback: it has no
+       name of its own to be missing. */
+    if (!placed && own) {
+      const at = holds.findIndex(x => !x.crux && !x.sig)
+      if (at >= 0) holds[at] = { ...holds[at], sig: own }
     }
   }
   const fp = FEET_POOLS[spec.feet], feet: Hold[] = []

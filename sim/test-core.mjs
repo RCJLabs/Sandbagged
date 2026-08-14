@@ -3981,10 +3981,15 @@ test('a named hold appears exactly once, and never on a route without one', () =
       skirmish: null, weather: 1, rock: 0, runDeck: E.DEFAULT_LOADOUT.map(E.spawn) }, rng)
     const all = [...s.holdDeck, ...s.boardH.filter(Boolean)]
     const named = all.filter(h => h.sig)
-    if (!r.signature) { eq(named.length, 0, `${r.name} has a named hold it was not given`); continue }
-    eq(named.length, 1, `${r.name}: ${named.length} of ${r.signature}`)
+    /* ROUTE-15: a route owns its feature one of two ways. `signature` REPLACES a hold
+       (placeSig, which applies the feature's stats and so is band-active); `sigTag` TAGS
+       one that is already there, which moves no number. Both put exactly one named hold
+       on the line, and a route with neither must still have none. */
+    const owned = r.signature ?? r.sigTag ?? null
+    if (!owned) { eq(named.length, 0, `${r.name} has a named hold it was not given`); continue }
+    eq(named.length, 1, `${r.name}: ${named.length} of ${owned}`)
     ok(!named[0].crux, `${r.name}: the named hold was written over by a crux`)
-    eq(named[0].sig, r.signature, `${r.name} has the wrong named hold`)
+    eq(named[0].sig, owned, `${r.name} has the wrong named hold`)
   }
 })
 test('every signature is real, named and used at most once', () => {
@@ -3994,9 +3999,36 @@ test('every signature is real, named and used at most once', () => {
   for (const sig of E.SIGNATURES) {
     ok(E.HOLD_STATS[sig.base], `${sig.id} is based on a hold type that does not exist`)
     ok(sig.name.length > 3 && sig.note.length > 20, `${sig.id} has no name or no line`)
-    const changes = sig.dGrip || sig.dBite || sig.ability
+    /* ROUTE-15 widened this deliberately, and it is worth saying why rather than just
+       doing it. When this was written a signature could only be a REPLACED hold, so
+       "does something" could only mean a moved number. ROUTE-12 then answered the
+       question properly — a signature is a feature you learn something FROM, and it
+       pays a one-time `read` when first worked — and the guard below asserts read > 0
+       on every one of them. So a stat-less feature is no longer a name on a hold; it
+       is the thing ROUTE-12 says a feature is. The bar is unchanged in substance. */
+    const changes = sig.dGrip || sig.dBite || sig.ability || sig.read
     ok(changes, `${sig.id} is just its base hold with a name on it`)
   }
+  /* And the converse, which is new and is the part that can actually go wrong: a TAGGED
+     feature may not carry stats. The tagger writes `{ ...hold, sig: id }` — it does not
+     rebuild the hold from the feature's base — so a dGrip on one of these would be a
+     number that silently does nothing, and a reader of the table would believe it. */
+  const tagOnly = new Set([...E.ROUTES.map(r => r.sigTag).filter(Boolean), ...E.GEN_SIG_IDS])
+  for (const id of tagOnly) {
+    const sig = E.sigById(id)
+    ok(!sig.ability, `${id} can be tagged onto a hold but carries an ability the tag cannot apply`)
+  }
+  for (const id of E.ROUTES.map(r => r.sigTag).filter(Boolean)) {
+    const sig = E.sigById(id)
+    ok(!sig.dGrip && !sig.dBite,
+      `${id} is tagged onto a hold, so its dGrip/dBite is a number that never applies`)
+    ok(sig.read > 0, `${id} is tagged and stat-less, so a read is the only thing it can do`)
+  }
+  // a line owns its feature one way or the other, never both, and never twice
+  const all = E.ROUTES.flatMap(r => [r.signature, r.sigTag].filter(Boolean))
+  eq(new Set(all).size, all.length, 'two routes claim the same named feature')
+  for (const r of E.ROUTES)
+    ok(!(r.signature && r.sigTag), `${r.name} claims a feature both ways`)
 })
 test('ROUTE-12: a signature does something, and the grind lines get one too', () => {
   // every signature now pays a one-time read when first worked...
@@ -4037,6 +4069,98 @@ test('ROUTE-12: a signature does something, and the grind lines get one too', ()
   const again = E.buildRoute({ ...base, inRun: true, weather: 1, rock: 0,
     skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
   eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
+})
+test('ROUTE-15: the first lines in the book have a feature too', () => {
+  /* ROUTE-5 added named features to kill the sameness of "a route is a stat line", and it
+     left the FIRST FOUR LINES IN THE BOOK without one — the four you meet before you meet
+     anything else. Thirty-one of thirty-seven had a feature; the six that did not were the
+     four earliest, the tutorial and the finale.
+
+     They are TAGGED, not placed. `signature` runs placeSig, which rebuilds the hold from the
+     feature's base type and applies its stats — band-active, and not something to do to the
+     four routes a new player learns on. `sigTag` writes `{ ...hold, sig: id }` onto a hold
+     that is already there, from an RNG keyed to the route rather than the run, so it moves
+     no number and consumes no run entropy. What the feature DOES is ROUTE-12's answer: it
+     pays a one-time read. Information is free — the resolution never consults readAhead —
+     and on the four earliest lines it is the read mechanic teaching itself at the point
+     where you own the fewest cards that can do it.
+
+     TWO CARVE-OUTS, both from content rather than convenience:
+       the TUTORIAL is authored hold by hold (`spec.holds`) to teach one thing at a time, and
+       a named feature in the middle of that is a second thing;
+       THE LOST LINE's own note is "No chalk. No tick marks. No trail. Exactly as he left
+       it." A named feature means people have been there and talked about it, which is the
+       one thing that route is about not being. ROUTE-13 almost certainly left it out for
+       exactly this reason. */
+  const byTag = E.ROUTES.filter(r => r.sigTag)
+  eq(byTag.length, 4, `${byTag.length} lines carry a tagged feature, not the four earliest`)
+  for (const r of byTag) ok(r.grade <= 2, `${r.name} is not one of the early lines this was for`)
+
+  // nothing else in the book is bare, and the two that are say why in their own flags
+  const bare = E.ROUTES.filter(r => !r.signature && !r.sigTag)
+  eq(bare.length, 2, `${bare.length} lines have no named feature: ${bare.map(r => r.name).join(', ')}`)
+  for (const r of bare)
+    ok(r.tutorial || r.finale, `${r.name} has no named feature and no reason not to`)
+
+  /* IT LANDS. A tag needs a hold of the feature's base type on the line and the line is
+     rolled, so this is the assertion that matters — every route, over many seeds, not one. */
+  for (const r of byTag) {
+    for (let seed = 0; seed < 40; seed++) {
+      const st = E.startBurn({ ...E.freshRun(E.ROUTES.indexOf(r), 0, 5), inRun: true,
+        skirmish: null, weather: 1, rock: 0, runDeck: E.DEFAULT_LOADOUT.map(E.spawn) }, new E.RNG(seed))
+      const all = [...st.holdDeck, ...st.boardH.filter(Boolean)]
+      const named = all.filter(h => h.sig)
+      eq(named.length, 1, `${r.name} on seed ${seed}: ${named.length} named holds`)
+      eq(named[0].sig, r.sigTag, `${r.name} on seed ${seed} named the wrong feature`)
+      // the tag put nothing on the hold but the name: it resolves as what it already was
+      eq(E.abilityOf(named[0]), E.HOLD_STATS[named[0].name]?.ability ?? '',
+        `${r.name}: the tag changed what the hold does`)
+      ok(E.holdLabel(named[0]) !== named[0].name, `${r.name}: the tagged hold shows no feature name`)
+    }
+  }
+
+  /* A TAGGED FEATURE MAY NOT NAME A POSITION. The holds are shuffled, so the tag lands
+     anywhere on the line — "you start from the floor" was the first draft of The Sit-Down
+     and reads wrong four moves up. The route's own name carries where it is; the feature
+     only has to be a hold on it. (The render is what caught this, not the code.) */
+  for (const r of byTag) {
+    const note = E.sigById(r.sigTag).note
+    ok(!/\b(start|starts|first move|off the ground|top out|last hold|finish)\b/i.test(note),
+      `${r.sigTag} names a position, and the tag lands on a shuffled hold: "${note}"`)
+  }
+
+  /* BAND-NEUTRAL BY CONSTRUCTION, which is a source claim because it is a claim about how
+     the tag is applied rather than about any one outcome: a spread that adds `sig` and
+     nothing else, off an RNG that is not the run's. */
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  const tagger = region(eng, '  /* ROUTE-15: a scripted line can name its own feature',
+    ['  const fp = FEET_POOLS'], { min: 400, what: 'the ROUTE-15 tagger' })
+  const code = tagger.split('\n').filter(l => !/^\s*(\/\*|\*|\/\/)/.test(l)).join('\n')
+  /* EVERY write, not just one of them. The tagger writes to `holds[at]` twice — the
+     preferred base type and the fallback — and an assertion that only wanted to see one
+     spread anywhere passed with the first site rebuilt, which an injection caught. */
+  const writes = code.match(/holds\[at\] = [^\n]*/g) ?? []
+  eq(writes.length, 2, 'the tagger writes to the hold list a different number of times than it did')
+  for (const w of writes)
+    ok(/= \{ \.\.\.holds\[at\], sig: \w+ \}/.test(w),
+      `the tagger no longer spreads the existing hold, so tagging can move a number: ${w.trim()}`)
+  ok(!/nextUid\(/.test(code), 'the tagger builds a new hold now — that is placeSig, and it is band-active')
+  ok(/sigRng/.test(code) && !/\brng\./.test(code),
+    'the tagger draws from the run rng, so naming a feature would shift every roll after it')
+
+  /* THE FOUR ARE LOCAL. Their notes name a specific place or a specific moment — "you start
+     from the floor" is a start — so unlike the rest of the pool they are never tagged onto a
+     generated circuit line. Keeping them out also leaves GEN_SIG_IDS byte-identical, so the
+     circuit names the same feature it did before this ticket. */
+  for (const r of byTag) {
+    ok(E.sigById(r.sigTag).local, `${r.sigTag} is not marked local and can land on a circuit line`)
+    ok(!E.GEN_SIG_IDS.includes(r.sigTag), `${r.sigTag} is in the generated pool`)
+  }
+
+  // and the book shows it: the guidebook reads a tagged feature the same as a placed one
+  const app = readFileSync('src/App.tsx', 'utf8')
+  ok(/sigById\(r\.signature \?\? r\.sigTag \?\? ''\)/.test(app),
+    'the guidebook only knows about placed features, so four lines read as unnamed')
 })
 test('CARD-11: a rest can pose a decision — where you rest chips that lane', () => {
   const c = E.CARDS['Chalk the Hold']
