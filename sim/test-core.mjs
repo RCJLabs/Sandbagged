@@ -342,7 +342,14 @@ test('walking away from the circuit banks what you did', () => {
   eq(out.circuit, false, 'you are still on the circuit after walking away')
   eq(out.skirmish, null, 'the route came with you')
   eq(out.runDeck.length, 0, 'the deck came with you')
-  eq(out.phase, 'menu', 'walking away does not take you to the menu')
+  /* SKIRM-8: this pinned `phase: 'menu'`, which is exactly what the ticket found wrong —
+     the one GOOD outcome this mode has went straight to the guidebook with no screen while
+     every fall got a full account. It ends on `sessionEnd` now, marked `walked` so that
+     screen can tell a circuit walk-off from a bailed skirmish without reading a score that
+     outlives its run. The guard keeps asserting the exit, it just asserts the right one. */
+  eq(out.phase, 'sessionEnd', 'walking away no longer ends on a screen of its own')
+  eq(out.result, 'walked', 'the walk-off is not marked, so its screen cannot tell what it was')
+  ok(out.circuitScore > 0, 'the score did not survive to be shown')
   // a worse run must not overwrite a better best
   eq(E.walkAwayStep({ ...mid, circuitScore: 2, bestCircuit: 9 }).bestCircuit, 9,
     'a worse circuit overwrote your best')
@@ -2626,6 +2633,68 @@ test('the Circuit is not the mode nobody bothered with (SKIRM-7)', () => {
   ok(!/circuitScore/.test(declBody(readFileSync('src/engine.ts', 'utf8'),
     'export function bankDaily', 'bankDaily')),
     'the Circuit feeds the season score now — that is farmable, and it wants a decision first')
+})
+test('SKIRM-8: the good outcome gets a screen', () => {
+  /* SKIRM-8. RUN-13 added the circuit walk-off to history because nothing in the game
+     acknowledged the ONE outcome this mode has that is not a failure. SKIRM-7 then gave you
+     somebody who nudges you toward it. And pressing the button dropped you on the guidebook
+     with no screen at all — while every fall got a full account. Found while wiring SKIRM-7
+     and logged rather than bundled. */
+  const mid = { ...E.freshRun(0, 0, 1), circuit: true, circuitScore: 7, bestCircuit: 4,
+    skirmish: E.circuitRoute(3, new E.RNG(1)), runDeck: E.DEFAULT_LOADOUT.map(E.spawn) }
+  const out = E.walkAwayStep(mid)
+  eq(out.phase, 'sessionEnd', 'the walk-off goes straight to the menu again')
+  eq(out.result, 'walked', 'the walk-off is unmarked, so its screen cannot tell what it was')
+
+  /* It is its OWN result, not 'bail' and not 'send': a bail is giving up on one boulder,
+     this is the good ending, and a send would be paid like one. The `eq` above already
+     forbids all of that — asserting `result !== 'bail'` separately cannot fail while that eq
+     stands, and an assertion that cannot fail is what GUARD-9 exists to catch, so the intent
+     is recorded here rather than dressed up as a check. */
+
+  /* THE SCORE SURVIVES AND THE MODE DOES NOT. `circuit` and `skirmish` are MODE_FLAGS and a
+     mode left set leaks into the next attempt (MODE-1); the score is not a flag and the
+     screen needs it. So the MARKER is `result`, which every run start clears — asserted,
+     because reading a stale `circuitScore` as "this was a circuit" is exactly MODE-1. */
+  eq(out.circuit, false, 'the circuit mode came with you')
+  eq(out.skirmish, null, 'the route came with you')
+  ok(out.circuitScore > 0, 'the score did not survive to be shown')
+  eq(E.freshRun(0, 0, 1).result, null, 'a fresh run carries a result, so a walk-off marker can leak')
+  ok(E.newRun(1).result !== 'walked', 'a brand new run still reads as a walk-off')
+
+  /* AND IT IS ON THE SCREEN. A result nobody renders is CARD-17's failure mode. The route
+     header is deliberately NOT shown: `skirmish` is gone, so `specOf` falls back to
+     `ROUTES[routeIdx]` and would name a campaign route you were never on. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const end = region(app, "if (st.phase === 'sessionEnd')", ["if (st.phase === '"],
+    { min: 600, what: 'the session-end screen' })
+  ok(/const walked = st\.result === 'walked'/.test(end), 'the screen does not ask whether you walked off')
+  /* pin the gate to the block that carries the SCORE. `/walked \? \(/` on its own matches the
+     header's gate too, so disabling the result block left it green — the same "which of these
+     did I actually check" slip as SKIRM-7's `partnerFor` assertion. */
+  ok(/\{walked \? \(\s*\n\s*<div className="spot"/.test(end),
+    'the block with your score on it is not gated on the walk-off')
+  ok(/WALKED OFF/.test(end), 'the walk-off has no heading of its own')
+  ok(/circuitShare\(st\)/.test(end), 'there is no way to paste what you did')
+  // the route header must be behind the same condition, or it names a route you never saw
+  ok(/walked \? \([\s\S]{0,400}\) : \([\s\S]{0,200}spec\.name/.test(end),
+    'the route header is not gated, so a walk-off names a campaign route')
+  /* and NEITHER MAY THE PER-ROUTE COUNT. This one was found by rendering the screen, not by
+     reading it: "Burns used 3/3. Got 6 of 5" — one line's burns against a hold count already
+     passed. Every per-route number on this screen has to be behind the same gate. */
+  ok(/\{walked \? null : \([\s\S]{0,200}Burns used/.test(end),
+    "the per-route burn and hold count is shown on a walk-off, which is not about one route")
+
+  /* the share says the same thing the screen does, and the "personal best" wording is only
+     true because `bestCircuit` has already taken this run in — so `score >= best` reads as
+     "tied or beat the previous best". Asserted both ways rather than trusted. */
+  eq(E.circuitShare(out).includes('a personal best'), true, 'beating your best does not say so')
+  const worse = E.walkAwayStep({ ...mid, circuitScore: 2, bestCircuit: 9 })
+  ok(/best 9/.test(E.circuitShare(worse)), 'a lesser circuit claims a personal best')
+  ok(/2 lines/.test(E.circuitShare(worse)) && /7 lines/.test(E.circuitShare(out)),
+    'the share does not say how far you got')
+  const one = E.circuitShare({ ...out, circuitScore: 1, bestCircuit: 1 })
+  ok(/1 line \u00b7/.test(one) && !/1 lines/.test(one), `one line reads as "1 lines": ${one}`)
 })
 test('BAL-16: a floor nobody can measure is not a floor', () => {
   /* BAL-16. The climber-spread guard says no climber completes less than 5% of campaigns,

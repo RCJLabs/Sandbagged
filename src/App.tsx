@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.25 — BAL-16: the climber floor was passing on a coin flip. The guard
-//   resolves it where it lives now, and the Comp Kid does not lose heart
+// SANDBAGGED v10.26 — SKIRM-8: walking off the Circuit is the one good outcome it has, and
+//   it used to drop you on the guidebook with nothing. It gets a screen
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -19,7 +19,7 @@ import {
   UNCOMMON_SLOTS, WEATHER, abilityOf, activeSlot, aheadSummary, applyOutcome,
   archUnlocked, attemptsFor, availableTalk, talkById, biteAgainst, boonById, boonMods,
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
-  campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitZone, claimStep, claimVerdict,
+  campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitShare, circuitZone, claimStep, claimVerdict,
   consumableById, KIT_MAX, useKitStep, secondWindStep,
   challengeCode, challengeRoute, challengeShare, readChallenge, goalById, dailyScore, modeReset,
   partnerFor, partnerSays, partnerAgrees, partnerPush,
@@ -1298,7 +1298,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.25 · RCJ Labs</div>
+          <div className="sfoot">v10.26 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1527,7 +1527,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.25 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.26 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -3135,10 +3135,34 @@ export default function App() {
 
   if (st.phase === 'sessionEnd') {
     const sent = st.result === 'send'
+    /* SKIRM-8: a circuit walk-off ends here now instead of on the menu. It cannot show the
+       route header the other endings do — `skirmish` is cleared on the way out because it is
+       a MODE_FLAG (MODE-1), so `specOf` would fall back to `ROUTES[st.routeIdx]` and name a
+       campaign route you were never on. It gets the circuit's own numbers instead. */
+    const walked = st.result === 'walked'
+    const zone = circuitZone(st.circuitScore)
+    const bestEver = st.circuitScore >= st.bestCircuit
     return (
       <div className={skin}>
-        <div className="h1" role="heading" aria-level={1}>{sent ? 'SENT' : st.result === 'bail' ? 'WALKED AWAY' : 'NOT TODAY'}</div>
-        <div className="sub">{spec.name} · {gradeLabel(spec, st.grades)} · {weather.name}, {rock.name}</div>
+        <div className="h1" role="heading" aria-level={1}>{sent ? 'SENT'
+          : walked ? 'WALKED OFF' : st.result === 'bail' ? 'WALKED AWAY' : 'NOT TODAY'}</div>
+        {walked ? (
+          <div className="sub">the circuit · {zone.name.toLowerCase()}</div>
+        ) : (
+          <div className="sub">{spec.name} · {gradeLabel(spec, st.grades)} · {weather.name}, {rock.name}</div>)}
+        {walked ? (
+          <div className="spot" style={{ borderLeftColor: 'var(--green)' }} role="status">
+            <b style={{ color: 'var(--green)' }}>{st.circuitScore} LINE{st.circuitScore === 1 ? '' : 'S'}
+              {bestEver ? ' — A NEW BEST' : ''}</b>
+            {bestEver
+              ? 'You stopped while it was still going well, which is the whole trick.'
+              : `Your best is ${st.bestCircuit}. This one is in the book either way.`}
+            <div style={{ marginTop: 4 }}>{zone.text}</div>
+            <button className="btn" style={{ width: '100%', marginTop: 8, padding: 10 }}
+              {...tap(() => { try { void navigator.clipboard?.writeText(circuitShare(st)) } catch { /* blocked */ } setShared(true) },
+                'Copy your circuit to share')}>
+              {shared ? 'COPIED ✓' : 'SHARE THE CIRCUIT ▸'}</button>
+          </div>) : null}
         {st.runSeed ? <div className="sub">seed {seedCode(st.runSeed)} — same seed, same run</div> : null}
         {st.ending ? (
           <div className="spot" style={{ borderLeftColor: 'var(--green)' }}>
@@ -3211,10 +3235,15 @@ export default function App() {
                 {partnerSays(st, partnerAgrees(st, st.line) ? 'agree' : 'differ')}</div>) : null}
           </div>) : null}
         <hr className="rule" />
-        <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.6, margin: '9px 0' }}>
-          {sent ? `Topped out on burn ${st.burn}.`
-            : `Burns used ${st.burn}/${attemptsFor(st)}. Got ${st.cleared} of ${spec.clear}.`}
-        </div>
+        {/* SKIRM-8: this counts BURNS AND HOLDS on one route, and a walk-off is not about one
+            route — rendered on it, it read "Burns used 3/3. Got 6 of 5", which is the last
+            line's numbers against a hold count you had already passed. Found by looking at
+            the screen; the guards above were happy because they only checked the header. */}
+        {walked ? null : (
+          <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.6, margin: '9px 0' }}>
+            {sent ? `Topped out on burn ${st.burn}.`
+              : `Burns used ${st.burn}/${attemptsFor(st)}. Got ${st.cleared} of ${spec.clear}.`}
+          </div>)}
         <div className="lbl">BETA BANKED</div>
         <div className="sub" style={{ margin: '3px 0 12px' }}>
           {st.beta.length ? st.beta.join(' · ') : 'nothing stuck'}</div>

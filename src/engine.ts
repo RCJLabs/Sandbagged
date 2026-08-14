@@ -353,7 +353,11 @@ export type GameState = {
   boardH: (Hold | null)[]; boardP: (Card | null)[]
   piles: Piles
   pump: number; flow: number; cleared: number; turn: number
-  log: string[]; phase: Phase; result: 'send' | 'fall' | 'bail' | null
+  /* SKIRM-8: 'walked' is the CIRCUIT's walk-off, and it is a distinct result from 'bail'
+     because it is the good outcome (RUN-13) rather than giving up on one boulder. Every run
+     start sets `result: null`, so this cannot leak into the next attempt the way a mode flag
+     could (MODE-1). */
+  log: string[]; phase: Phase; result: 'send' | 'fall' | 'bail' | 'walked' | null
   selected: number | null
   customDeck?: Card[]      // harness only — lets the sim sweep synthetic cards
   // --- run state (RUN-1) ---
@@ -3461,6 +3465,19 @@ export function challengeShare(s: GameState): string {
    share of the running total (a week is an aggregate, so no per-hold grid — it
    is the sum of the days behind it) and a deed for a real week of climbing. */
 export const BIG_WEEK = 1000
+/** SKIRM-8: the endless mode had nothing to paste. Same shape as the others (SOCIAL-1):
+    no server, no link, just the numbers. `bestCircuit` has already taken this run into
+    account by the time this renders, so `score >= best` reads exactly as "tied or beat the
+    previous best" — which is the same convention the between-lines screen uses. */
+export function circuitShare(s: GameState): string {
+  const best = s.circuitScore >= s.bestCircuit
+  const lines = [
+    'Sandbagged · the circuit',
+    `${s.circuitScore} line${s.circuitScore === 1 ? '' : 's'} · ${circuitZone(s.circuitScore).name}`,
+  ]
+  lines.push(best ? 'a personal best' : `best ${s.bestCircuit}`)
+  return lines.join('\n')
+}
 export function weekShare(s: GameState): string {
   const best = s.weekScore >= s.weekBest && s.weekScore > 0
   const lines = [
@@ -5777,8 +5794,19 @@ export function walkAwayStep(s: GameState): GameState {
      sends and the mastery deeds read it — so the circuit lives in history, not
      folded into `runs`/`wins`, which would corrupt the success rate. */
   const rec = recordRun(s, true)
+  /* SKIRM-8: it used to go straight to `phase: 'menu'`. So the ONE GOOD outcome this mode
+     has — the one RUN-13 added to history because nothing in the game acknowledged it, and
+     the one SKIRM-7's partner now nudges you toward — dropped you on the guidebook with no
+     screen at all, while every fall got a full account. It ends on `sessionEnd` now, which
+     already had a WALKED AWAY heading for a bailed skirmish and needed only the circuit's
+     own numbers adding to it.
+     `circuit` and `skirmish` are still cleared here: they are MODE_FLAGS (MODE-1) and a
+     mode left set leaks into the next attempt. `circuitScore` is not a mode flag, it is the
+     score, and the screen reads it — with `result: 'walked'` as the marker for whether this
+     ending was a circuit at all, rather than a stale score being taken as one. */
   return { ...rec, circuit: false, skirmish: null, runDeck: [], log: [],
-    bestCircuit: Math.max(s.bestCircuit, s.circuitScore), phase: 'menu' }
+    bestCircuit: Math.max(s.bestCircuit, s.circuitScore),
+    phase: 'sessionEnd', result: 'walked' }
 }
 
 /** Leave the post. You are back where you were, not a stage further on. */
