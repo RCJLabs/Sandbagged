@@ -2112,6 +2112,16 @@ export type Archetype = {
      a global change sinks one archetype, so that archetype is bought back rather than
      the floor being lowered to meet it. */
   quickFeet?: boolean
+  /* BAL-16: how much more this climber's head takes before it goes. The Comp Kid dies of
+     PSYCHE — 19% of its runs against 11-14% for everyone else — because `dAttempts: -1`
+     means it fails more boulders and PSYCHE_MAX is only 3. Every other dial on this list
+     is the wrong SIZE for that: measured at n=2500, one skin is worth nothing (4.9 against
+     5.8 — it just fails more boulders and dies of psyche anyway), one point of betaGrip is
+     worth nothing at all (5.8), one Contact is worth +4.4 and one card of hand +9.8. There
+     is no existing dial between "nothing" and "makes it the best climber in the game", so
+     the thing it dies of gets one, and it is characterful on the same axis: a comp kid does
+     not lose heart when a boulder beats them, they go again. */
+  dPsyche?: number
   dAttempts?: number
   /** META-6: a deed that earns this climber early. The `unlock` level stays as
       a backstop, so the deed is a faster, earned path — never the only one. */
@@ -2131,8 +2141,8 @@ export const ARCHETYPES: Archetype[] = [
       ['Shake Out', 2], ['Breathe', 2], ['Chalk Up', 1]) },
   { id: 'comp', name: 'The Comp Kid', unlock: 4, gear: 'downturn',
     text: 'Trained on plastic. Enormously strong, no patience at all.',
-    sig: 'Plastic', sigText: '+2 Power on every move, and one less burn a day. All engine, no patience. Feet you trust the moment they land.',
-    dPower: 2, dAttempts: -1, quickFeet: true, deed: 'strong',   // META-6: earned by sending V5+
+    sig: 'Plastic', sigText: '+2 Power on every move, and one less burn a day. All engine, no patience. Feet you trust the moment they land, and a boulder that beats you never gets in your head.',
+    dPower: 2, dAttempts: -1, quickFeet: true, dPsyche: 1, deed: 'strong',   // META-6: earned by sending V5+
     loadout: L(['Deadpoint', 2], ['Lunge', 2], ['Bump', 1], ['Mantle', 1], ['Crimp Grip', 1],
       ['Smear', 2], ['High Step', 1], ['Shake Out', 2], ['Deep Breath', 1],
       ['Breathe', 1], ['Chalk Up', 1]) },
@@ -2175,6 +2185,10 @@ export const ARCHETYPES: Archetype[] = [
       ['Sight the Line', 1], ['Chalk Up', 1]) },
 ]
 export const archOf = (s: GameState) => ARCHETYPES[Math.min(s.arch, ARCHETYPES.length - 1)]
+/** BAL-16: the psyche ceiling for whoever is climbing. One function rather than twelve
+    copies of the constant (ENG-19), so a climber who carries more heart carries it
+    everywhere — at the start of a trip, off a send, and out of a camp alike. */
+export const psycheMax = (s: GameState) => PSYCHE_MAX + (archOf(s).dPsyche ?? 0)
 /* META-6. A climber is earned by its deed OR by reaching its level. The level
    is a backstop, not the intended path — do the deed and you have it early,
    which is what "unlock by waiting" was the complaint about — and because the
@@ -2529,7 +2543,7 @@ export function useKitStep(s: GameState, id: string, rng: RNG): GameState {
     log.push(`${k.name}. −${k.gripCut} Grip to every hold.`)
   }
   if (k.skin) { skin = Math.min(RUN_SKIN + styleMods(s.style).skin, skin + k.skin); log.push(`${k.name}. Skin patched.`) }
-  if (k.psyche) { psyche = Math.min(PSYCHE_MAX, psyche + k.psyche); log.push(`${k.name}. +${k.psyche} psyche.`) }
+  if (k.psyche) { psyche = Math.min(psycheMax(s), psyche + k.psyche); log.push(`${k.name}. +${k.psyche} psyche.`) }
   return { ...s, kit, pump, piles, boardP, boardH, skin, psyche,
     peakPump: Math.min(PUMP_MAX, Math.max(s.peakPump, pump)), log: [...s.log, ...log] }
 }
@@ -3102,7 +3116,7 @@ export function applyOutcome(s: GameState, o: EventOutcome, rng: RNG): GameState
   let n: GameState = { ...s }
   if (o.skin) n.skin = Math.max(0, Math.min(RUN_SKIN, n.skin + o.skin))
   if (o.cash) n.cash = Math.max(0, n.cash + o.cash)
-  if (o.psyche) n.psyche = Math.max(0, Math.min(PSYCHE_MAX, n.psyche + o.psyche))
+  if (o.psyche) n.psyche = Math.max(0, Math.min(psycheMax(n), n.psyche + o.psyche))
   if (o.boon) {
     const left = BOONS.filter(b => !n.boons.includes(b.id))
     if (left.length) n.boons = [...n.boons, left[rng.int(left.length)].id]
@@ -3791,7 +3805,7 @@ export function newRun(seed: number, loadout?: string[], style = 0, arch = 0,
     (_, i) => spawn(curses[i % curses.length]))
   return { ...s, inRun: true, arch, runDeck: [...loadoutDeck(loadout ?? a.loadout), ...chossy],
     tier: 0, act: 0, phase: 'map', style,
-    gear: mutMods(s.mutators).noGear ? [] : [a.gear], psyche: PSYCHE_MAX,
+    gear: mutMods(s.mutators).noGear ? [] : [a.gear], psyche: PSYCHE_MAX + (a.dPsyche ?? 0),
     skin: Math.max(2, RUN_SKIN + styleMods(style).skin + (a.dSkin ?? 0)
       + (s.topRope ? TOPROPE_SKIN : 0)) }
 }
@@ -3994,7 +4008,7 @@ export function endSession(s0: GameState, rng: RNG): GameState {
     }
     const n = s.circuitScore + 1
     s = gainXp({ ...s, circuitScore: n, sends: s.sends + 1,
-      psyche: Math.min(PSYCHE_MAX, s.psyche + PSYCHE_SEND),
+      psyche: Math.min(psycheMax(s), s.psyche + PSYCHE_SEND),
       bestCircuit: Math.max(s.bestCircuit, n) }, xpForSend(specOf(s).grade), rng)
     // SKIRM-6: crossing into a deep zone (The Business at 10, Into the Dark at
     // 14 — past the enduro deed at line 8) offers a boon, so the endless deck
@@ -4013,7 +4027,7 @@ export function endSession(s0: GameState, rng: RNG): GameState {
     const paid = cashForSend(specOf(s).grade) * (s.onProject ? 2 : 1)
     const book = logSend(s)
     s = gainXp({ ...s, sends: s.sends + 1, book, cash: s.cash + paid,
-      psyche: Math.min(PSYCHE_MAX, s.psyche + PSYCHE_SEND) },
+      psyche: Math.min(psycheMax(s), s.psyche + PSYCHE_SEND) },
       xpForSend(specOf(s).grade), rng)
     // finishing an act's guidebook pays once, in XP and a card you keep
     for (let a = 0; a < ACTS.length; a++) {
@@ -4033,7 +4047,7 @@ export function endSession(s0: GameState, rng: RNG): GameState {
   if (s.result === 'send' && s.skirmish?.fa) {
     const paid = cashForSend(s.skirmish.grade)
     return gainXp({ ...s, beta, sends: s.sends + 1, cash: s.cash + paid,
-      psyche: Math.min(PSYCHE_MAX, s.psyche + PSYCHE_SEND), phase: 'claim' },
+      psyche: Math.min(psycheMax(s), s.psyche + PSYCHE_SEND), phase: 'claim' },
       xpForSend(s.skirmish.grade) + 20, rng)
   }
   if (!s.inRun) return gate({ ...s, beta, phase: 'sessionEnd' })
@@ -4070,7 +4084,7 @@ export function endSession(s0: GameState, rng: RNG): GameState {
       // a topropoed ascent counts for everything except the ladder
       // META-10: stamp the durable deed records the moment the finale goes, so
       // quiver/hardway never depend on the 20-deep rolling history again
-      s = gainXp({ ...s, wins: s.wins + 1, psyche: PSYCHE_MAX,
+      s = gainXp({ ...s, wins: s.wins + 1, psyche: psycheMax(s),
         archWins: Array.from(new Set([...(s.archWins ?? []), s.arch])),
         mutatorWin: (s.mutatorWin ?? false) || s.mutators.length > 0,
         journal: Array.from(new Set([...s.journal, 7])),
@@ -5787,7 +5801,7 @@ export function campStep(s: GameState, a: CampAction): GameState {
     return toMapNext({ ...base,
       skin: mutMods(s.mutators).drySpell ? s.skin
         : Math.min(RUN_SKIN + styleMods(s.style).skin, s.skin + campSkinFor(s)),
-      psyche: Math.min(PSYCHE_MAX, s.psyche + PSYCHE_CAMP) })
+      psyche: Math.min(psycheMax(s), s.psyche + PSYCHE_CAMP) })
   if (a.kind === 'sharpen') {
     // Flash: the deck you brought is the deck you have
     if (s.inRun && styleMods(s.style).noSharpen) return toMapNext(base)

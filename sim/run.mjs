@@ -517,7 +517,13 @@ if (mode === 'arch') {
   console.log('Campaign completion by climber — own loadout, full journal, Working It\n')
   console.log(`${'climber'.padEnd(16)}${'signature'.padEnd(15)}${'completion'.padStart(11)}${'turns'.padStart(8)}${'sharp'.padStart(9)}${'proj'.padStart(8)}${'shops'.padStart(7)}${'held'.padStart(7)}${'died: psyche'.padStart(10)}${'skin'.padStart(11)}`)
   JOURNAL_PAGES = 6; LOADOUT = undefined
+  /* BAL-16: `ARCH_ONLY=<index>` measures one climber. The spread guard needs a coarse pass
+     over all five and then a FINE one on whichever came out lowest — the floor is a claim
+     about that climber alone, and paying for 2,500 runs of the other four to resolve it is
+     the waste GUARD-6 went after. */
+  const only = process.env.ARCH_ONLY === undefined ? null : Number(process.env.ARCH_ONLY)
   for (let a = 0; a < E.ARCHETYPES.length; a++) {
+    if (only !== null && a !== only) continue
     ARCH = a
     let won = 0, turns = 0, sh = 0, pj = 0, cashLeft = 0, shopsT = 0, heldT = 0, restsT = 0
     const kill = { won: 0, psyche: 0, skin: 0, route: 0 }

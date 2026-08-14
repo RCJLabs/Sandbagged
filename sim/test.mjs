@@ -1782,10 +1782,31 @@ if (SLOW) {
     // anyone noticed, because nothing was watching it
     // n=600: at 300 a 5% event has a standard error of 1.3 points, so this
     // guard was failing on variance — the same fix the ladder guard needed
-    const out = execSync('PROJECTS=0 node sim/run.mjs arch 600', { encoding: 'utf8' })
-    const pcts = [...out.matchAll(/\s([\d.]+)%\s+\d+/g)].map(m => Number(m[1]))
+    /* BAL-16: TWO PASSES, because the floor is a claim about ONE climber and the minimum of
+       five noisy estimates is biased downward. A 6% event at n=600 has an SE of ~0.9, so
+       taking `min` of five of them reads about a point low — the Comp Kid measured 5.2%
+       here against a floor of 5 while its real value was 5.8%, and this guard was a coin
+       flip rather than a measurement. It was raised 300 -> 600 once for exactly this and
+       that was not enough.
+       So: a coarse pass for the SPREAD, which is a ratio of two mid-range numbers and does
+       not need resolution, then a FINE pass on the two lowest, which is where the floor is
+       actually asserted. `ARCH_ONLY` exists so that costs 4,000 runs and not 12,500 — the
+       other three climbers cannot hold the floor and there is no reason to pay for them
+       (GUARD-6). Two rather than one because the coarse pass picks the lowest off noisy
+       numbers and the bottom two currently sit 0.0 apart. */
+    const read = cmd => [...execSync(cmd, { encoding: 'utf8' })
+      .matchAll(/\s([\d.]+)%\s+\d+/g)].map(m => Number(m[1]))
+    const FINE = 2000
+    const pcts = read('PROJECTS=0 node sim/run.mjs arch 600')
     eq(pcts.length, E.ARCHETYPES.length, `read ${pcts.length} climbers, expected ${E.ARCHETYPES.length}`)
-    const lo = Math.min(...pcts), hi = Math.max(...pcts)
+    const hi = Math.max(...pcts)
+    const bottom = pcts.map((p, i) => [p, i]).sort((a, b) => a[0] - b[0]).slice(0, 2)
+    const fine = bottom.map(([, i]) => {
+      const got = read(`PROJECTS=0 ARCH_ONLY=${i} node sim/run.mjs arch ${FINE}`)
+      eq(got.length, 1, `ARCH_ONLY=${i} reported ${got.length} climbers`)
+      return [got[0], i]
+    })
+    const [lo, worst] = fine.sort((a, b) => a[0] - b[0])[0]
     /* Floor back to 5 at v9.35. It was lowered to 4 at v9.32 to accommodate a
        drift rather than to fix it, which is the thing BAL-9 exists to prevent.
        BAL-14 investigated it properly: six separate hypotheses tested, none
@@ -1793,7 +1814,16 @@ if (SLOW) {
        changes each worth a point or two, compounding, which is precisely the
        failure mode BAL-9 documented. Corrected with one dial (RUN_SKIN 8 to 9)
        rather than by moving the goalposts again. */
-    ok(lo > 5, `a climber completes only ${lo}% of runs`)
+    ok(lo > 5, `${E.ARCHETYPES[worst].name} completes only ${lo}% of runs`)
+    /* AND THE FLOOR HAS TO BE MEASURABLE. A margin inside the noise is not a property this
+       guard can defend, and reporting that is more useful than flaking: at 5.8% the Comp
+       Kid cleared a floor of 5 by 1.7 SE, which no sample this project can afford would
+       turn into a real claim — so the CLIMBER was bought back (BAL-16, dPsyche) rather than
+       the floor moved to meet it, which is the thing BAL-9 exists to forbid. */
+    const se = 100 * Math.sqrt((lo / 100) * (1 - lo / 100) / FINE)
+    ok(lo - 5 > 2 * se,
+      `${E.ARCHETYPES[worst].name} clears the floor by only ${((lo - 5) / se).toFixed(1)} SE ` +
+      `(${lo}% at n=${FINE}) — that is a coin flip, not a measurement`)
     ok(hi / lo < 2.2, `spread is ${(hi / lo).toFixed(1)}x — ${pcts.join(' / ')}`)
   })
   test('the van is a decision, not the answer to every camp', () => {
@@ -2036,6 +2066,37 @@ if (SLOW) {
        for a legal deck is ~43 stat-sorted or ~44 as the game builds it, against a pin of
        ~52. Re-pointing the harness is therefore a RE-PIN and needs a decision, and it
        will also recalibrate ROUTE-8, CARD-9 and the climber spread the way SIM-6 did.
+       v10.25 (BAL-16): the climber floor, not the band. The spread guard says no climber
+       completes less than 5% and it was passing on a COIN FLIP: the Comp Kid read 5.2% at
+       the n=600 that guard runs against a real 5.8%, because the minimum of five estimates
+       whose SE is ~0.9 reads about an SE low. And 5.8% clears a floor of 5 by 1.7 SE, which
+       no affordable sample turns into a claim (2 SE wants n>1900 on one climber, 3 SE ~3400).
+       An unmeasurable property is a different problem from a false one, and the fix was
+       neither the floor nor a shrug:
+         (1) the guard resolves the floor WHERE IT LIVES — a coarse n=600 pass for the
+             spread ratio, then a fine n=2000 pass on the two lowest climbers via a new
+             `ARCH_ONLY`, which costs 4,000 runs instead of the 12,500 that fining all five
+             would (GUARD-6). And it FAILS LOUDLY when the margin is inside the noise: it
+             reports the margin in SEs, so "this guard cannot resolve this" is a failure
+             rather than a flake. Cost: ~+4,000 runs on the ledger, stated because GUARD-6
+             fought for that budget.
+         (2) the Comp Kid was bought back to 6.6% — 3.2 SE clear — on the axis it actually
+             died of. Every other dial was the wrong SIZE, measured one at a time at n=2500:
+             one skin 4.9% (nothing, and it dies of psyche instead of skin), one betaGrip
+             5.8% (nothing at all), one Contact 10.2% and one card of HAND 15.6%. That last
+             pair is worth remembering: this climber is card-starved, not strength-starved,
+             and a single point of Contact or one card of hand swings it four to ten points.
+             So it got a dial of its own, `dPsyche`, and its psyche deaths went 19% -> 1%.
+       Verified long-standing rather than recent drift: v10.19, before CARD-18 and before the
+       SIM-8 re-pin, reads the same climber at 5.7% (n=1500). `arch` mode measures each
+       climber's OWN loadout (`LOADOUT = undefined`), so no re-pin can reach it.
+       Roster after, n=1500: Boulderer 8.9 / Comp Kid 6.7 / Trad Dad 6.7 / Alpinist 7.7 /
+       Onsighter 7.3 — spread 1.33x against a 2.2x ceiling. The BAND did not move: `arch` is
+       a different measurement and the campaign pin stays ~44.3.
+       NOTE for whoever reads this next: the whole roster now lives between 6 and 9%, and the
+       floor of 5 was set when it spanned 3.3 to 29.8. It is a much tighter fit than it was,
+       and the next climber to drift will hit the same unmeasurable margin. That is worth a
+       decision about the floor eventually, and it should be a dated one.
        v10.24 (GUARD-9): no band movement, and off-band by construction — it changed nothing
        but the suite. Recorded so a reader walking the versions does not look for a
        measurement that was never needed. It does keep the injections that produced most of

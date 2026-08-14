@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.24 — GUARD-9: the negative tests are kept. 52 injections that break what
-//   each guard claims, because three of them turned out unable to fail at all
+// SANDBAGGED v10.25 — BAL-16: the climber floor was passing on a coin flip. The guard
+//   resolves it where it lives now, and the Comp Kid does not lose heart
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -13,7 +13,7 @@ import {
   DEFAULT_LOADOUT, DOUBT_AT, EVENTS, EXPOSED_FALL_PSYCHE, EXPOSED_PSYCHE,
   FA_NAMES_A, FA_NAMES_B, FEET_STATS, FLOW_AT, FLOW_HIGH, GameState, HISTORY_MAX, HOLD_STATS,
   JOURNAL, KEYWORDS, LANE_NAMES, LINES, MAP_BOT, MAP_H, MAP_TOP, MAP_W, MUTATORS,
-  MapNode, OPPOSE_ALONE, OPPOSE_PAIR, PRICE, PROJECT_SKIN, PSYCHE_BAIL, PSYCHE_MAX,
+  MapNode, OPPOSE_ALONE, OPPOSE_PAIR, PRICE, PROJECT_SKIN, PSYCHE_BAIL, psycheMax,
   PUMP_MAX, Phase, RARE_SLOTS, RNG, ROCK, ROUTES, RUN_SKIN, Rarity, SKIN_MAX,
   SLOTS, SYNERGY_PER, TAG_NAMES, TALKS, TOPROPE_SKIN, TUTORIAL_DECK, TWEAK_GRIP,
   UNCOMMON_SLOTS, WEATHER, abilityOf, activeSlot, aheadSummary, applyOutcome,
@@ -1114,7 +1114,7 @@ export default function App() {
     const seed = pickSeed()
     const rng = new RNG(seed)
     const base: GameState = { ...st, ...modeReset(), seed, runSeed: seed, circuit: true,
-      circuitScore: 0, inRun: false, tier: 0, act: 0, gear: [], cash: 0, psyche: PSYCHE_MAX,
+      circuitScore: 0, inRun: false, tier: 0, act: 0, gear: [], cash: 0, psyche: psycheMax(st),
       skin: RUN_SKIN, runDeck: loadoutDeck(st.loadouts[st.arch]),
       skirmish: circuitRoute(0, rng), burn: 1, beta: [], worked: [],
       weather: rng.int(WEATHER.length), rock: rng.int(ROCK.length) }
@@ -1298,7 +1298,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.24 · RCJ Labs</div>
+          <div className="sfoot">v10.25 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1527,7 +1527,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.24 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.25 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -3272,7 +3272,7 @@ export default function App() {
         {sent && st.inRun ? (
           <div className="spot" style={{ borderLeftColor: 'var(--green)' }}>
             <b style={{ color: 'var(--green)' }}>CHALKED</b>
-            +{xp} xp{paid ? ` · $${paid}` : ''}{st.psyche < PSYCHE_MAX ? ' · psyche back' : ''}
+            +{xp} xp{paid ? ` · $${paid}` : ''}{st.psyche < psycheMax(st) ? ' · psyche back' : ''}
             {prev ? `. ${prev.sends + 1}${['th','st','nd','rd'][(prev.sends + 1) % 10] ?? 'th'} time on it, best ${Math.min(prev.bestBurn, st.burn)} burn${Math.min(prev.bestBurn, st.burn) > 1 ? 's' : ''}.`
               : '. First entry in the book for this one.'}
           </div>) : null}

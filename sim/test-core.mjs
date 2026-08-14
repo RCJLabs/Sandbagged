@@ -2627,6 +2627,75 @@ test('the Circuit is not the mode nobody bothered with (SKIRM-7)', () => {
     'export function bankDaily', 'bankDaily')),
     'the Circuit feeds the season score now — that is farmable, and it wants a decision first')
 })
+test('BAL-16: a floor nobody can measure is not a floor', () => {
+  /* BAL-16. The climber-spread guard says no climber completes less than 5% of campaigns,
+     and it was passing on a coin flip: the Comp Kid measured 5.2% at the n=600 that guard
+     runs, against a real value of 5.8% — the minimum of five noisy estimates reads about an
+     SE low, and an SE there is ~0.9. Worse, 5.8% clears a floor of 5 by 1.7 SE, and no
+     sample this project can afford turns that into a claim (2 SE needs n>1900 for one
+     climber; 3 SE needs ~3400).
+     So the property was UNMEASURABLE, which is a different problem from the property being
+     false. Two things fixed it, and neither was moving the floor — BAL-9 exists to forbid
+     that, and its own note records the floor being lowered to 4 once "to accommodate a
+     drift rather than to fix it":
+       (1) the guard resolves the floor where the floor lives (a coarse pass for the spread,
+           a fine pass on the two lowest climbers, via `ARCH_ONLY`), and it now FAILS LOUDLY
+           when the margin is inside the noise rather than flaking; and
+       (2) the Comp Kid was bought back to 6.6%, which is 3.2 SE clear.
+     Verified long-standing rather than a recent drift: v10.19, before CARD-18 and before the
+     SIM-8 re-pin, reads the same climber at 5.7% (n=1500). `arch` mode measures each
+     climber's OWN loadout, so no re-pin can reach it. */
+  const comp = E.ARCHETYPES.find(a => a.id === 'comp')
+  ok(comp, 'the Comp Kid is gone')
+
+  /* THE BUY-BACK IS TARGETED AND ON THE AXIS IT DIED OF. It died of psyche — 19% of its runs
+     against 11-14% for everyone else — because `dAttempts: -1` fails more boulders and
+     PSYCHE_MAX is 3. Every other dial was the wrong SIZE, measured at n=2500: one skin 4.9%
+     (nothing, and it dies of psyche instead), one betaGrip 5.8% (nothing at all), one Contact
+     10.2% and one card of hand 15.6% — either nothing or the best climber in the game. */
+  ok((comp.dPsyche ?? 0) > 0, 'the Comp Kid has no psyche buy-back, so it is back on its floor')
+  const others = E.ARCHETYPES.filter(a => a.id !== 'comp')
+  for (const a of others)
+    ok(!a.dPsyche, `${a.name} also carries dPsyche — this was a buy-back for one climber`)
+
+  // ONE FORMULA (ENG-19): every cap on a climber's own psyche goes through psycheMax
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  eq((eng.match(/Math\.min\(PSYCHE_MAX,/g) ?? []).length, 0,
+    'a psyche cap reads the bare constant again, so a climber who carries more heart loses it there')
+  ok(/export const psycheMax = /.test(eng), 'psycheMax is gone')
+  ok(/PSYCHE_MAX \+ \(archOf\(s\)\.dPsyche \?\? 0\)/.test(eng),
+    'psycheMax no longer reads the climber, so the dial does nothing')
+
+  // and it BEHAVES: this climber starts, sends and camps against a higher ceiling
+  const st = a => ({ ...E.freshRun(0, 0, 1), arch: E.ARCHETYPES.indexOf(a) })
+  eq(E.psycheMax(st(comp)), E.PSYCHE_MAX + comp.dPsyche, 'the Comp Kid climbs on the common ceiling')
+  for (const a of others)
+    eq(E.psycheMax(st(a)), E.PSYCHE_MAX, `${a.name}'s ceiling moved`)
+  // a cap is a cap: nothing may push anyone above their own
+  for (const a of E.ARCHETYPES) {
+    const cap = E.psycheMax(st(a))
+    const camped = E.campStep({ ...st(a), inRun: true, psyche: cap, skin: 5, cash: 0 }, new E.RNG(3))
+    ok(camped.psyche <= cap, `${a.name} camps past its own psyche ceiling`)
+  }
+
+  // the climber says so — a signature that undersells itself is the CARD-17 shape
+  ok(/head/i.test(comp.sigText), "the Comp Kid's signature does not mention what it now carries")
+
+  /* THE FLOOR ITSELF DID NOT MOVE, and the guard says how far above it we are in SEs rather
+     than trusting a single draw. Read off the ledger so the two cannot drift apart. */
+  const led = readFileSync('sim/test.mjs', 'utf8')
+  const spread = region(led, "test('no climber is twice as good as another'", ["  test('"],
+    { min: 800, what: 'the climber-spread guard' })
+  ok(/ok\(lo > 5,/.test(spread), 'the 5% floor has been moved — BAL-9 is about exactly that')
+  /* match the COMMAND, not the word: the prose in that guard explains why `ARCH_ONLY`
+     exists, so the bare-name form stayed green when the flag was dropped from the call.
+     Third time this project has had to make that correction (NARR-14, SIM-6, here). */
+  ok(/ARCH_ONLY=\$\{i\} node sim\/run\.mjs arch \$\{FINE\}/.test(spread),
+    'the guard no longer resolves the lowest climber finely')
+  ok(/lo - 5 > 2 \* se/.test(spread), 'the guard no longer checks its own margin is measurable')
+  ok(/Math\.sqrt\(\(lo \/ 100\) \* \(1 - lo \/ 100\) \/ FINE\)/.test(spread),
+    'the standard error is not computed from the proportion and the sample any more')
+})
 test('the tuning policy can see the feet lane (SIM-6)', () => {
   /* SIM-6. `autoPlay` chose the feet by MAX SUPPORT and nothing else, so it could not
      see that a foot works its hold — and the feet lane works about 38% of every hold
