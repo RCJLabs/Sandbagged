@@ -261,6 +261,10 @@ export function faRoute(act: number, rng: RNG): RouteSpec {
    starts with some of its sequence already known. */
 export const BOOK_BETA_MAX = 2
 export const HISTORY_MAX = 20
+/* SAVE-6. The write cap on your first ascents. It lived as a bare `.slice(0, 40)` inside
+   `claimStep`, so the loader had no way to know what the limit was and did not enforce
+   one — two copies of a rule that must agree (ENG-19), one of them invisible. */
+export const ESTABLISHED_MAX = 40
 
 /* ============================ THE LINE =============================
    Same rock, more than one way up it. Which one suits you is a question
@@ -714,6 +718,23 @@ export function importSave(code: string, slot: number): boolean {
    same value, so an unreadable save was indistinguishable from a new game — and
    the app then persisted a fresh game straight over it. The caller must refuse to
    write when this returns null. */
+/* SAVE-6. Every array a save carries, clamped to what the game can actually produce.
+   SAVE-5 was one unvalidated NUMBER (`xp: undefined` beat freshRun's 0, `gainXp` returned
+   NaN and levelling froze for ever) and it was reachable from a one-field import code. The
+   arrays were the same shape of hole: `owned`, `history`, `journal`, `established`, `trail`
+   and a dozen more were taken at whatever length the file claimed. A crafted save — or an
+   import code — carrying 100,000 history records is accepted, written back out, and then
+   rendered by the Every Trip screen.
+   The caps are DERIVED wherever the game already knows the number, so they cannot drift from
+   the thing they bound: you cannot own more cards than exist, or tick more acts than there
+   are. Two were literals only the WRITER knew (`established`'s 40, and the larder's none at
+   all) and are named constants now, shared by both ends (ENG-19).
+   Contents are a separate question and already handled where it matters: `runDeck` filters to
+   cards that still exist (SAVE-1) and `challenge` to goals this build has (SOCIAL-2). This is
+   about LENGTH. */
+const cap = <T,>(v: T[] | undefined, n: number): T[] =>
+  Array.isArray(v) ? v.slice(0, n) : []
+
 export function loadGame(slot = 0): Partial<GameState> | null {
   try {
     const raw = localStorage.getItem(slotKey(slot))
@@ -732,20 +753,21 @@ export function loadGame(slot = 0): Partial<GameState> | null {
          reachable from a one-field import code, not just a future version bump. */
       level: typeof d.level === 'number' && isFinite(d.level) ? d.level : 1,
       xp: typeof d.xp === 'number' && isFinite(d.xp) ? d.xp : 0,
-      owned: d.owned ?? [], sends: d.sends ?? 0, wins: d.wins ?? 0,
-      journal: d.journal ?? [],
+      owned: cap(d.owned, Object.keys(CARDS).length), sends: d.sends ?? 0, wins: d.wins ?? 0,
+      journal: cap(d.journal, JOURNAL.length),
       ...(d.loadout && d.loadout.length === DECK_SIZE ? { loadout: d.loadout } : {}),
-      style: d.style ?? 0, styleMax: d.styleMax ?? 0, seen: d.seen ?? [],
+      style: d.style ?? 0, styleMax: d.styleMax ?? 0, seen: cap(d.seen, EVENTS.length),
       coaching: d.coaching ?? true, sound: d.sound ?? true, ambience: d.ambience ?? true, haptics: d.haptics ?? true, assist: d.assist ?? false, cbSafe: d.cbSafe ?? false,
       tutorialDone: d.tutorialDone ?? false,
       motion: d.motion ?? true, textScale: d.textScale ?? 0, reach: d.reach ?? 'off',
       arch: d.arch ?? 0,
       ...(d.loadouts && d.loadouts.length === ARCHETYPES.length ? { loadouts: d.loadouts } : {}),
-      book: d.book ?? {}, bestCircuit: d.bestCircuit ?? 0, mutators: d.mutators ?? [],
-      ticked: d.ticked ?? [], established: d.established ?? [], hints: d.hints ?? true,
+      book: d.book ?? {}, bestCircuit: d.bestCircuit ?? 0, mutators: cap(d.mutators, MUTATORS.length),
+      ticked: cap(d.ticked, ACTS.length), established: cap(d.established, ESTABLISHED_MAX), hints: d.hints ?? true,
       grades: d.grades ?? 'v', tweak: d.tweak ?? null,
-      larder: d.larder ?? [], titles: d.titles ?? [], graceWeek: d.graceWeek ?? '',
-      dailyMet: d.dailyMet ?? [],
+      larder: cap(d.larder, LARDER_MAX),
+      titles: cap(d.titles, STREAK_REWARDS.length + SEASON_TITLES.length), graceWeek: d.graceWeek ?? '',
+      dailyMet: cap(d.dailyMet, GOALS_PER_DAY),
       // SOCIAL-2: a code from a newer build could name a goal this one does not have
       challenge: d.challenge && goalById(d.challenge.goal) ? d.challenge : null,
       dailyDay: d.dailyDay ?? '', dailyTried: d.dailyTried ?? '', dailyScore: d.dailyScore ?? 0,
@@ -753,36 +775,37 @@ export function loadGame(slot = 0): Partial<GameState> | null {
       weekId: d.weekId ?? '', weekScore: d.weekScore ?? 0, weekBest: d.weekBest ?? 0,
       seasonId: d.seasonId ?? '', seasonScore: d.seasonScore ?? 0,
       seasonBest: d.seasonBest ?? 0, seasonDays: d.seasonDays ?? 0,
-      seasonWeeks: Array.isArray(d.seasonWeeks) ? d.seasonWeeks.map(n => Number(n) || 0) : [],
+      seasonWeeks: cap(d.seasonWeeks, SEASON_WEEKS).map(n => Number(n) || 0),
       runs: d.runs ?? 0, falls: d.falls ?? 0, ending: d.ending ?? '',
-      topRope: d.topRope ?? true, history: d.history ?? [],
-      archWins: d.archWins ?? [], mutatorWin: d.mutatorWin ?? false,
+      topRope: d.topRope ?? true, history: cap(d.history, HISTORY_MAX),
+      archWins: cap(d.archWins, ARCHETYPES.length), mutatorWin: d.mutatorWin ?? false,
       ...(d.run ? { inRun: true,
         /* SAVE-1: an unknown card name used to throw out of `spawn` and take the
            WHOLE save with it (the catch below returned an empty object, which the
            app then treated as a new game and persisted over the original). A card
            renamed or removed between versions now costs you that card, not your
            campaign. */
-        runDeck: d.run.deck
+        runDeck: cap(d.run.deck, RUN_DECK_MAX)
           .filter(n => CARDS[n.endsWith('+') ? n.slice(0, -1) : n])
           .map(n => n.endsWith('+') ? upgrade(spawn(n.slice(0, -1))) : spawn(n)),
         tier: d.run.tier,
-        skin: d.run.skin, seed: d.run.seed, act: d.run.act ?? 0, gear: d.run.gear ?? [],
-        cash: d.run.cash ?? 0, boons: d.run.boons ?? [], kit: d.run.kit ?? [], psyche: d.run.psyche ?? PSYCHE_MAX,
-        runSeed: d.run.runSeed ?? 0, eventsSeen: d.run.eventsSeen ?? [],
+        skin: d.run.skin, seed: d.run.seed, act: d.run.act ?? 0, gear: cap(d.run.gear, GEAR.length),
+        cash: d.run.cash ?? 0, boons: cap(d.run.boons, BOONS.length), kit: cap(d.run.kit, KIT_MAX), psyche: d.run.psyche ?? PSYCHE_MAX,
+        runSeed: d.run.runSeed ?? 0, eventsSeen: cap(d.run.eventsSeen, EVENTS.length),
         // SAVE-4: the anti-farm gates and the trip's own record
-        shoppedAt: d.run.shoppedAt ?? [], vanRaided: d.run.vanRaided ?? [],
-        trail: d.run.trail ?? [], eventChose: d.run.eventChose ?? [],
+        shoppedAt: cap(d.run.shoppedAt, MAP_NODES), vanRaided: cap(d.run.vanRaided, MAP_NODES),
+        trail: cap(d.run.trail, MAP_NODES), eventChose: cap(d.run.eventChose, MAP_NODES),
         reroll: d.run.reroll ?? 0, line: d.run.line ?? 0 } : {}),
       ...(d.circuit ? (() => {
         const rng = new RNG(d.circuit.seed ?? 1)
         return { circuit: true, circuitScore: d.circuit.score ?? 0,
-          runDeck: (d.circuit.deck ?? [])
+          runDeck: cap(d.circuit.deck, RUN_DECK_MAX)
             .filter(n => CARDS[n.endsWith('+') ? n.slice(0, -1) : n])
             .map(n => n.endsWith('+') ? upgrade(spawn(n.slice(0, -1))) : spawn(n)),
           skin: d.circuit.skin ?? RUN_SKIN, psyche: d.circuit.psyche ?? PSYCHE_MAX,
           seed: d.circuit.seed ?? 1, runSeed: d.circuit.runSeed ?? 0,
-          gear: d.circuit.gear ?? [], boons: d.circuit.boons ?? [], kit: d.circuit.kit ?? [],
+          gear: cap(d.circuit.gear, GEAR.length), boons: cap(d.circuit.boons, BOONS.length),
+          kit: cap(d.circuit.kit, KIT_MAX),
           skirmish: circuitRoute(d.circuit.score ?? 0, rng) }
       })() : {}),
     }
@@ -1797,6 +1820,15 @@ const ACT3_MAP: MapNode[][] = [
   [B(29)],                       // THE LOST LINE
 ]
 export const ACTS: MapNode[][][] = [ACT1_MAP, ACT2_MAP, ACT3_MAP]
+/* SAVE-6. Every node on the whole map — the ceiling for anything the save records once per
+   node, and for how much a run deck can have grown by the end of a trip. Derived, so adding
+   an act cannot leave these caps behind. Declared HERE, after ACTS, and not up with the other
+   save caps: `LARDER_MAX` was written there as `KIT_MAX * 6` two thousand lines before
+   KIT_MAX exists and silently evaluated to NaN — tsc catches this one, and would have caught
+   that one had I run it between the two edits. */
+export const MAP_NODES = ACTS.reduce((n, act) => n + act.flat().length, 0)
+export const RUN_DECK_MAX = DECK_SIZE + MAP_NODES
+
 export const ACT_NAMES = ['Act 1 · the forest', 'Act 2 · desert towers', 'Act 3 · the alpine wall']
 export const ACT_SKIN = 5        // topped up between acts
 
@@ -2521,6 +2553,18 @@ export const CONSUMABLES: Consumable[] = [
 ]
 export const consumableById = (id: string) => CONSUMABLES.find(k => k.id === id)
 export const KIT_MAX = 2
+/* SAVE-6. The larder is the only array in the save that grows in NORMAL PLAY without a
+   ceiling: `bankDaily` appends a kit item every time the streak ladder pays one, and the
+   only thing that shrinks it is starting a trip and being handed some. Keep a habit up for
+   months and never tie in, and it grows for ever. Six trips' worth is more banked kit than
+   anyone will spend; past that the oldest is simply not kept.
+   It lives HERE, under KIT_MAX, and not up with the other save caps — written there it read
+   `KIT_MAX * 6` two thousand lines before KIT_MAX exists, and esbuild hoists the declaration
+   rather than throwing, so it silently evaluated to NaN. `slice(-NaN)` returns the whole
+   array, so the cap did nothing at all. That is SAVE-5's exact failure mode (`xp: undefined`
+   -> NaN -> frozen levelling) reproduced inside the fix for it, which is why every cap is
+   now asserted to be a finite positive number. */
+export const LARDER_MAX = KIT_MAX * 6
 
 /** Spend a consumable: apply it and take it out of the kit. The one shared
     path for the screen (and any policy), the SIM-5 rule — nothing that plays a
@@ -4005,7 +4049,8 @@ export function bankDaily(s: GameState, rng = new RNG(dailySeed())): GameState {
     dailyMet: met.map(g => g.id),
     dailyBest: Math.max(s.dailyBest, score), dailyStreak: streak,
     graceWeek: forgiven ? wk0 : s.graceWeek,
-    larder: rw?.kit ? [...s.larder, rw.kit] : s.larder,
+    // SAVE-6: capped where it GROWS, not only where it loads, or the save itself bloats
+    larder: rw?.kit ? [...s.larder, rw.kit].slice(-LARDER_MAX) : s.larder,
     titles,
     seasonId: sk, seasonScore, seasonDays, seasonWeeks: wks,
     seasonBest: Math.max(s.seasonBest, seasonScore),
@@ -5928,7 +5973,7 @@ export function claimStep(s: GameState, name: string, grade: number, rng: RNG): 
     : honesty === 0 ? CLAIM_XP : 0
   const cashGain = honesty < 0 ? SPRAY_CASH * Math.min(-honesty, 3) : 0
   let out: GameState = { ...s,
-    established: [rec, ...s.established].slice(0, 40),
+    established: [rec, ...s.established].slice(0, ESTABLISHED_MAX),
     book: { ...s.book, [name]: { sends: 1, bestBurn: s.burn, bestStyle: s.style,
       flashed: s.burn === 1, weather: s.weather, rock: s.rock } },
     cash: s.cash + cashGain, skirmish: null }

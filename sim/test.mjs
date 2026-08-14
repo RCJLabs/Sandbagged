@@ -2066,6 +2066,8 @@ if (SLOW) {
        for a legal deck is ~43 stat-sorted or ~44 as the game builds it, against a pin of
        ~52. Re-pointing the harness is therefore a RE-PIN and needs a decision, and it
        will also recalibrate ROUTE-8, CARD-9 and the climber spread the way SIM-6 did.
+       v10.27 (SAVE-6): no band movement — save validation and one write cap on the larder,
+       neither of which the harness touches (it calls `newRun` and never loads a file).
        v10.26 (SKIRM-8): no band movement, and off-band by construction — the Circuit is not
        measured at all (`sim/run.mjs` does not contain the word, asserted since SKIRM-7).
        Recorded only so the version walk has no gap.

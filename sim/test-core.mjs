@@ -2634,6 +2634,95 @@ test('the Circuit is not the mode nobody bothered with (SKIRM-7)', () => {
     'export function bankDaily', 'bankDaily')),
     'the Circuit feeds the season score now — that is farmable, and it wants a decision first')
 })
+test('SAVE-6: a save cannot claim an array longer than the game can make', () => {
+  /* SAVE-6. SAVE-5 was ONE unvalidated number — `xp: undefined` beat freshRun's 0, `gainXp`
+     returned NaN, `while (NaN >= xpToNext(level))` was never true and levelling froze for
+     ever — and it was reachable from a one-field import code rather than only a future
+     version bump. The arrays were the same hole: `owned`, `history`, `journal`,
+     `established`, `trail` and a dozen more were taken at whatever length the file claimed.
+     The audit's example was harmless (500 `seasonWeeks`, of which the board reads four). The
+     ones that are not: `history` and `owned` are RENDERED in full, and everything accepted is
+     written straight back out, so the file grows too. */
+  const caps = {
+    owned: Object.keys(E.CARDS).length, journal: E.JOURNAL.length, seen: E.EVENTS.length,
+    ticked: E.ACTS.length, mutators: E.MUTATORS.length, archWins: E.ARCHETYPES.length,
+    established: E.ESTABLISHED_MAX, history: E.HISTORY_MAX, larder: E.LARDER_MAX,
+    dailyMet: E.GOALS_PER_DAY, seasonWeeks: E.SEASON_WEEKS,
+    titles: E.STREAK_REWARDS.length + E.SEASON_TITLES.length,
+  }
+  /* EVERY CAP IS A REAL NUMBER. This is not padding: `LARDER_MAX` was first written as
+     `KIT_MAX * 6` two thousand lines above KIT_MAX, and esbuild hoists the declaration rather
+     than throwing, so it evaluated to NaN — and `slice(-NaN)` returns the whole array, so the
+     cap silently did nothing. SAVE-5's exact failure mode inside the fix for SAVE-5's shape. */
+  for (const [k, v] of Object.entries(caps))
+    ok(typeof v === 'number' && isFinite(v) && v > 0, `the cap on ${k} is ${v}, not a number`)
+  for (const k of ['MAP_NODES', 'RUN_DECK_MAX', 'KIT_MAX', 'ESTABLISHED_MAX', 'LARDER_MAX'])
+    ok(typeof E[k] === 'number' && isFinite(E[k]) && E[k] > 0, `${k} is ${E[k]}, not a number`)
+
+  /* CRAFTED RAW, the way SAVE-1's guard does it, because that is the threat: a file somebody
+     wrote by hand or an import code, not something `saveGame` would ever produce. Going
+     through `saveGame` would also only test the fields it happens to copy. */
+  const craft = d => {
+    localStorage.setItem('sandbagged.save.6', JSON.stringify({ v: E.SAVE_FILE_VERSION, level: 3, ...d }))
+    return E.loadGame(6)
+  }
+  /* LONGER THAN THE LARGEST CAP, or the fixture cannot see the clamp at all: `owned` is
+     capped at the size of the card table (248), so a 100-entry fixture reads the same
+     clamped or not. Found by injecting the removal of that very clamp and watching the
+     length assertion pass. */
+  const many = Array.from({ length: Math.max(400, ...Object.values(caps)) + 20 }, (_, i) => `x${i}`)
+  ok(many.length > Math.max(...Object.values(caps)), 'the fixture is shorter than a cap it tests')
+  const back = craft({
+    ...Object.fromEntries(Object.keys(caps).map(k => [k, many])),
+    seasonWeeks: many.map(() => 7),
+    run: { deck: many, tier: 0, skin: 5, seed: 1, gear: many, boons: many,
+      kit: many, eventsSeen: many, shoppedAt: many, vanRaided: many,
+      trail: many, eventChose: many },
+  })
+  ok(back, 'the crafted save did not load at all')
+  for (const [k, n] of Object.entries(caps))
+    ok(back[k].length <= n, `${k} came back with ${back[k].length} entries against a cap of ${n}`)
+  for (const [k, n] of [['gear', E.GEAR.length], ['boons', E.BOONS.length], ['kit', E.KIT_MAX],
+    ['eventsSeen', E.EVENTS.length], ['shoppedAt', E.MAP_NODES], ['vanRaided', E.MAP_NODES],
+    ['trail', E.MAP_NODES], ['eventChose', E.MAP_NODES]])
+    ok(back[k].length <= n, `${k} came back with ${back[k].length} against a cap of ${n}`)
+  // and the clamp must not be a wipe: what fits is kept, in order
+  eq(back.seasonWeeks.length, E.SEASON_WEEKS, 'seasonWeeks was emptied rather than clamped')
+  ok(back.seasonWeeks.every(n => n === 7), 'clamping seasonWeeks changed what it kept')
+  eq(back.owned[0], 'x0', 'clamping owned kept the wrong end of it')
+  eq(back.level, 3, 'clamping the arrays lost the rest of the save')
+
+  // a garbage type where an array belongs is an empty array, not a crash and not a wipe
+  const junk = craft({ owned: 'not an array', history: 42, seasonWeeks: { nope: 1 } })
+  ok(junk, 'a save with a non-array where an array belongs became unreadable')
+  for (const k of ['owned', 'history', 'seasonWeeks'])
+    ok(Array.isArray(junk[k]) && junk[k].length === 0, `a non-array ${k} came back as ${typeof junk[k]}`)
+  eq(junk.level, 3, 'one bad field cost the rest of the save')
+  E.wipeSlot(6)
+
+  /* THE LARDER GROWS IN NORMAL PLAY, which is the one here that is not only about crafted
+     saves: `bankDaily` appends a kit item every time the streak ladder pays one and only
+     starting a trip takes any out. So it is capped where it GROWS as well as where it loads,
+     or the file itself bloats. */
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  ok(/\[\.\.\.s\.larder, rw\.kit\]\.slice\(-LARDER_MAX\)/.test(eng),
+    'the larder is appended to without a cap again, so it grows for ever in normal play')
+  // and the writer's own caps are shared with the loader rather than being literals (ENG-19)
+  ok(/\.slice\(0, ESTABLISHED_MAX\)/.test(eng), 'the first-ascent cap is a bare number again')
+  ok(/\.slice\(0, HISTORY_MAX\)/.test(eng), 'the history cap is a bare number again')
+  /* strip the comments first: the note above `ESTABLISHED_MAX` quotes the old `.slice(0, 40)`
+     to say what it replaced, and a bare-text negative fails on its own explanation. Fourth
+     time this correction has been needed (NARR-14, SIM-6, BAL-16, here), so it is worth
+     saying out loud: a NEGATIVE assertion about source must read code, not prose. */
+  const engCode = eng.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+  ok(!/slice\(0, 40\)/.test(engCode), 'a bare 40 is back — the loader cannot know that number')
+
+  // every array field in the loader goes through the clamp, so a new one cannot be missed
+  const load = region(eng, 'export function loadGame', ['\nexport function '],
+    { min: 800, what: 'loadGame' })
+  const bare = [...load.matchAll(/(\w+): (?:d|d\.run|d\.circuit)\.\w+ \?\? \[\]/g)].map(m => m[1])
+  eq(bare.length, 0, `${bare.join(', ')} still take whatever length the file claims`)
+})
 test('SKIRM-8: the good outcome gets a screen', () => {
   /* SKIRM-8. RUN-13 added the circuit walk-off to history because nothing in the game
      acknowledged the ONE outcome this mode has that is not a failure. SKIRM-7 then gave you
@@ -4859,7 +4948,15 @@ test('GUARD-9: the kept injections still injure something', () => {
     ok(m.catches && m.catches.length > 8, `${m.id} does not say what it expects to hear`)
     ok(['core', 'kept', 'slow'].includes(m.suite), `${m.id} runs against no suite (${m.suite})`)
     ok(m.why && m.why.length > 12, `${m.id} does not say what it breaks`)
-    for (const [file, from, to] of m.patch) {
+    for (const entry of m.patch) {
+      /* SAVE-6 found this hole: a patch written with two elements instead of three
+         destructures to file=<the needle>, from=<the replacement>, to=undefined, and the
+         runner tries to open the needle as a filename. The shape is asserted now. */
+      eq(entry.length, 3, `${m.id} has a patch of ${entry.length} parts, not [file, from, to]`)
+      const [file, from, to] = entry
+      for (const [what, v] of [['file', file], ['from', from], ['to', to]])
+        ok(typeof v === 'string', `${m.id}'s patch ${what} is ${typeof v}, not a string`)
+      ok(/^(src|sim)\//.test(file), `${m.id} patches ${JSON.stringify(file)}, which is not a source path`)
       ok(from !== to, `${m.id} patches ${file} to exactly what it already says`)
       ok(from.length > 12, `${m.id} has an anchor too short to be unique on purpose`)
     }

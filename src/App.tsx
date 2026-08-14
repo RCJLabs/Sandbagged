@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.26 — SKIRM-8: walking off the Circuit is the one good outcome it has, and
-//   it used to drop you on the guidebook with nothing. It gets a screen
+// SANDBAGGED v10.27 — SAVE-6: every array a save carries is clamped to what the game can
+//   actually make, and the larder no longer grows for ever
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1298,7 +1298,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.26 · RCJ Labs</div>
+          <div className="sfoot">v10.27 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1527,7 +1527,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.26 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.27 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
