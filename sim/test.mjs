@@ -2036,6 +2036,10 @@ if (SLOW) {
        for a legal deck is ~43 stat-sorted or ~44 as the game builds it, against a pin of
        ~52. Re-pointing the harness is therefore a RE-PIN and needs a decision, and it
        will also recalibrate ROUTE-8, CARD-9 and the climber spread the way SIM-6 did.
+       v10.24 (GUARD-9): no band movement, and off-band by construction — it changed nothing
+       but the suite. Recorded so a reader walking the versions does not look for a
+       measurement that was never needed. It does keep the injections that produced most of
+       the numbers in this ledger: `node sim/mutants.mjs`.
        v10.23 (SIM-8): THE PIN IS RE-SET, ~52 -> ~44.3 (n=2700, PAGES=14). Agreed with Evan
        and deliberate in the CARD-15 sense: not a drift accommodated, a wrong reference deck
        replaced. The band now rides `buildLoadout` — the engine's builder, the one behind

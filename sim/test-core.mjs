@@ -24,6 +24,9 @@ function test(name, fn) {
    there for what each of them refuses to do. `guardScan` is asserted at the bottom of
    this file, over this file. */
 import { ok, eq, region, declBody, appFn, cssRule, tail, guardScan } from './guard.mjs'
+/* GUARD-9: the kept injections. The table is data; the guard below checks it has not
+   rotted. `node sim/mutants.mjs` is what actually runs them. */
+import { MUTANTS, applyPatch, touched } from './mutants.mjs'
 
 await build({
   entryPoints: ['sim/entry.ts'], bundle: true, format: 'esm', outfile: 'sim/_core.mjs',
@@ -2767,7 +2770,13 @@ test('SIM-8: the band measures a deck a player can actually hold', () => {
   const [lo, hi] = [Number(band[1]), Number(band[2])], pin = Number(said[1])
   ok(pin > lo && pin < hi, `the guard is pinned at ~${pin} but its band is ${lo}–${hi}`)
   ok(hi - lo <= 14, `the band is ${hi - lo} points wide, which would not catch a BAL-14 slide`)
-  ok(/SIM-8|v10\.23/.test(drift), 'the re-pin is no longer dated in the guard that carries it')
+  /* the date has to be in the MESSAGE, not merely somewhere in the test. The first cut
+     asserted it anywhere in the window, which the ledger note above the assertion satisfies
+     on its own — so stripping the date off the pin itself left this green. A failing run
+     prints the message and nothing else, so that is where the version has to be. */
+  const msg = /with a full journal — [^`]*/.exec(drift)
+  ok(msg && /v\d+\.\d+/.test(msg[0]),
+    `the drift guard's message does not say which version set the pin: ${msg ? msg[0] : 'no message'}`)
 })
 test('a challenge is a problem and its terms, and a typo is refused (SOCIAL-2)', () => {
   /* SOCIAL-2. SOCIAL-1 let you paste a RESULT — people could compare numbers but
@@ -4693,6 +4702,57 @@ test('tag counts add up to the tagged cards', () => {
 })
 
 group('the suite')
+test('GUARD-9: the kept injections still injure something', () => {
+  /* GUARD-9. `test.mjs` exists because fifteen one-off harnesses were each written, used
+     once and thrown away. The negative tests were the same story a level up: every ticket
+     in this project gets injections, they have found the original bug every time AND three
+     assertions that COULD NOT FAIL — and every one of those scripts lived in /tmp.
+     `sim/mutants.mjs` keeps them. Running it is opt-in because it edits source files and
+     takes minutes; what runs here on every check is the part that ROTS. A mutant is a
+     patch against an exact line, so the moment somebody edits that line the anchor stops
+     matching and the mutant silently stops testing anything — the same way a guard with a
+     moved window silently stops testing anything, which is what GUARD-8 was about. */
+  // a mutant has to be a real change that says which guard it expects to hear from
+  const ids = new Set()
+  for (const m of MUTANTS) {
+    ok(m.id.includes('/'), `${m.id} does not name the ticket it belongs to`)
+    ok(!ids.has(m.id), `two mutants share the id ${m.id}`)
+    ids.add(m.id)
+    ok(m.catches && m.catches.length > 8, `${m.id} does not say what it expects to hear`)
+    ok(['core', 'kept', 'slow'].includes(m.suite), `${m.id} runs against no suite (${m.suite})`)
+    ok(m.why && m.why.length > 12, `${m.id} does not say what it breaks`)
+    for (const [file, from, to] of m.patch) {
+      ok(from !== to, `${m.id} patches ${file} to exactly what it already says`)
+      ok(from.length > 12, `${m.id} has an anchor too short to be unique on purpose`)
+    }
+  }
+  /* and every ticket that has been negative-tested keeps its injections. A number rather
+     than a list on purpose: the point is that they are not thrown away, not that any
+     particular one exists for ever. */
+  const tickets = new Set(MUTANTS.map(m => m.id.split('/')[0]))
+  ok(tickets.size >= 5, `only ${tickets.size} tickets have kept injections`)
+  ok(MUTANTS.length >= 40, `only ${MUTANTS.length} injections kept`)
+  /* the runner puts the tree back. This is the assertion that matters most for anybody
+     running it, because the failure mode is a mutated working tree. */
+  const runner = readFileSync('sim/mutants.mjs', 'utf8')
+  ok(/finally\s*\{\s*\n?\s*restore\(\)/.test(runner), 'the runner no longer restores after each mutant')
+  ok(/THE TREE IS STILL MUTATED/.test(runner), 'the runner no longer checks that it put the sources back')
+  for (const sig of ['SIGINT', 'uncaughtException'])
+    ok(runner.includes(sig), `the runner no longer restores the tree on ${sig}`)
+
+  /* THE ANCHOR CHECK COMES LAST, deliberately. Any injection that patches `mutants.mjs`
+     removes the line it itself targets, so its own anchor dies as a side effect — put this
+     first and it fires for every one of them, masking the assertion each was written to
+     test. Found by running GUARD-9's own injections and watching four of five report the
+     wrong failure. */
+  const snap = new Map(touched().map(f => [f, readFileSync(f, 'utf8')]))
+  const dead = []
+  for (const m of MUTANTS) {
+    try { applyPatch(m, f => snap.get(f)) } catch (e) { dead.push(e.message) }
+  }
+  eq(dead.length, 0,
+    `${dead.length} kept injection(s) patch nothing any more:\n    ${dead.join('\n    ')}`)
+})
 test('GUARD-8: no guard reads a window it cannot prove is the right one', () => {
   /* This is the ticket. GUARD-3 found and fixed unchecked-anchor windows; GUARD-8 found
      five more fixed-length ones and two more unchecked anchors, three of them written

@@ -1,7 +1,7 @@
 {
   "name": "sandbagged",
   "private": true,
-  "version": "10.23.0",
+  "version": "10.24.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,6 +9,8 @@
     "build:html": "node scripts/build-html.mjs",
     "sim": "node sim/run.mjs",
     "test": "node sim/test-core.mjs && node sim/test.mjs",
+    "mutants": "node sim/mutants.mjs",
+    "mutants:slow": "node sim/mutants.mjs slow",
     "test:slow": "node sim/test-core.mjs && node sim/test.mjs slow",
     "check": "tsc --noEmit && node sim/test-core.mjs && node sim/test.mjs",
     "check:slow": "tsc --noEmit && npm run test:slow",
