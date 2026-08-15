@@ -3268,7 +3268,9 @@ test('the game has a sense of place, and the finale has none on purpose (AUD-2)'
   const deps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).join(' ')
   ok(!/tone|howler|pizzicato|audio/i.test(deps), `an audio library crept into the deps: ${deps}`)
   // both switches gate it, and the ambience one is the player's own
-  const drive = region(app, 'AUD-2: put the game where it is', ['DEV-2: tell the service-worker'],
+  // DEV-7: bounded at the next declaration rather than at the prose of the block after
+  // it, which this ticket rewrote — a comment is not a boundary, a declaration is.
+  const drive = region(app, 'AUD-2: put the game where it is', ['\n  useEffect(() => {\n    ;(window'],
     { min: 200, what: 'the bed driver' })
   ok(/bedFor\(st\)/.test(drive), 'the screen decides the bed itself instead of asking the engine')
   /* BOTH call sites must carry both switches. Asserting the pair appears "somewhere in
@@ -5052,6 +5054,59 @@ test('DEV-1: content is inset past the notch and the home indicator', () => {
   ok(!/max-height:82vh/.test(app), 'a sheet is still sized in vh rather than dvh')
 })
 
+test('DEV-7: an update never takes the player off the screen they are on', () => {
+  /* REPORTED AS: "I am on the main menu, I tap to enter and get in and then it randomly
+     goes back to the previous menu." It did, and it was the update path.
+
+     THE CHAIN. DEV-2 reloads the page when a new service worker takes over, gated on
+     `__SB_BUSY__`, which meant "mid-climb" — the two phases the save skips, because a
+     reload there throws the boulder away. Every other screen was fair game. But
+     `loadGame` restores the save and NOT `phase`, deliberately: SAVE-4 exists so that a
+     reload cannot reopen the post, the van or the daily. So a reload from anywhere at all
+     puts the player back on the splash. Three levels into the books, that is your place
+     gone, unrequested, a couple of seconds after launch.
+
+     REPRODUCED with two builds over HTTP: install, deploy a new sw.js, reopen, tap into
+     THE BOOKS — and a navigation fires and the splash is back. `controllerchange` was
+     measured at about 1.7s after load.
+
+     THE FIX is that 1.7s. The flag means "the player has tapped begin" now, so the only
+     reload that can happen is one nobody can see: the splash is up, the page reloads, the
+     splash is still up. That keeps DEV-2's entire point — an installed PWA that is rarely
+     cold-started still gets the build in the session it downloaded it — and costs nothing,
+     because the window is the normal case rather than a lucky one. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const gen = readFileSync('scripts/build-html.mjs', 'utf8')
+
+  // the flag is the splash, and `booted` is one-way — nothing puts the splash back
+  ok(/__SB_BUSY__ = booted/.test(app), 'the reload gate is not the splash any more')
+  eq((app.match(/setBooted\(/g) ?? []).length, 1,
+    'booted is set in more than one place, so it may no longer be one-way and the gate could reopen mid-session')
+  ok(/setBooted\(true\)/.test(app), 'booted is never set, so the splash never clears')
+  const gate = region(app, ';(window as unknown as { __SB_BUSY__?: boolean }).__SB_BUSY__',
+    ['\n  const ', '\n  useEffect('], { min: 40, what: 'the busy-flag effect' })
+  ok(/\}, \[booted\]\)/.test(gate), 'the flag is published on a dependency that is not the splash')
+
+  // one check, no interval: a one-way flag cannot become false, so a poll can never fire
+  ok(!/setInterval/.test(gen), 'the update path polls a flag that can no longer change')
+  const sw = region(gen, "const reg = `<script>", ['`\nhtml = html.replace', 'html = html.replace'],
+    { min: 200, what: 'the service-worker registration' })
+  eq((sw.match(/location\.reload\(\)/g) ?? []).length, 1,
+    'the registration reloads from more than one place, so a guard on one of them is not a guard')
+  ok(/if\(!had\|\|done\)return;done=true;/.test(sw),
+    'a first install bounces the page, or a second controllerchange reloads twice')
+  ok(/if\(!window\.__SB_BUSY__\)\{location\.reload\(\)\}/.test(sw),
+    'the reload is not gated on the flag at all')
+
+  /* AND THE REASON THE RELOAD IS DESTRUCTIVE IN THE FIRST PLACE, asserted so that nobody
+     "fixes" this by restoring `phase` instead. SAVE-4 is why the loader drops it, and
+     dropping it is correct — the answer was to stop reloading at the wrong moment, not
+     to start restoring a screen the save was never meant to reopen. */
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  const load = declBody(eng, 'export function loadGame', 'loadGame')
+  ok(!/\bphase: d\.phase\b/.test(load),
+    'the loader restores the phase, which is how a reload reopens the post, the van and the daily (SAVE-4)')
+})
 test('DEV-2: the service worker cannot pin a stale or broken build', () => {
   /* Nineteen lines with three defects, all of which end in "the player is stuck
      on a build they cannot get off". The generator is the source of truth, so
@@ -5073,8 +5128,20 @@ test('DEV-2: the service worker cannot pin a stale or broken build', () => {
     'a first install would bounce the page, because nothing checks for a prior controller')
   const app = readFileSync('src/App.tsx', 'utf8')
   ok(/__SB_BUSY__/.test(app), 'the app never publishes whether it is safe to reload')
-  ok(/__SB_BUSY__[\s\S]{0,220}phase === 'climb'/.test(app),
-    'the busy flag is not tied to being mid-climb')
+  /* DEV-7 replaced what this asserted, and the replacement is strictly stronger, so the
+     assertion moves rather than relaxes. The flag used to mean "mid-climb", which let a
+     reload happen on every other screen — and since `loadGame` restores the save but not
+     `phase`, that reload lands the player back on the splash. It was reported as the game
+     randomly going back a menu, and reproduced with two builds over HTTP. The flag means
+     "the player has tapped begin" now, which covers mid-climb a fortiori (you cannot
+     climb before you have begun) and covers every other screen too. */
+  ok(/__SB_BUSY__ = booted/.test(app),
+    'the busy flag is not tied to the splash, so a reload can throw the player off a screen')
+  ok(!/__SB_BUSY__[\s\S]{0,220}phase === 'climb'/.test(app),
+    'the busy flag is back to mid-climb only, which permits a reload on every other screen')
+  // the poll is retired with it: the flag is one-way now, so an interval can never fire
+  ok(!/setInterval/.test(gen),
+    'the update path still polls a flag that can no longer change, so the interval runs for ever')
   // the cache name must still be per-release, or an update cannot displace the old one
   ok(/const CACHE = 'sandbagged-v[\d.]+'/.test(sw), 'the cache name is not versioned')
 })
@@ -5277,7 +5344,12 @@ test('GUARD-9: the kept injections still injure something', () => {
       const [file, from, to] = entry
       for (const [what, v] of [['file', file], ['from', from], ['to', to]])
         ok(typeof v === 'string', `${m.id}'s patch ${what} is ${typeof v}, not a string`)
-      ok(/^(src|sim)\//.test(file), `${m.id} patches ${JSON.stringify(file)}, which is not a source path`)
+      /* DEV-7 added `scripts/`. The point of this check is that a patch names a real file
+         in this repo — the runner snapshots exactly the files the table touches and
+         byte-compares them at exit, so anything outside the tree would be restored from
+         nothing. `scripts/build-html.mjs` is source by every measure that matters here:
+         DEV-2's guard already reads it as the source of truth for the service worker. */
+      ok(/^(src|sim|scripts)\//.test(file), `${m.id} patches ${JSON.stringify(file)}, which is not a source path`)
       ok(from !== to, `${m.id} patches ${file} to exactly what it already says`)
       ok(from.length > 12, `${m.id} has an anchor too short to be unique on purpose`)
     }

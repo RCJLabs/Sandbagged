@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.30 — A11Y-9: the climb announced one line of a turn that writes about
-//   five, so a screen reader heard a fifth of the game. It hears the turn now.
+// SANDBAGGED v10.31 — DEV-7: a service-worker update reloaded the page on any screen,
+//   and the loader does not restore phase — so it threw you back to the splash
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -950,14 +950,28 @@ export default function App() {
     document.addEventListener('visibilitychange', away)
     return () => document.removeEventListener('visibilitychange', away)
   }, [st])
-  /* DEV-2: tell the service-worker update path when it is unsafe to reload. A new
-     build reaching the player is worth having, but not at the price of the climb
-     they are in the middle of — mid-climb state is deliberately not saved, so a
-     reload there would throw the boulder away. Same two phases the save skips. */
+  /* DEV-2 told the service-worker update path when it is unsafe to reload, and gated it
+     on the two phases the save skips: a reload mid-climb throws the boulder away, because
+     mid-climb state is deliberately not saved.
+
+     DEV-7: THAT GATE WAS TOO NARROW, and the failure it let through was reported as "I tap
+     into a menu, get in, and it randomly goes back". It did. `loadGame` restores the save
+     but NOT `phase` — deliberately, since SAVE-4 exists to stop a reload reopening the
+     post, the van and the daily — so a reload from anywhere lands you back at the splash.
+     Mid-climb that costs a boulder; three levels into the books it costs your place, and
+     it arrives unrequested a couple of seconds after launch. Reproduced with two builds
+     over HTTP: the player sits on THE BOOKS and is thrown to the splash.
+
+     So the flag now means what the reload actually needs to know — HAS THE PLAYER STARTED
+     LOOKING AT ANYTHING YET. Only while the splash is still up is a reload free: the page
+     comes back to the same splash and nobody can tell. Measured, `controllerchange` fires
+     about 1.7s after load, so that window is real and is the normal case rather than a
+     lucky one — which keeps DEV-2's whole point, that an installed PWA which is rarely
+     cold-started still gets the build in the session it downloaded it. Mid-climb is
+     covered a fortiori: you cannot be climbing before you have tapped begin. */
   useEffect(() => {
-    ;(window as unknown as { __SB_BUSY__?: boolean }).__SB_BUSY__ =
-      st.phase === 'climb' || st.phase === 'burnEnd'
-  }, [st.phase])
+    ;(window as unknown as { __SB_BUSY__?: boolean }).__SB_BUSY__ = booted
+  }, [booted])
   const weather = WEATHER[st.weather], rock = ROCK[st.rock]
   const sel = useMemo(() => st.piles.hand.find(c => c.uid === st.selected) ?? null,
     [st.piles.hand, st.selected])
@@ -1317,7 +1331,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.30 · RCJ Labs</div>
+          <div className="sfoot">v10.31 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1546,7 +1560,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.30 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.31 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

@@ -119,16 +119,23 @@ const head = `<link rel="manifest" href="./manifest.webmanifest">` +
    reload an open page, so a new build landed a whole app relaunch late — or never,
    on an installed iOS PWA that is rarely cold-started. This reloads when the
    controller is replaced, but ONLY once, only when there was already a controller
-   (so a first install does not bounce), and only when the game is not mid-climb —
-   nothing is saved mid-climb, so an eager reload would eat the boulder it was
-   trying to update. The app publishes that state on window.__SB_BUSY__. */
+   (so a first install does not bounce), and only when window.__SB_BUSY__ is false.
+
+   DEV-7: that flag used to mean "mid-climb", and the reload it allowed everywhere else
+   was reported as the game randomly going back a menu. It did: `loadGame` restores the
+   save but not `phase`, so a reload from any screen lands on the splash. The flag now
+   means "the player has tapped begin", so the only reload that ever happens is one the
+   player cannot see. That also RETIRES THE POLL: busy used to go true and false as the
+   phase changed, so waiting four seconds and asking again made sense. It is one-way now
+   — nothing un-taps the splash — so if it is busy at controllerchange it is busy for the
+   rest of the session, and an interval that can never fire is just an interval. The
+   build lands on the next launch instead, in that launch's splash window. */
 const reg = `<script>if('serviceWorker' in navigator){` +
   `addEventListener('load',function(){` +
   `var had=!!navigator.serviceWorker.controller,done=false;` +
   `navigator.serviceWorker.addEventListener('controllerchange',function(){` +
   `if(!had||done)return;done=true;` +
-  `var t=setInterval(function(){if(!window.__SB_BUSY__){clearInterval(t);location.reload()}},4000);` +
-  `if(!window.__SB_BUSY__){clearInterval(t);location.reload()}});` +
+  `if(!window.__SB_BUSY__){location.reload()}});` +
   `navigator.serviceWorker.register('./sw.js').catch(function(){})})}<\/script>`
 html = html.replace('</head>', () => head + '</head>')
 html = html.replace('</body>', () => reg + '</body>')
