@@ -3483,25 +3483,55 @@ export function tomorrowKey(d = new Date()): string {
    everyone shared today, the score, and the streak and week behind it. It reads
    straight off the attempt, so two people who did the same thing write the same
    line — which is the point of a daily. */
-export function dailyShare(s: GameState): string {
+/* ART-4. SOCIAL-1 made a result you can paste anywhere, and text is what it made. An
+   IMAGE is what people actually post, and the day's grid is already a picture — it just
+   had no way out of the app.
+
+   THE FIELDS LIVE HERE rather than in the drawing code, for the reason ENG-19 keeps
+   restating: the text share and the picture are two renderings of one result, and two
+   copies of "what the result was" drift. The canvas reads this; `dailyShare` reads this;
+   a guard asserts the grid they show is the same string. Nothing here touches the run —
+   it is a projection of state that has already happened. */
+export type ShareCard = {
+  day: string; grid: string; holds: number; clear: number
+  grade: string; weather: string; rock: string
+  score: number; flashed: boolean
+  goals: { text: string; met: boolean }[]
+  streak: number; week: number
+}
+export function shareCard(s: GameState): ShareCard {
   const spec = specOf(s)
   const holds = Math.max(0, Math.min(s.cleared, spec.clear))
-  const grid = '▪'.repeat(holds) + '▫'.repeat(Math.max(0, spec.clear - holds))
-  const wx = WEATHER[s.weather]?.name ?? ''
+  return {
+    day: s.dailyDay,
+    grid: '▪'.repeat(holds) + '▫'.repeat(Math.max(0, spec.clear - holds)),
+    holds, clear: spec.clear,
+    grade: gradeText(spec.grade, s.grades),
+    weather: WEATHER[s.weather]?.name ?? '',
+    rock: ROCK[s.rock]?.name ?? '',
+    score: s.dailyScore,
+    flashed: s.result === 'send',
+    goals: dailyGoals(s.dailyDay || undefined)
+      .map(g => ({ text: g.text, met: s.dailyMet.includes(g.id) })),
+    streak: s.dailyStreak, week: s.weekScore,
+  }
+}
+export function dailyShare(s: GameState): string {
+  // ART-4: off the one projection, so the picture and the paste say the same thing
+  const c = shareCard(s)
   const lines = [
-    `Sandbagged · ${s.dailyDay}`,
-    `${grid} ${holds}/${spec.clear} · ${gradeText(spec.grade, s.grades)}${wx ? ` · ${wx}` : ''}`,
-    `${s.dailyScore} pts${s.result === 'send' ? ' · flashed it' : ''}`,
+    `Sandbagged · ${c.day}`,
+    `${c.grid} ${c.holds}/${c.clear} · ${c.grade}${c.weather ? ` · ${c.weather}` : ''}`,
+    `${c.score} pts${c.flashed ? ' · flashed it' : ''}`,
   ]
   /* DAILY-2: the objectives are the part worth comparing — two people can both
      score well and only one of them kept off the rests. Appended, so SOCIAL-1's
      line order (and the guard that reads the grid off line 2) is unchanged. */
-  const goals = dailyGoals(s.dailyDay || undefined)
-  if (goals.length) lines.push(goals.map(g =>
-    `${s.dailyMet.includes(g.id) ? '✓' : '✗'} ${g.text.toLowerCase()}`).join(' · '))
+  if (c.goals.length) lines.push(c.goals.map(g =>
+    `${g.met ? '✓' : '✗'} ${g.text.toLowerCase()}`).join(' · '))
   const tail: string[] = []
-  if (s.dailyStreak > 1) tail.push(`${s.dailyStreak}-day streak`)
-  if (s.weekScore > 0) tail.push(`week ${s.weekScore}`)
+  if (c.streak > 1) tail.push(`${c.streak}-day streak`)
+  if (c.week > 0) tail.push(`week ${c.week}`)
   if (tail.length) lines.push(tail.join(' · '))
   return lines.join('\n')
 }

@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.31 — DEV-7: a service-worker update reloaded the page on any screen,
-//   and the loader does not restore phase — so it threw you back to the splash
+// SANDBAGGED v10.32 — ART-4: the day comes out as a picture. No download link — the
+//   share sheet takes the file, or you press and hold the image, which is how phones work
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -19,7 +19,7 @@ import {
   UNCOMMON_SLOTS, WEATHER, abilityOf, activeSlot, aheadSummary, applyOutcome,
   archUnlocked, attemptsFor, availableTalk, talkById, biteAgainst, boonById, boonMods,
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
-  campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitShare, circuitZone, claimStep, claimVerdict,
+  campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitShare, circuitZone, claimStep, claimVerdict, shareCard,
   consumableById, KIT_MAX, useKitStep, secondWindStep,
   challengeCode, challengeRoute, challengeShare, readChallenge, goalById, dailyScore, modeReset,
   partnerFor, partnerSays, partnerAgrees, partnerPush,
@@ -845,18 +845,31 @@ export default function App() {
   const [campMode, setCampMode] = useState<'rest' | 'sharpen' | 'cut'>('rest')
   const [sheet, setSheet] = useState(false)
   const [legend, setLegend] = useState(false)   // UX-17: the glyph/family key, in reach of a climb
+  /* ART-4: the picture sheet. Declared UP HERE, with the other two sheets, because the
+     A11Y-8 focus/Escape effect below has to see it — a `const` used above its declaration
+     is a temporal dead zone, which is the shape SAVE-6 shipped as a NaN and tsc caught
+     here. The drawing itself is further down; this is just what is open. */
+  const [cardUrl, setCardUrl] = useState<string | null>(null)
+  const [cardBusy, setCardBusy] = useState(false)
+  const shutCard = () => setCardUrl(u => { if (u) URL.revokeObjectURL(u); return null })
+  useEffect(() => () => { if (cardUrl) URL.revokeObjectURL(cardUrl) }, [cardUrl])
   // A11Y-8: the climb sheets are modal dialogs — move focus into whichever is
   // open, and let Escape dismiss it (keyboard/SR users were stranded behind them)
   const sheetRef = useRef<HTMLDivElement>(null)
+  /* ART-4 added a third sheet and it has to be in here, not just look like the others.
+     A block that says `aria-modal="true"` and then cannot be focused or escaped is worse
+     than one that never claimed to be modal: it tells a screen reader the rest of the page
+     is inert while leaving a keyboard user behind it with no way out. `cardUrl` is the
+     third thing that opens one. */
   useEffect(() => {
-    if (!sheet && !legend) return
+    if (!sheet && !legend && !cardUrl) return
     sheetRef.current?.focus()
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape') { setSheet(false); setLegend(false) }
+      if (e.key === 'Escape') { setSheet(false); setLegend(false); shutCard() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [sheet, legend])
+  }, [sheet, legend, cardUrl])
   const [shared, setShared] = useState(false)   // SOCIAL-1: copied-the-daily flash
   const [sharedWeek, setSharedWeek] = useState(false)   // RUN-12: copied-the-week flash
   /* A11Y-3. Thirty-five things in this file were tappable divs: not focusable,
@@ -899,6 +912,120 @@ export default function App() {
   const [pending, setPending] = useState<{ routeIdx: number; nodeIdx: number } | null>(null)
   const [claim, setClaim] = useState<{ name: string; grade: number } | null>(null)
   const [takeTwo, setTakeTwo] = useState<number[]>([])
+  /* ART-4. SOCIAL-1 gave the daily a result you can paste anywhere, and what it gave was
+     text. An image is what people actually post, and the grid is already a picture — it
+     just had no way out of the app.
+
+     THE DELIVERY IS THE HARD HALF, and `<a download>` is the wrong answer for the device
+     this game is played on: iOS has never handled a download of a blob from a web app
+     properly, and inside an installed PWA there is nowhere for the file to land that the
+     player can see. So there is no download link here at all. Two routes instead, both
+     native:
+       navigator.share WITH THE FILE — the Web Share Level 2 path, which opens the real
+         share sheet and is the actual "post it" the ticket asks for. Behind canShare(),
+         because a browser can have share() and refuse files;
+       and where that is missing, THE PICTURE ITSELF, on screen, to press and hold. That
+         is the gesture people already use to save an image on a phone, and it needs no
+         permission, no plumbing and no download at all.
+     The object URL is revoked when the card is dismissed, so a session of shares does not
+     hold every canvas it ever drew. */
+  function drawShare(c: ReturnType<typeof shareCard>): HTMLCanvasElement {
+    /* Drawn at 2x and scaled, so it is not soft on a retina screen. 1080x1350 is the
+       portrait crop every feed keeps whole. The look is the guidebook's, read off the
+       live stylesheet rather than copied — a second palette would drift from the first
+       the next time somebody changes a colour (ENG-19). */
+    const cs = getComputedStyle(document.body)
+    const v = (n: string, f: string) => cs.getPropertyValue(n).trim() || f
+    const paper = v('--paper', '#e8e1d0'), ink = v('--ink', '#26221e')
+    const red = v('--red', '#8c3124'), fade = v('--fade', '#5f584a')
+    const green = v('--green', '#3f5438'), tan = v('--tan', '#b8873f')
+    const font = cs.fontFamily || 'Georgia, serif'
+    /* The height FOLLOWS THE CONTENT. Fixed at 1350 it left a slab of dead paper under a
+       two-objective day, which reads as an unfinished layout rather than as space. The
+       grid cell has to be known first, because everything below it is measured from the
+       bottom of the grid. */
+    const W = 1080
+    const nn = Math.max(1, specOf(st).clear)
+    const cellW = Math.min(78, Math.floor((W - 300) / nn))
+    const goalTop = 380 + cellW + 456
+    const H = Math.round(goalTop + c.goals.length * 52 + 250)
+    const cv = document.createElement('canvas')
+    cv.width = W; cv.height = H
+    const g = cv.getContext('2d')!
+    g.fillStyle = paper; g.fillRect(0, 0, W, H)
+    // the same speckle the paper has, so it does not read as a screenshot of a website
+    g.fillStyle = ink
+    for (let i = 0; i < 2600; i++) {
+      g.globalAlpha = 0.03 + (i % 7) * 0.006
+      g.fillRect((i * 7919) % W, (i * 104729) % H, 2, 2)
+    }
+    g.globalAlpha = 1
+    g.strokeStyle = ink; g.lineWidth = 6; g.strokeRect(40, 40, W - 80, H - 80)
+
+    const mid = (t: string, y: number, px: number, col: string, weight = '700') => {
+      g.font = `${weight} ${px}px ${font}`; g.fillStyle = col; g.textAlign = 'center'
+      g.fillText(t, W / 2, y)
+    }
+    mid('SANDBAGGED', 190, 76, ink)
+    mid(c.day, 250, 34, fade, '400')
+    g.strokeStyle = ink; g.lineWidth = 3
+    g.beginPath(); g.moveTo(150, 300); g.lineTo(W - 150, 300); g.stroke()
+
+    /* THE GRID IS THE PICTURE. Drawn as boxes rather than as the ▪/▫ characters the text
+       share uses, because a glyph that renders as tofu in one font is a broken image
+       rather than a broken line — but it is the SAME grid: filled boxes are `c.holds`,
+       and a guard asserts that against the string dailyShare prints. */
+    const n = Math.max(1, c.clear)
+    const cell = cellW
+    const gap = Math.max(6, Math.floor(cell * 0.16))
+    const total = n * cell + (n - 1) * gap
+    let x = (W - total) / 2
+    for (let i = 0; i < n; i++) {
+      const on = i < c.holds
+      g.fillStyle = on ? ink : paper
+      g.strokeStyle = ink; g.lineWidth = 4
+      g.fillRect(x, 380, cell, cell); g.strokeRect(x, 380, cell, cell)
+      x += cell + gap
+    }
+    mid(`${c.holds} of ${c.clear} holds · ${c.grade}`, 380 + cell + 90, 46, ink)
+    const cond = [c.weather, c.rock].filter(Boolean).join(' · ')
+    if (cond) mid(cond, 380 + cell + 148, 34, fade, '400')
+
+    mid(String(c.score), 380 + cell + 300, 190, red)
+    mid(c.flashed ? 'POINTS · FLASHED IT' : 'POINTS', 380 + cell + 356, 32, ink)
+
+    let y = goalTop
+    for (const gl of c.goals) {
+      g.font = `400 32px ${font}`; g.textAlign = 'left'
+      g.fillStyle = gl.met ? green : fade
+      const line = `${gl.met ? '\u2713' : '\u2717'}  ${gl.text}`
+      g.fillText(line.length > 46 ? line.slice(0, 45) + '\u2026' : line, 150, y)
+      y += 52
+    }
+    const tail = [c.streak > 1 ? `${c.streak}-day streak` : '', c.week > 0 ? `week ${c.week}` : '']
+      .filter(Boolean).join('  ·  ')
+    if (tail) mid(tail, H - 150, 34, tan)
+    mid('one boulder a day, everybody the same one', H - 85, 28, fade, '400')
+    return cv
+  }
+
+  async function shareImage() {
+    if (cardBusy) return
+    setCardBusy(true)
+    try {
+      const cv = drawShare(shareCard(st))
+      const blob: Blob | null = await new Promise(r => cv.toBlob(r, 'image/png'))
+      if (!blob) return
+      const file = new File([blob], `sandbagged-${st.dailyDay || 'today'}.png`, { type: 'image/png' })
+      const nav = navigator as Navigator & { canShare?: (d: unknown) => boolean }
+      if (nav.canShare?.({ files: [file] })) {
+        try { await navigator.share({ files: [file] }); return } catch { /* dismissed, or refused */ }
+      }
+      shutCard()
+      setCardUrl(URL.createObjectURL(blob))
+    } catch { /* no canvas, no blob: the text share is still there */ }
+    finally { setCardBusy(false) }
+  }
   /* A11Y-9. The climb screen has had a screen-reader live region since A11Y-2, and it
      announced `st.log[st.log.length - 1]` — the LAST line. A turn writes a mean of 4.8 of
      them (measured over 297 turns: one line on 2% of turns, nine on one), so a
@@ -1331,7 +1458,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.31 · RCJ Labs</div>
+          <div className="sfoot">v10.32 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1560,7 +1687,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.31 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.32 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -3271,6 +3398,13 @@ export default function App() {
               {...tap(() => { try { void navigator.clipboard?.writeText(dailyShare(st)) } catch { /* blocked */ } setShared(true) },
                 'Copy your result to share')}>
               {shared ? 'COPIED ✓' : 'SHARE RESULT ▸'}</button>
+            {/* ART-4: and the same result as a picture, which is the thing people post.
+                Beside the text rather than instead of it — a pasted grid still goes where
+                an image cannot, and the two read off one projection so they agree. */}
+            <button className="btn" style={{ width: '100%', marginTop: 6, padding: 10 }}
+              disabled={cardBusy}
+              {...tap(() => { void shareImage() }, 'Make a picture of the day to share')}>
+              {cardBusy ? 'DRAWING…' : 'SHARE THE PICTURE ▸'}</button>
             {/* RUN-12: the week is its own thing to share and chase */}
             {st.weekScore > 0 ? (
               <button className="btn" style={{ width: '100%', marginTop: 6, padding: 10 }}
@@ -3327,6 +3461,29 @@ export default function App() {
           {st.beta.length ? st.beta.join(' · ') : 'nothing stuck'}</div>
         <button className="btn go" style={{ width: '100%' }}
           onClick={toMenu}>BACK TO THE GUIDEBOOK</button>
+      {/* ART-4: where the share sheet will not take a file, the picture itself. Pressing
+          and holding an image is how a phone saves one — no download, no permission, and
+          nothing for iOS to drop on the floor. Rendered over everything, dismissed by a
+          tap outside, and its object URL is revoked on the way out.
+          IT LIVES ON THIS SCREEN because this screen is where the button is. The first cut
+          put it in the climb screen's tree, which returns earlier, so the picture was drawn
+          — 1080x1350, 142 KB, correctly — and had nowhere to appear. Only a browser found
+          that: every guard passed, because every guard was reading the right source in the
+          wrong component. */}
+      {cardUrl ? (
+        <div className="sheet" {...tap(shutCard, 'Close the picture')}>
+          <div className="sheetin" ref={sheetRef} tabIndex={-1} role="dialog" aria-modal="true"
+            aria-label="Your day, as a picture" onClick={e => e.stopPropagation()}>
+            <div className="row">
+              <span className="h1" role="heading" aria-level={1} style={{ fontSize: 17 }}>YOUR DAY</span>
+              <button className="btn" style={{ padding: '5px 10px', fontSize: 11 }}
+                onClick={shutCard}>CLOSE</button></div>
+            <img src={cardUrl} alt={`Sandbagged, ${st.dailyDay}: ${dailyShare(st)}`}
+              style={{ width: '100%', marginTop: 8, border: '1.5px solid var(--ink)' }} />
+            <div className="sub" style={{ marginTop: 6 }}>
+              Press and hold the picture to save it.</div>
+          </div>
+        </div>) : null}
         <style>{CSS}</style>
       </div>
     )

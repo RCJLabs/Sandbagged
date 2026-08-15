@@ -91,6 +91,24 @@ export const cssRule = (src, sel) => region(src, sel, ['}'], { min: 8, what: `th
 export const tail = (src, from, { min = 120, what } = {}) =>
   region(src, from, [], { min, what, eof: true })
 
+/** Source with its comments removed, for negative assertions.
+ *
+ *  ART-4: the FIFTH time a negative source assertion has matched the prose explaining
+ *  what it forbids rather than the code doing it. Four of those were a missing strip; the
+ *  fifth was a strip that did not work — three guards had rolled their own as a per-LINE
+ *  filter on lines that START with a comment marker, and this project writes block
+ *  comments whose continuation lines are bare indented prose:
+ *
+ *      \/* THE DELIVERY IS THE HARD HALF, and `<a download>` is the wrong answer
+ *         for the device this is played on. *\/          <- this line survives the filter
+ *
+ *  So `!/<a[^>]+download/` failed on the sentence saying there must be no download link.
+ *  Block comments have to be stripped as BLOCKS, which needs the whole string rather than
+ *  a line at a time — so it lives here, once, instead of being rewritten per guard. */
+export const stripComments = src => src
+  .replace(/\/\*[\s\S]*?\*\//g, ' ')
+  .replace(/(^|[^:])\/\/[^\n]*/g, '$1')
+
 /* ---- the meta-guard ----------------------------------------------------------- */
 
 const ALLOW = 'guard-8: allow'

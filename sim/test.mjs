@@ -503,10 +503,21 @@ test('A11Y-8: the accessibility tree — headings, polite log, modal sheets', ()
   const heading = (app.match(/className="h1" role="heading" aria-level=\{1\}/g) ?? []).length
   ok(h1 >= 20, `only ${h1} screen titles`)
   eq(heading, h1, `${h1 - heading} screen title(s) are not exposed as headings`)
-  // 3. the two climb bottom-sheets are modal dialogs you can escape and are
-  // dropped into — not divs a keyboard user tabs straight past
-  eq((app.match(/role="dialog" aria-modal="true"/g) ?? []).length, 2,
-    'the pile and marks-key sheets are not both modal dialogs')
+  /* 3. every bottom-sheet is a modal dialog you can escape and are dropped into — not a
+        div a keyboard user tabs straight past.
+        ART-4: this counted TWO, which was how many sheets existed when it was written, so
+        adding a third correct one failed it while adding a third BROKEN one would have
+        passed. Counted against the sheets themselves now, which is the property it always
+        meant and needs no maintenance the next time somebody adds one. */
+  const sheets = (app.match(/className="sheet"/g) ?? []).length
+  ok(sheets >= 3, `only ${sheets} bottom-sheets — one has gone`)
+  eq((app.match(/role="dialog" aria-modal="true"/g) ?? []).length, sheets,
+    'a bottom-sheet is not a modal dialog')
+  eq((app.match(/className="sheetin" ref=\{sheetRef\} tabIndex=\{-1\}/g) ?? []).length, sheets,
+    'a sheet claims to be modal but focus is never moved into it, so a keyboard user is stranded behind it')
+  const esc = region(app, "if (e.key === 'Escape')", ['\n'], { min: 20, what: 'the Escape handler' })
+  ok(/setSheet\(false\); setLegend\(false\); shutCard\(\)/.test(esc),
+    'Escape does not close every sheet, so one of them traps a keyboard user')
   ok(/aria-label="What is left/.test(app) && /aria-label="What the marks mean/.test(app),
     'a climb sheet is an unnamed dialog')
   ok(/e\.key === 'Escape'/.test(app), 'the sheets cannot be dismissed with Escape')

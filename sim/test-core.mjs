@@ -23,7 +23,7 @@ function test(name, fn) {
    shared with test.mjs, because two copies of one rule drift (ENG-19). Read the header
    there for what each of them refuses to do. `guardScan` is asserted at the bottom of
    this file, over this file. */
-import { ok, eq, region, declBody, appFn, cssRule, tail, guardScan } from './guard.mjs'
+import { ok, eq, region, declBody, appFn, cssRule, tail, guardScan, stripComments } from './guard.mjs'
 /* GUARD-9: the kept injections. The table is data; the guard below checks it has not
    rotted. `node sim/mutants.mjs` is what actually runs them. */
 import { MUTANTS, applyPatch, touched } from './mutants.mjs'
@@ -4083,6 +4083,77 @@ test('ROUTE-12: a signature does something, and the grind lines get one too', ()
     skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
   eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
 })
+test('ART-4: the day comes out as a picture, and it says what the text says', () => {
+  /* SOCIAL-1 gave the daily a result you can paste anywhere, and what it gave was text.
+     An image is what people actually post, and the grid was already a picture with no way
+     out of the app.
+
+     THE DELIVERY WAS THE HARD HALF and the backlog row said so. `<a download>` is the
+     wrong answer for the device this is played on: iOS has never handled downloading a
+     blob from a web app properly, and inside an installed PWA there is nowhere the file
+     lands that the player can see. So there is no download link. Two native routes:
+     `navigator.share` WITH THE FILE behind `canShare` (a browser can have share() and
+     refuse files), and where that is missing, the picture on screen to press and hold —
+     which is how a phone saves an image anyway. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const code = stripComments(app)
+  ok(!/<a[^>]+download/.test(code) && !/\.download\s*=/.test(code),
+    'a download link is back — the one delivery route this ticket ruled out for iOS and installed PWAs')
+  ok(/canShare\?\.\(\{ files: \[file\] \}\)/.test(code),
+    'the share sheet is called without asking whether it takes files')
+  ok(/navigator\.share\(\{ files: \[file\] \}\)/.test(code), 'the file is never handed to the share sheet')
+  ok(/Press and hold the picture to save it\./.test(app),
+    'the fallback does not tell the player how to save it, which is the whole fallback')
+
+  /* IT LIVES ON THE SCREEN ITS BUTTON IS ON. The first cut put the fallback sheet in the
+     climb screen's tree, which returns earlier — so the picture was drawn correctly,
+     1080 wide, 142 KB, and had nowhere to appear. Every guard passed, because every guard
+     was reading the right source in the wrong component. Only a browser found it. */
+  const sess = region(app, "if (st.phase === 'sessionEnd')", ["if (st.phase === '"],
+    { min: 800, what: 'the session-end screen' })
+  ok(/\{cardUrl \? \(/.test(sess), 'the picture has no way to appear on the screen that makes it')
+  ok(/shareImage\(\)/.test(sess), 'the button that makes the picture is not on this screen')
+  eq((app.match(/\{cardUrl \? \(/g) ?? []).length, 1,
+    'the picture renders from more than one place, so one of them is dead or it draws twice')
+
+  // the object URL is let go of, or a session of shares holds every canvas it ever drew
+  ok(/URL\.revokeObjectURL/.test(code), 'the object URL is never revoked')
+  ok(/useEffect\(\(\) => \(\) => \{ if \(cardUrl\) URL\.revokeObjectURL\(cardUrl\) \}/.test(code),
+    'the last picture is not released when the screen goes')
+
+  /* AND THE PICTURE SAYS WHAT THE PASTE SAYS. Two renderings of one result drift (ENG-19),
+     so both read `shareCard` and this asserts they agree — on the grid, which is the part
+     a reader compares, and on the numbers beside it. The canvas draws boxes rather than
+     the ▪/▫ characters, because a glyph that renders as tofu is a broken IMAGE rather than
+     a broken line; the count is what has to match, and it is checked here. */
+  const base = { ...E.freshRun(0, 0, 3), daily: true, dailyDay: '2026-08-15', grades: 'v',
+    dailyScore: 300, dailyMet: [], dailyStreak: 4, weekScore: 900 }
+  for (const [cleared, why] of [[0, 'came off the ground'], [4, 'got partway'], [99, 'topped it out']]) {
+    const st = { ...base, cleared }
+    const c = E.shareCard(st)
+    const text = E.dailyShare(st)
+    const line = text.split('\n')[1]
+    ok(line.startsWith(c.grid), `the picture and the paste show different grids when you ${why}`)
+    eq(c.grid.length, c.clear, `the grid is not one mark per hold when you ${why}`)
+    eq([...c.grid].filter(ch => ch === '▪').length, c.holds,
+      `the filled marks are not the holds you got when you ${why}`)
+    ok(c.holds <= c.clear, `the picture claims more holds than the route has when you ${why}`)
+    ok(line.includes(c.grade), 'the grade differs between the picture and the paste')
+    ok(text.includes(String(c.score)), 'the score differs between the picture and the paste')
+  }
+  // the projection is what both read — not two copies of the same arithmetic
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  const share = declBody(eng, 'export function dailyShare', 'dailyShare')
+  ok(/shareCard\(s\)/.test(share), 'dailyShare no longer reads the shared projection at all')
+  /* Any `.repeat(`, not the literal mark. Written as `'\u25aa'.repeat(...)` the escape form
+     is the same code and slips a test that looks for the character — an injection proved
+     it. dailyShare has no other reason to repeat a string, so the broad form is exact. */
+  ok(!/\.repeat\(/.test(share), 'dailyShare computes its own grid again, so the two can disagree')
+
+  // nothing here reaches the run: a share is a projection of a result already decided
+  const card = declBody(eng, 'export function shareCard', 'shareCard')
+  ok(!/\bRNG\b|rng\.|Math\.random/.test(card), 'the share draws from the rng, so looking at it could change a run')
+})
 test('A11Y-9: a screen reader hears the turn, not the last line of it', () => {
   /* THE ROW SAID "the newest blocks are static divs; consistency, not a break". Reading
      the screens found something worse and narrower. The climb screen has had a
@@ -4235,7 +4306,7 @@ test('NARR-15: the moments they were standing through in silence', () => {
   const fa = region(app, "if (st.phase === 'claim'", ["if (st.phase === '"],
     { min: 600, what: 'the first-ascent screen' })
   ok(/partnerSays\(st, 'claim'\)/.test(fa), 'the screen says nobody to ask and somebody is standing there')
-  const faCode = fa.split('\n').filter(l => !/^\s*(\/\*|\*|\/\/|\{\/\*)/.test(l)).join('\n')
+  const faCode = stripComments(fa)
   ok(!/partner\w*\([^)]*\)[^\n]*c\.grade/.test(faCode) && !/setClaim\([^\n]*partner/.test(faCode),
     'the partner moves the grade — that is power, and the number on this screen is yours')
   /* AND WHICH FA. There are two ways to a first ascent and they are not the same outing:
@@ -4334,7 +4405,7 @@ test('ROUTE-15: the first lines in the book have a feature too', () => {
   const eng = readFileSync('src/engine.ts', 'utf8')
   const tagger = region(eng, '  /* ROUTE-15: a scripted line can name its own feature',
     ['  const fp = FEET_POOLS'], { min: 400, what: 'the ROUTE-15 tagger' })
-  const code = tagger.split('\n').filter(l => !/^\s*(\/\*|\*|\/\/)/.test(l)).join('\n')
+  const code = stripComments(tagger)
   /* EVERY write, not just one of them. The tagger writes to `holds[at]` twice — the
      preferred base type and the fallback — and an assertion that only wanted to see one
      spread anywhere passed with the first site rebuilt, which an injection caught. */
