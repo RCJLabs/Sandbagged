@@ -2781,6 +2781,24 @@ export type PartnerMoment = 'tie' | 'agree' | 'differ' | 'send' | 'fall' | 'camp
      fire there — but it has a decision no other mode has, which is whether to go
      again. These are the two things they say to that. */
   | 'again' | 'enough'
+  /* NARR-15: four moments the game had already built and left them silent through.
+     `walked` closes the loop SKIRM-7 opened and SKIRM-8 gave a screen: they spend the
+     whole circuit telling you to go again or to stop, and when you stopped they said
+     nothing. `claim` is the sharpest of the four — the FA screen's own words are
+     "nothing to compare it to and NOBODY TO ASK", and there is somebody standing
+     right there with an opinion about your grade. `curse` is a decision they would
+     obviously have a view on, taken on a screen that offers it in as many words.
+     `phase` is the one that goes in the climb log rather than on a screen, and it is
+     kept to one clause because it lands mid-move; only four routes have phases at
+     all, so it stays a moment rather than a drumbeat. */
+  | 'walked' | 'claim' | 'curse' | 'phase'
+  /* And a fifth the backlog row did not list, found by reading the screens rather than
+     the row: the Circuit has TWO endings and both were silent. Walking off goes to
+     `sessionEnd`; running out of skin goes to `runEnd`, which renders CIRCUIT OVER and
+     whose partner block is gated `!st.circuit` — correctly, because `top` and `died`
+     are trip lines and a circuit is not a trip. So the mode's ordinary ending, which is
+     the one most sessions get, had nobody in it at all. */
+  | 'spent'
 export type Partner = {
   id: string
   name: string
@@ -2810,6 +2828,11 @@ export const PARTNERS: Partner[] = [
       camp: 'She eats standing up and goes to bed early. "Tomorrow you go first."',
       top: '"Well." She shakes your hand, formally, like a stranger. Then she laughs at herself.',
       died: 'She carries the pads down without saying anything. At the car: "Next time you go first."',
+      walked: '"Good. Stop while it is still the good one." She is coiling before she has finished the sentence.',
+      claim: '"Do not be modest, it is a waste of everybody\u2019s time." A beat. "Do not be the other thing either."',
+      curse: '"Two for one and you carry the difference." She has watched people do this before.',
+      phase: 'Wren, from below: "It changes here. You knew that."',
+      spent: 'She turns your hand over and looks at it. "Right. Done." She does not make it a defeat.',
     } },
   { id: 'ade', name: 'Ade', who: 'Been coming here thirty years. Knows where the water is.', line: 0,
     enough: 6,
@@ -2824,6 +2847,11 @@ export const PARTNERS: Partner[] = [
       camp: 'He tells you about a winter here in the nineties. Half of it cannot be true.',
       top: '"I will put it in the book." From him this is an enormous thing to say.',
       died: '"Thirty years I have been failing on things here." He means it to be comforting, and it is.',
+      walked: '"That will do." He has the flask out already. The light is going off the top of the crag.',
+      claim: '"Whatever you put, somebody will repeat it and disagree. That is the grade working." He is not warning you.',
+      curse: '"You will be carrying that in November." He says it mildly, which is how he says everything.',
+      phase: 'Ade, not looking up: "This is the bit people forget about."',
+      spent: '"Skin is the only thing out here you cannot buy." He has said this before and will say it again.',
     } },
   { id: 'moss', name: 'Moss', who: 'Would rather be looking at the rock than climbing it.', line: 2,
     enough: 3,
@@ -2838,6 +2866,11 @@ export const PARTNERS: Partner[] = [
       camp: 'He has collected four rocks and wants to talk about all of them.',
       top: '"Good. Now can we go and look at the other side." He has wanted to all week.',
       died: '"Shame." He is already photographing something in the moss.',
+      walked: '"Finally." He has been standing by something he wants you to look at for about an hour.',
+      claim: '"Call it what the rock is." He means it literally, and it is not bad advice.',
+      curse: '"Is that the one that hurts?" He has not been following. He is not going to start now.',
+      phase: 'Moss, delighted: "That is a different bed of rock, that is."',
+      spent: '"You have gone through to the pink." He sounds interested rather than sympathetic.',
     } },
   { id: 'kit', name: 'Kit', who: 'Nineteen, terrifyingly strong, no idea how lucky that is.', line: 1,
     enough: 14,
@@ -2852,6 +2885,11 @@ export const PARTNERS: Partner[] = [
       camp: 'She is asleep before the water boils and up before you.',
       top: 'She screams. Genuinely screams, at a wall, in the dark. It is the best moment of the trip.',
       died: '"Same time next year?" She has already forgotten which one beat you.',
+      walked: '"That was ages." It was not ages. She is already looking at what is next to it.',
+      claim: '"That is soft for the grade." She has climbed it zero times and is completely certain.',
+      curse: '"Free card!" She does not appear to have read the other half of the sentence.',
+      phase: 'Kit, brightly: "Oh, it does a thing here."',
+      spent: '"Tape?" She has tape. She always has tape. It is not going to be enough.',
     } },
 ]
 /** Who is out with you. Derived from the run seed — see the note above. */
@@ -2861,7 +2899,14 @@ export function partnerFor(s: GameState): Partner | null {
      got both. It is also the LONGEST single sitting there is, which is the mode
      that most wants somebody there. Its `runSeed` is saved and restored with the
      rest of the circuit (DEV-3), so resuming one keeps the same person. */
-  if (!s.inRun && !s.circuit) return null
+  /* NARR-15: `result: 'walked'` counts as well, and finding out why cost a browser.
+     SKIRM-8 clears `circuit` on the way out of a walk-off so a stale score can never be
+     read as "this was a circuit" (MODE-1) — which means that by the time the walk-off
+     SCREEN renders, the two flags above are both false and this returned null. The
+     screen's own gate was written not to read `circuit` for exactly that reason, and
+     then called this, which read it for us. `result` is per-run and reset to null at
+     every start, so it cannot leak into the next attempt the way a mode flag could. */
+  if (!s.inRun && !s.circuit && s.result !== 'walked') return null
   return PARTNERS[(s.runSeed >>> 0) % PARTNERS.length]
 }
 /** SKIRM-7: whether they would go again or walk off — their opinion, nothing more.

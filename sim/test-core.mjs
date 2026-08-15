@@ -2532,7 +2532,11 @@ test('somebody is out there with you, and they wanted something else (NARR-14)',
   ok(/partnerSays\(st, sent \? 'send' : 'fall'\)/.test(app), 'they have nothing to say about a burn')
   const endScreen = region(app, "if (st.phase === 'runEnd')", ["if (st.phase === '"],
     { min: 800, what: 'the run-end screen' })
-  ok(/partnerSays\(st, won \? 'top' : 'died'\)/.test(endScreen),
+  /* NARR-15 pinned the surviving half rather than the whole expression. This assertion
+     used to read the entire call, which meant adding a THIRD outcome to the same screen
+     broke it without anything being wrong — and the claim it is making is only about the
+     two trip endings. `won ? 'top' : 'died'` is still exact about both of them. */
+  ok(/won \? 'top' : 'died'/.test(endScreen),
     'the trip ends without a word from whoever was there')
 })
 test('the Circuit is not the mode nobody bothered with (SKIRM-7)', () => {
@@ -2617,8 +2621,15 @@ test('the Circuit is not the mode nobody bothered with (SKIRM-7)', () => {
   // the run-end screen must still keep the circuit OUT — a walk-off is not a death
   const end = region(app, "if (st.phase === 'runEnd')", ["if (st.phase === '"],
     { min: 800, what: 'the run-end screen' })
-  ok(/partnerFor\(st\) && !st\.circuit/.test(end),
-    'the circuit reaches run-end with a partner saying you died')
+  /* NARR-15. This pinned the GATE — `partnerFor(st) && !st.circuit` — which was the only
+     way to say "not a death line" while the circuit had nothing of its own to say. It has
+     now, so the gate is gone and the claim is asserted where it actually lives: what the
+     circuit branch of that screen chooses. Strictly stronger than the old test, which
+     could not have told you WHICH moment a circuit was getting, only that it got none. */
+  const say = /partnerSays\(st, st\.circuit \? '(\w+)' : /.exec(end)
+  ok(say, 'the run-end screen no longer tells a circuit from a trip, so it is back to one ending for both')
+  ok(say[1] !== 'top' && say[1] !== 'died',
+    `the circuit reaches run-end with a partner saying you ${say[1]} — those are trip lines`)
 
   /* OFF-BAND BY CONSTRUCTION, and this one is absolute: the balance harness does not
      contain the word. There is no path from any of this to the measured campaign. */
@@ -4069,6 +4080,126 @@ test('ROUTE-12: a signature does something, and the grind lines get one too', ()
   const again = E.buildRoute({ ...base, inRun: true, weather: 1, rock: 0,
     skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
   eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
+})
+test('NARR-15: the moments they were standing through in silence', () => {
+  /* NARR-14 gave you somebody on the trip and four things to say. SKIRM-7 added two for
+     the Circuit. That left five moments the game had already BUILT and walked them
+     through without a word — and the first two are the ones that sting:
+
+       WALKED — SKIRM-7 spends the whole circuit having them say go again or that is
+         enough, and SKIRM-8 gave walking off its own screen. Nobody joined the two up:
+         they pushed you there and then said nothing when you arrived.
+       CLAIM — the first-ascent screen's own words are "nothing to compare it to and
+         NOBODY TO ASK", and there is somebody standing right there. Having an opinion
+         about what you just did is the entire partner mechanic.
+       CURSE — taking one on purpose is a decision, on a screen that offers it in as
+         many words.
+       PHASE — a route changing under you is the loudest thing that happens mid-climb.
+       SPENT — the fifth, which the backlog row did not list and reading the screens
+         found: the Circuit has TWO endings and both were silent. Walking off goes to
+         sessionEnd; running out of skin goes to runEnd, whose partner block was gated
+         `!st.circuit`. That gate was RIGHT — `top` and `died` are trip lines, pads
+         carried down, next time you go first — but it left the mode's ordinary ending,
+         the one most sessions get, with nobody in it at all. */
+  const NEW = ['walked', 'claim', 'curse', 'phase', 'spent']
+  for (const p of E.PARTNERS)
+    for (const m of NEW) {
+      const line = p.says[m]
+      ok(line && line.length > 20, `${p.name} has nothing to say at ${m}`)
+      ok(line !== p.says.send && line !== p.says.fall && line !== p.says.camp,
+        `${p.name}'s ${m} is a line they already had somewhere else`)
+    }
+  // every partner says something different at every moment — a shared line is a stub
+  for (const m of NEW)
+    eq(new Set(E.PARTNERS.map(p => p.says[m])).size, E.PARTNERS.length,
+      `two partners say the same thing at ${m}, so who came out with you does not matter`)
+  // and the type knows about them, so a new partner cannot be added missing one
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  const type = region(eng, 'export type PartnerMoment', ['export type Partner ='],
+    { min: 200, what: 'the PartnerMoment type' })
+  for (const m of NEW) ok(new RegExp(`'${m}'`).test(type), `${m} is not a PartnerMoment`)
+
+  /* STILL TEXT, AND STILL OUT OF THE RESOLUTION. NARR-14's rule is that a partner the
+     resolution can read is a partner somebody can later make matter, and it is guarded
+     above. The `phase` line was first written into `resolve`'s log and that guard
+     refused it — correctly. It lives on the climb screen's phase banner instead, which
+     was already there and is pure render. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const banner = region(app, '{phase ? <div className="spot"', ['</div> : null}'],
+    { min: 150, what: 'the climb screen phase banner' })
+  ok(/partnerSays\(st, 'phase'\)/.test(banner), 'a route changes under you and nobody remarks on it')
+  ok(/partnerFor\(st\) \?/.test(banner), 'the phase line renders with nobody there to say it')
+
+  // the walk-off, read off `result` rather than `circuit` — which is cleared on the way
+  // out (MODE-1), exactly as SKIRM-8's own numbers on that screen are
+  const sess = region(app, "if (st.phase === 'sessionEnd')", ["if (st.phase === '"],
+    { min: 800, what: 'the session-end screen' })
+  /* ANCHOR THE GATE ON ITS OPENING BRACE. `/walked && partnerFor\(st\)/` is a SUBSTRING
+      of `{false && walked && partnerFor(st)`, so an injection that switches the block off
+      by prefixing the condition sailed straight past it. That is the same shape as the
+      ROUTE-15 tagger assertion one ticket ago, and `{` is what makes it exact.
+      The negative check runs FIRST so that reading a flag which is cleared on the way out
+      reports itself rather than being masked by the positive one below. */
+  ok(!/\{st\.circuit && partnerFor/.test(sess),
+    'the walk-off block reads `circuit`, which is cleared on the way out, so it shows nothing')
+  ok(/\{walked && partnerFor\(st\) \?/.test(sess), 'you walk off on their advice and they say nothing')
+  ok(/partnerSays\(st, 'walked'\)/.test(sess), 'the walk-off has no word from whoever was there')
+  /* AND THEY HAVE TO ACTUALLY BE THERE. The gate above is careful not to read `circuit`,
+     which is cleared on the way out — and then calls `partnerFor`, which read it for us,
+     so the block rendered nothing at all. A browser is what found that, not this file.
+     Asserted behaviourally, on the state the screen is really handed. */
+  const off = { ...E.freshRun(0, 0, 3), inRun: false, circuit: null, result: 'walked', runSeed: 12345 }
+  ok(E.partnerFor(off), 'nobody is there on the walk-off screen, so its partner block renders nothing')
+  ok(E.partnerSays(off, 'walked').length > 20, 'the walk-off line comes back empty')
+  // ...and `result` is per-run, so this cannot put somebody on the guidebook (MODE-1)
+  eq(E.partnerFor({ ...E.freshRun(0, 0, 3), inRun: false, circuit: null, result: null }), null,
+    'a partner is standing on a screen where no run is happening')
+
+  /* THE OTHER HALF OF THE SAME FINDING. Teaching `partnerFor` about the walk-off woke a
+     block that had been SILENTLY DEAD on that screen: the send/fall line, which then said
+     "Feet. One word, and she is right" on the one ending where you did not fall. It is the
+     same class as the two things SKIRM-8 caught here — a per-route line on the one ending
+     that is not about a route — and it is gated the same way. */
+  ok(/\{!walked && partnerFor\(st\) \?/.test(sess),
+    'the send/fall line renders on a walk-off, where nothing was sent and nothing fell')
+
+  // the first ascent — their view, and only their view: the grade is still yours
+  const fa = region(app, "if (st.phase === 'claim'", ["if (st.phase === '"],
+    { min: 600, what: 'the first-ascent screen' })
+  ok(/partnerSays\(st, 'claim'\)/.test(fa), 'the screen says nobody to ask and somebody is standing there')
+  const faCode = fa.split('\n').filter(l => !/^\s*(\/\*|\*|\/\/|\{\/\*)/.test(l)).join('\n')
+  ok(!/partner\w*\([^)]*\)[^\n]*c\.grade/.test(faCode) && !/setClaim\([^\n]*partner/.test(faCode),
+    'the partner moves the grade — that is power, and the number on this screen is yours')
+  /* AND WHICH FA. There are two ways to a first ascent and they are not the same outing:
+     the map node keeps the trip's state, so somebody is with you; the menu FA sets
+     `inRun: false`, so you went on your own and the block correctly shows nothing. That
+     is the same shape as the walk-off bug a few lines up — a block whose visibility hangs
+     on a flag set somewhere else entirely — so it is asserted rather than assumed. */
+  const trip = { ...E.freshRun(0, 0, 3), inRun: true, phase: 'claim', runSeed: 999 }
+  ok(E.partnerFor(trip), 'nobody is there for a first ascent found on a trip')
+  ok(E.partnerSays(trip, 'claim').length > 20, 'the first-ascent line comes back empty')
+  const solo = { ...E.freshRun(0, 0, 3), inRun: false, circuit: null, result: null, phase: 'claim' }
+  eq(E.partnerFor(solo), null, 'somebody turned up to a first ascent you drove out to alone')
+  /* All THREE solo modes, counted. The first cut of this tested for the fragment anywhere
+     in the file, and the FA, the daily and the challenge all contain it — so removing the
+     one it was about left it matching one of the other two. Counting is what makes it
+     exact, and it now covers the modes it was not even claiming to. */
+  eq((app.match(/skirmish: route, inRun: false/g) ?? []).length, 3,
+    'one of the solo modes stopped saying you went out on your own, so a partner appears out of nowhere')
+
+  // the curse, while it is still a decision rather than a comment on one
+  const rew = region(app, "if (st.phase === 'reward')", ["if (st.phase === '"],
+    { min: 600, what: 'the reward screen' })
+  ok(/\{two && partnerFor\(st\) \?/.test(rew), 'they have no view on taking a curse on purpose')
+  ok(/partnerSays\(st, 'curse'\)/.test(rew), 'the curse has no word from whoever was there')
+
+  /* AND THE ONE PLACE THEY MUST STAY SILENT. `partnerFor` returns null unless you are on
+     a trip or in the circuit, so a skirmish and the daily have nobody — that is the
+     point, they are one boulder on your own. Asserted rather than assumed, because
+     every new moment above is a new chance to render an empty block. */
+  const alone = { ...E.freshRun(0, 0, 3), inRun: false, circuit: null }
+  eq(E.partnerFor(alone), null, 'somebody turned up to a boulder you went to on your own')
+  for (const m of NEW) eq(E.partnerSays(alone, m), '', `${m} says something with nobody there`)
 })
 test('ROUTE-15: the first lines in the book have a feature too', () => {
   /* ROUTE-5 added named features to kill the sameness of "a route is a stat line", and it

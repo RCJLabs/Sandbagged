@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.28 — ROUTE-15: the first four lines in the book have a named feature
-//   too, tagged onto a hold rather than replacing one so they move no number
+// SANDBAGGED v10.29 — NARR-15: five moments the game had built and walked the partner
+//   through in silence — the walk-off, the first ascent, a curse, a phase, a spent circuit
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1298,7 +1298,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.28 · RCJ Labs</div>
+          <div className="sfoot">v10.29 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1527,7 +1527,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.28 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.29 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2713,6 +2713,13 @@ export default function App() {
               <div className="sub">{c.lane === 'feet' ? 'feet · ' : c.lane === 'any' ? 'any · ' : ''}{c.text}</div>
             </div>))}
         </div>
+        {/* NARR-15: taking a curse on purpose is a decision, and this screen says so in
+            as many words. They get their view while it is still a decision — armed but
+            not yet taken — rather than a comment on it afterwards. */}
+        {two && partnerFor(st) ? (
+          <div className="spot" style={{ borderLeftColor: 'var(--tan)', marginTop: 6 }}>
+            <b style={{ color: 'var(--tan)' }}>{partnerFor(st)!.name.toUpperCase()}</b>
+            {partnerSays(st, 'curse')}</div>) : null}
         {two ? (
           <button className="btn" style={{ width: '100%', marginTop: 6 }}
             onClick={() => setTakeTwo([])}>◂ CHANGED MY MIND</button>
@@ -2935,6 +2942,14 @@ export default function App() {
             {st.burn === 1 ? 'First go, and nobody had cleaned it for you.'
               : `${st.burn} burns to work it out.`}</p>
         </div>
+        {/* NARR-15: this screen's own words are "nothing to compare it to and NOBODY TO
+            ASK" — and there is somebody standing right there who has an opinion about
+            your grade, which is the entire partner mechanic. It is their view and
+            nothing more: the number is still yours, and claimStep never reads this. */}
+        {partnerFor(st) ? (
+          <div className="spot" style={{ borderLeftColor: 'var(--tan)' }}>
+            <b style={{ color: 'var(--tan)' }}>{partnerFor(st)!.name.toUpperCase()}</b>
+            {partnerSays(st, 'claim')}</div>) : null}
         <div className="lbl">WHAT DO YOU CALL IT</div>
         <input value={c.name} spellCheck={false} maxLength={28}
           onChange={e => setClaim({ ...c, name: e.target.value })}
@@ -3077,10 +3092,15 @@ export default function App() {
         </div>
         {/* NARR-14: the last word on the trip belongs to whoever was out there with you.
             A trip that ends in silence is what this ticket exists to stop. */}
-        {partnerFor(st) && !st.circuit ? (
+        {/* NARR-15: the `!st.circuit` gate was right and incomplete. `top` and `died` are
+            TRIP lines — pads carried down, next time you go first — and a circuit is not
+            a trip, so they must not fire here. But that left the Circuit's ordinary
+            ending, the one most sessions actually get, with nobody in it at all: walking
+            off goes to sessionEnd, and this is the other way out. It gets its own line. */}
+        {partnerFor(st) ? (
           <div className="spot" style={{ borderLeftColor: 'var(--tan)' }}>
             <b style={{ color: 'var(--tan)' }}>{partnerFor(st)!.name.toUpperCase()}</b>
-            {partnerSays(st, won ? 'top' : 'died')}</div>) : null}
+            {partnerSays(st, st.circuit ? 'spent' : won ? 'top' : 'died')}</div>) : null}
         {/* UX-11. The run-end screen said you won or died and nothing else,
             while the trail, the logbook, the lines you named and the pages you
             found were all being tracked. This is the account of the trip. */}
@@ -3170,6 +3190,15 @@ export default function App() {
                 'Copy your circuit to share')}>
               {shared ? 'COPIED ✓' : 'SHARE THE CIRCUIT ▸'}</button>
           </div>) : null}
+        {/* NARR-15: SKIRM-7 gave you somebody who spends the whole circuit saying go
+            again or that is enough, SKIRM-8 gave the walk-off a screen, and nobody
+            joined the two up — they pushed you here and then said nothing when you
+            arrived. Read off `walked` rather than `st.circuit`, which is cleared on the
+            way out (MODE-1), for the same reason the numbers above it are. */}
+        {walked && partnerFor(st) ? (
+          <div className="spot" style={{ borderLeftColor: 'var(--tan)' }} role="status">
+            <b style={{ color: 'var(--tan)' }}>{partnerFor(st)!.name.toUpperCase()}</b>
+            {partnerSays(st, 'walked')}</div>) : null}
         {st.runSeed ? <div className="sub">seed {seedCode(st.runSeed)} — same seed, same run</div> : null}
         {st.ending ? (
           <div className="spot" style={{ borderLeftColor: 'var(--green)' }}>
@@ -3232,8 +3261,15 @@ export default function App() {
             </div>)
         })() : null}
         {/* NARR-14: somebody watched that. They have a view on it, and on whether you
-            went the way they would have gone. */}
-        {partnerFor(st) ? (
+            went the way they would have gone.
+            NARR-15 gated it on `!walked`, and only a browser found out why. This block was
+            SILENTLY DEAD on a walk-off — `partnerFor` read `circuit`, which SKIRM-8 clears
+            on the way out, so it returned null and nothing rendered. Teaching `partnerFor`
+            about `result: 'walked'` so the walk-off could have its own line woke this one
+            up too, and it said "Feet. One word, and she is right" on a screen where you did
+            not fall. Same class as the two SKIRM-8 caught here: a per-route line on the one
+            ending that is not about a route. */}
+        {!walked && partnerFor(st) ? (
           <div className="spot" style={{ borderLeftColor: 'var(--tan)' }}>
             <b style={{ color: 'var(--tan)' }}>{partnerFor(st)!.name.toUpperCase()}</b>
             {partnerSays(st, sent ? 'send' : 'fall')}
@@ -3702,8 +3738,17 @@ export default function App() {
           <b style={{ color: 'var(--green)' }}>
             {seqById(st.seq.id)!.name.toUpperCase()} · {st.seq.left} MORE</b>
           Keep it alive: {seqNeedText(seqById(st.seq.id)!)} this turn.</div>) : null}
+      {/* NARR-15: a route changing under you is the loudest thing that happens mid-climb
+          and they were silent through it. One clause, because it lands between moves,
+          and only four routes have phases at all — so it stays a moment rather than a
+          drumbeat. This was first written into `resolve`'s log, which NARR-14's guard
+          refused, and it was right to: a partner the resolution can read is a partner
+          somebody can later make matter. The banner is already on this screen and is
+          pure render, so the line goes here and resolution never learns their name. */}
       {phase ? <div className="spot" style={{ borderLeftColor: 'var(--ink)' }}>
-        <b style={{ color: 'var(--ink)' }}>{phase.name.toUpperCase()}</b>{phase.text}</div> : null}
+        <b style={{ color: 'var(--ink)' }}>{phase.name.toUpperCase()}</b>{phase.text}
+        {partnerFor(st) ? <div style={{ marginTop: 3, color: 'var(--dim)' }}>
+          {partnerSays(st, 'phase')}</div> : null}</div> : null}
       {(() => {
         const nx = st.phase === 'climb' ? nextPhase(st) : null
         if (!nx || nx.away > 2) return null
