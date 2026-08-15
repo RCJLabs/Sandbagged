@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.29 — NARR-15: five moments the game had built and walked the partner
-//   through in silence — the walk-off, the first ascent, a curse, a phase, a spent circuit
+// SANDBAGGED v10.30 — A11Y-9: the climb announced one line of a turn that writes about
+//   five, so a screen reader heard a fifth of the game. It hears the turn now.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -899,6 +899,25 @@ export default function App() {
   const [pending, setPending] = useState<{ routeIdx: number; nodeIdx: number } | null>(null)
   const [claim, setClaim] = useState<{ name: string; grade: number } | null>(null)
   const [takeTwo, setTakeTwo] = useState<number[]>([])
+  /* A11Y-9. The climb screen has had a screen-reader live region since A11Y-2, and it
+     announced `st.log[st.log.length - 1]` — the LAST line. A turn writes a mean of 4.8 of
+     them (measured over 297 turns: one line on 2% of turns, nine on one), so a
+     screen-reader player was hearing about a fifth of what happened, and the fifth they
+     got was whichever line the engine happened to append last — often the route's move
+     for NEXT turn, or a phase banner, rather than the outcome of the move they just made.
+     The visible log shows `slice(-3)`, so a sighted player was ahead by two lines a turn.
+     What goes out now is every line ADDED since the last render, which is exactly the
+     account of what just happened. There is no three-line cap on it, because that cap is
+     a small screen's space constraint and not an editorial judgement about what matters. */
+  const logSeen = useRef(0)
+  const [spoken, setSpoken] = useState('')
+  useEffect(() => {
+    const n = st.log.length
+    // a new burn empties the log; rewind and say nothing rather than replay it
+    if (n < logSeen.current) { logSeen.current = n; setSpoken(''); return }
+    if (n > logSeen.current) setSpoken(st.log.slice(logSeen.current).join(' '))
+    logSeen.current = n
+  }, [st.log])
   // a typed seed wins for the next run; otherwise roll on from the last one
   const pickSeed = () => codeSeed(seedIn) ?? ((st.seed * 1664525 + 1013904223) >>> 0)
   const spec = specOf(st)
@@ -1298,7 +1317,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.29 · RCJ Labs</div>
+          <div className="sfoot">v10.30 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1527,7 +1546,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.29 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.30 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2716,8 +2735,10 @@ export default function App() {
         {/* NARR-15: taking a curse on purpose is a decision, and this screen says so in
             as many words. They get their view while it is still a decision — armed but
             not yet taken — rather than a comment on it afterwards. */}
+        {/* A11Y-9: this arrives when you arm TAKE TWO — same screen, no navigation. */}
         {two && partnerFor(st) ? (
-          <div className="spot" style={{ borderLeftColor: 'var(--tan)', marginTop: 6 }}>
+          <div className="spot" role="status" aria-live="polite"
+            style={{ borderLeftColor: 'var(--tan)', marginTop: 6 }}>
             <b style={{ color: 'var(--tan)' }}>{partnerFor(st)!.name.toUpperCase()}</b>
             {partnerSays(st, 'curse')}</div>) : null}
         {two ? (
@@ -3621,8 +3642,7 @@ export default function App() {
           </div>
         ))}
       </div>
-      <div className="vis-hidden" role="status" aria-live="polite">
-        {st.log.length ? st.log[st.log.length - 1] : ''}</div>
+      <div className="vis-hidden" role="status" aria-live="polite">{spoken}</div>
       {st.boardP.filter(Boolean).length > 1 ? (
         <div className="sub" style={{ marginTop: 2 }}>
           They go in the order you placed them — a hand that comes off stops holding
@@ -3733,8 +3753,10 @@ export default function App() {
             <b style={{ color: 'var(--blue)' }}>
               WEATHER · {wn.away} HOLD{wn.away === 1 ? '' : 'S'} OFF</b>{wn.w.warn}</div>)
       })()) : null}
+      {/* A11Y-9: appears mid-climb on a screen you are already on, so it announces —
+          the same rule the window and route-move banners beside it already follow. */}
       {st.seq && seqById(st.seq.id) ? (
-        <div className="spot" style={{ borderLeftColor: 'var(--green)' }}>
+        <div className="spot" role="status" aria-live="polite" style={{ borderLeftColor: 'var(--green)' }}>
           <b style={{ color: 'var(--green)' }}>
             {seqById(st.seq.id)!.name.toUpperCase()} · {st.seq.left} MORE</b>
           Keep it alive: {seqNeedText(seqById(st.seq.id)!)} this turn.</div>) : null}
@@ -3747,13 +3769,20 @@ export default function App() {
           pure render, so the line goes here and resolution never learns their name. */}
       {phase ? <div className="spot" style={{ borderLeftColor: 'var(--ink)' }}>
         <b style={{ color: 'var(--ink)' }}>{phase.name.toUpperCase()}</b>{phase.text}
-        {partnerFor(st) ? <div style={{ marginTop: 3, color: 'var(--dim)' }}>
+        {/* A11Y-9: the banner itself must NOT announce — the phase writes a log line, and
+            the region above already reads it, so a live region here would say the phase
+            twice. The partner's clause is the one thing on this banner that is not in the
+            log and cannot be (NARR-14 keeps them out of `resolve`), so it announces on its
+            own and nothing doubles. */}
+        {partnerFor(st) ? <div style={{ marginTop: 3, color: 'var(--dim)' }}
+          role="status" aria-live="polite">
           {partnerSays(st, 'phase')}</div> : null}</div> : null}
       {(() => {
         const nx = st.phase === 'climb' ? nextPhase(st) : null
         if (!nx || nx.away > 2) return null
         return (
-          <div className="spot" style={{ borderLeftColor: 'var(--tan)' }}>
+          // A11Y-9: the phase getting closer is news, and it arrives without a navigation
+          <div className="spot" role="status" aria-live="polite" style={{ borderLeftColor: 'var(--tan)' }}>
             <b style={{ color: 'var(--tan)' }}>
               {nx.away} HOLD{nx.away === 1 ? '' : 'S'} TO {nx.p.name.toUpperCase()}</b>
             {nx.p.text}</div>)

@@ -4081,6 +4081,72 @@ test('ROUTE-12: a signature does something, and the grind lines get one too', ()
     skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
   eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
 })
+test('A11Y-9: a screen reader hears the turn, not the last line of it', () => {
+  /* THE ROW SAID "the newest blocks are static divs; consistency, not a break". Reading
+     the screens found something worse and narrower. The climb screen has had a
+     screen-reader live region since A11Y-2 and it announced ONE line — the last one:
+
+         <div className="vis-hidden" role="status" aria-live="polite">
+           {st.log.length ? st.log[st.log.length - 1] : ''}</div>
+
+     A turn writes a MEAN OF 4.8 log lines. Measured over 297 turns of real play: one line
+     on 2% of turns, four to six on two thirds of them, nine on one. So a screen-reader
+     player was getting about a fifth of what happened — and not a chosen fifth: the last
+     line is whatever the engine appended last, which is routinely the route's move for
+     NEXT turn or a phase banner rather than the outcome of the move just made. The
+     visible log renders `slice(-3)`, so a sighted player was two lines a turn ahead.
+     What goes out now is every line added since the last render. No three-line cap: that
+     cap is a small screen's space constraint, not a judgement about what matters. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  ok(!/\{st\.log\.length \? st\.log\[st\.log\.length - 1\] : ''\}/.test(app),
+    'the live region is back to announcing one line of a turn that writes about five')
+  const live = region(app, 'const logSeen = useRef(0)', ['  }, [st.log])'],
+    { min: 200, what: 'the announcement effect' })
+  ok(/st\.log\.slice\(logSeen\.current\)/.test(live),
+    'the announcement no longer sends the lines that were added, so it is back to a sample')
+  ok(/n < logSeen\.current/.test(live),
+    'a new burn empties the log and this would replay the old one from the start')
+  ok(/<div className="vis-hidden" role="status" aria-live="polite">\{spoken\}<\/div>/.test(app),
+    'the live region does not read what the effect computed')
+
+  /* AND THE BLOCKS THAT ARRIVE WITHOUT A NAVIGATION. That is the rule this ticket settled
+     on, rather than "make every static div announce": a live region is for something that
+     appears while you are already on the screen. Three qualified and said nothing — the
+     sequence banner, the phase-approaching banner, and NARR-15's curse block, which
+     appears when you arm TAKE TWO. */
+  /* Bounded at the NEXT banner, not at the next arrow function. The first cut closed on
+     `{(() => {`, which is two banners further down, so the window swallowed the phase
+     banner and passed on the live region belonging to that. */
+  const clim = region(app, '{st.seq && seqById(st.seq.id) ? (', ['      {/* NARR-15:'],
+    { min: 150, what: 'the sequence banner' })
+  ok(/role="status" aria-live="polite"/.test(clim), 'a sequence starts and nothing is announced')
+  const near = region(app, 'const nx = st.phase === ', ['      })()}'],
+    { min: 200, what: 'the phase-approaching banner' })
+  ok(/role="status" aria-live="polite"/.test(near), 'the phase gets closer and nothing is announced')
+  const rew = region(app, "if (st.phase === 'reward')", ["if (st.phase === '"],
+    { min: 600, what: 'the reward screen' })
+  const curse = region(rew, '{two && partnerFor(st) ? (', ['{two ? ('],
+    { min: 80, what: 'the curse block' })
+  ok(/role="status" aria-live="polite"/.test(curse), 'arming a curse announces nothing')
+
+  /* THE PHASE BANNER IS THE EXCEPTION, AND ON PURPOSE. The phase writes a log line, so the
+     region above already reads it — a live region on the banner would say it twice. Its
+     partner clause is the one thing there that is NOT in the log and cannot be, because
+     NARR-14 keeps them out of `resolve`. So the clause announces and the banner does not. */
+  /* Anchored on `{phase ? <div` rather than on the whole opening tag. An anchor that
+     contains the very attribute list under test does not fail the assertion when somebody
+     adds a role — it fails the WINDOW, which reports a moved anchor instead of the thing
+     that is actually wrong. */
+  const banner = region(app, '{phase ? <div', ['</div> : null}'],
+    { min: 150, what: 'the climb screen phase banner' })
+  const open = region(banner, '{phase ? <div', ['>'], { min: 10, what: 'the phase banner opening tag' })
+  ok(!/role=/.test(open), 'the phase banner announces the phase, which the log region already read out')
+  ok(/role="status" aria-live="polite"/.test(banner),
+    "the partner's phase clause is not announced, and it is the one line here the log never carries")
+
+  // a live region has to be reachable to be a live region
+  ok(/\.vis-hidden\s*\{/.test(app) || /vis-hidden/.test(app), 'the screen-reader-only class is gone')
+})
 test('NARR-15: the moments they were standing through in silence', () => {
   /* NARR-14 gave you somebody on the trip and four things to say. SKIRM-7 added two for
      the Circuit. That left five moments the game had already BUILT and walked them
