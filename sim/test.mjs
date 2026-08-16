@@ -1828,6 +1828,27 @@ if (SLOW) {
        changes each worth a point or two, compounding, which is precisely the
        failure mode BAL-9 documented. Corrected with one dial (RUN_SKIN 8 to 9)
        rather than by moving the goalposts again. */
+    /* BAL-17 — THE DATED DECISION THE FLOOR HAS BEEN WAITING FOR (2026-08-16). BAL-16 left
+       a standing note: the floor of 5 was set when the roster spanned 3.3 to 29.8, and the
+       roster now lives between 6 and 9, so it is a far tighter fit than it was and the next
+       climber to drift hits the same unmeasurable margin. Measured again at n=2000 for the
+       decision:
+
+           Boulderer 8.7 · Onsighter 7.7 · Alpinist 7.3 · Comp Kid 7.0 · Trad Dad 6.6
+           spread 1.32x against a 2.2x ceiling
+
+       (The lowest is the TRAD DAD now, not the Comp Kid — BAL-16 bought that one back. The
+       fine pass sorts, so it followed without being told.)
+
+       THE FLOOR STAYS AT 5, for three reasons rather than inertia:
+         · 6.6 clears 5 by 2.9 SE at n=2000, which is a measurement this project can afford
+           and is exactly what the assertion below checks;
+         · raising it to 6 would cut that margin to 1.1 SE — unresolvable at any affordable
+           sample, which is precisely the state BAL-16 spent a version escaping;
+         · and making it RELATIVE to the best climber (60% of 8.7 is 5.2, almost the same
+           number today) would move with the roster, so the one failure an absolute floor
+           exists to catch — every climber sinking together — would stop firing.
+       Revisit if the roster's floor moves under ~6.2, where the 2 SE margin runs out. */
     ok(lo > 5, `${E.ARCHETYPES[worst].name} completes only ${lo}% of runs`)
     /* AND THE FLOOR HAS TO BE MEASURABLE. A margin inside the noise is not a property this
        guard can defend, and reporting that is more useful than flaking: at 5.8% the Comp

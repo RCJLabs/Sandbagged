@@ -4084,6 +4084,50 @@ test('ROUTE-12: a signature does something, and the grind lines get one too', ()
     skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
   eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
 })
+test('A11Y-10: a screen change announces, on every screen', () => {
+  /* A11Y-9 settled the rule that a live region is for what appears while you are already
+     on a screen, and left three blocks carrying `role="status"` while being present when
+     their screen MOUNTS. Under the rule those look like noise to delete. Deleting them
+     would have made the app worse, for a reason that only shows up on inspection:
+
+         the only `.focus()` in App.tsx was the bottom-sheet one.
+
+     Nothing moved focus on a phase change. This is a single-page app, so swapping a whole
+     screen is not a navigation — a screen reader announces NOTHING, and the user is left
+     with focus where the button they pressed used to be. Those three were not noise; they
+     were the only announcement three screens had, and seventeen had none.
+
+     So: fix the gap rather than tidy the symptom. Focus moves to the screen's heading on
+     every phase change, which announces the screen and puts a keyboard user at the top of
+     it. Every title already carries role=heading aria-level=1 — A11Y-8 asserts there are
+     at least twenty and that every one of them does — so it needed no per-screen markup,
+     and it makes the three redundant, which is why they came out in the same change. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const code = stripComments(app)
+
+  const eff = region(app, "const h = document.querySelector('[role=\"heading\"][aria-level=\"1\"]')",
+    ['  }, ['], { min: 60, what: 'the phase-change focus effect' })
+  ok(/h\.focus\(\{ preventScroll: true \}\)/.test(eff), 'the screen change no longer moves focus, so it announces nothing')
+  ok(/h\.tabIndex = -1/.test(eff), 'the heading is not made focusable, so focus() is a no-op on a div')
+  ok(/\}, \[st\.phase, booted\]\)/.test(code),
+    'the focus effect no longer fires on a phase change, or no longer counts leaving the splash as one')
+
+  /* AND THE THREE ARE GONE. Keeping them alongside the heading focus would read the block
+     twice — once because focus landed on the screen, once because the region announced. */
+  const sess = region(app, "if (st.phase === 'sessionEnd')", ["if (st.phase === '"],
+    { min: 800, what: 'the session-end screen' })
+  const next = region(app, "if (st.phase === 'circuitNext')", ["if (st.phase === '"],
+    { min: 400, what: 'the circuit-next screen' })
+  for (const [where, src] of [['session-end', sess], ['circuit-next', next]])
+    ok(!/className="spot"[^>]*role="status"/.test(src),
+      `a mount-time block on the ${where} screen announces as well as the heading, so it is read twice`)
+
+  /* The in-place ones A11Y-9 added must survive: they appear WITHOUT a phase change, so
+     the heading focus never fires for them and a live region is the only thing they have. */
+  ok(/role="status" aria-live="polite"/.test(app), 'the in-place live regions went with them')
+  ok((app.match(/role="status"/g) ?? []).length >= 6,
+    'too few live regions left — the in-place updates A11Y-9 added have gone too')
+})
 test('PERF-2: the bundle is measured, and the size is pinned', () => {
   /* PERF-2 — "the 190KB question" — asked whether React's weight matters on a mid-range
      phone and called it unmeasured. Measured (v10.35, `npm run perf`), the row's premise

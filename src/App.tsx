@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.35 — SKIRM-9: the circuit ending stops wearing trip furniture, and
-//   PERF-2 is answered — React is 38% of the bundle and costs ~90ms on a mid-tier phone
+// SANDBAGGED v10.36 — A11Y-10: a screen change moves focus to its heading, so every
+//   screen announces instead of three. BAL-17 decided: the floor stays at 5.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -900,6 +900,36 @@ export default function App() {
      only decoration — a browser will not start an AudioContext until the player
      has touched the page, so this is the honest place to open one. */
   const [booted, setBooted] = useState(false)
+  /* A11Y-10. Three screens carried `role="status"` on a block present when the screen
+     MOUNTS, and seventeen carried nothing. A11Y-9's rule — a live region is for what
+     appears while you are already on a screen — made those three look like noise to
+     delete, and deleting them would have made the app WORSE, for a reason that only shows
+     up when you go looking:
+
+         the only `.focus()` in this file was the bottom-sheet one.
+
+     Nothing moved focus when the phase changed. This is a single-page app, so swapping a
+     whole screen is not a navigation: a screen reader announces NOTHING, and the user is
+     left with focus where the button they pressed used to be. Those three were not noise,
+     they were the only announcement three screens had — and the other seventeen were mute.
+
+     So neither keep nor delete: fix the gap they were papering over. Focus moves to the
+     screen's own heading on every phase change, which announces the screen and puts a
+     keyboard user at the top of it. Every title already carries `role="heading"
+     aria-level={1}` — A11Y-8 asserts there are at least twenty and that all of them do —
+     so this needs no per-screen markup, and it makes the three redundant, which is why
+     they came out in the same change rather than being left to rot.
+
+     `preventScroll` because the browser's scroll-into-view fights a screen that opens
+     part-scrolled; `booted` is in the deps because arriving at the menu from the splash is
+     a screen change too. */
+  useEffect(() => {
+    if (!booted) return
+    const h = document.querySelector('[role="heading"][aria-level="1"]') as HTMLElement | null
+    if (!h) return
+    h.tabIndex = -1
+    h.focus({ preventScroll: true })
+  }, [st.phase, booted])
   // UX-14: fifteen slots out of up to 219 owned cards, and no way to find one
   const [deckFind, setDeckFind] = useState('')
   const [deckOnly, setDeckOnly] = useState<'all' | 'hands' | 'feet' | 'technique' | 'mine'>('all')
@@ -1458,7 +1488,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.35 · RCJ Labs</div>
+          <div className="sfoot">v10.36 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1687,7 +1717,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.35 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.36 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2678,8 +2708,11 @@ export default function App() {
             while every other mode got both — and it is the longest sitting in the game.
             Their opinion here is about the one decision this mode has, and where their
             "that is enough" falls is who they are, not what the zone is. */}
+          {/* A11Y-10: no role="status". This block is present when the screen MOUNTS, and
+              a phase change now moves focus to the heading, which announces the screen — a
+              live region here would read this block out a second time. */}
         {mate ? (
-          <div className="spot" style={{ borderLeftColor: 'var(--tan)' }} role="status">
+          <div className="spot" style={{ borderLeftColor: 'var(--tan)' }}>
             <b style={{ color: 'var(--tan)' }}>{mate.name.toUpperCase()}</b>
             {partnerSays(st, push === 'enough' ? 'enough' : 'again')}</div>) : null}
         <div className="sub" style={{ marginTop: 4 }}>skin {st.skin} · psyche {st.psyche} · deck {st.runDeck.length}
@@ -3347,8 +3380,9 @@ export default function App() {
           <div className="sub">the circuit · {zone.name.toLowerCase()}</div>
         ) : (
           <div className="sub">{spec.name} · {gradeLabel(spec, st.grades)} · {weather.name}, {rock.name}</div>)}
+          {/* A11Y-10: mount-time, so the heading announces it. See the effect above. */}
         {walked ? (
-          <div className="spot" style={{ borderLeftColor: 'var(--green)' }} role="status">
+          <div className="spot" style={{ borderLeftColor: 'var(--green)' }}>
             <b style={{ color: 'var(--green)' }}>{st.circuitScore} LINE{st.circuitScore === 1 ? '' : 'S'}
               {bestEver ? ' — A NEW BEST' : ''}</b>
             {bestEver
@@ -3366,7 +3400,7 @@ export default function App() {
             arrived. Read off `walked` rather than `st.circuit`, which is cleared on the
             way out (MODE-1), for the same reason the numbers above it are. */}
         {walked && partnerFor(st) ? (
-          <div className="spot" style={{ borderLeftColor: 'var(--tan)' }} role="status">
+          <div className="spot" style={{ borderLeftColor: 'var(--tan)' }}>
             <b style={{ color: 'var(--tan)' }}>{partnerFor(st)!.name.toUpperCase()}</b>
             {partnerSays(st, 'walked')}</div>) : null}
         {st.runSeed ? <div className="sub">seed {seedCode(st.runSeed)} — same seed, same run</div> : null}
