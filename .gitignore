@@ -1,3 +1,16 @@
 node_modules/
 dist/
 sim/_*.mjs
+
+# SHIP-3: Bubblewrap output and the signing key. The keystore especially — committing it
+# hands anyone who clones the repo the ability to sign a release as us, and on Play App
+# Signing it is the upload key, so losing control of it is not recoverable by rotating.
+ship/*.keystore
+ship/*.jks
+ship/*.apk
+ship/*.aab
+ship/app/
+ship/build/
+ship/.gradle/
+ship/gradlew*
+ship/gradle/

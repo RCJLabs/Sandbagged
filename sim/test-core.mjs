@@ -9,7 +9,7 @@
  *   node sim/test-core.mjs
  */
 import { build } from 'esbuild'
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { unlinkSync } from 'node:fs'
 
 const results = []
@@ -4083,6 +4083,124 @@ test('ROUTE-12: a signature does something, and the grind lines get one too', ()
     skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
   eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
 })
+test('SHIP-3: the site is packageable, and the claims about it are true', () => {
+  /* SHIP-3 is packaging rather than porting — one self-contained HTML file with no external
+     requests. Everything that does not need a Play account is in the repo; what is left needs
+     Evan's account, key and device, and is listed in ship/README.md rather than half-built.
+     This guards the parts that can silently rot, and the parts where a document makes a claim
+     about the code. */
+  const mf = JSON.parse(readFileSync('docs/manifest.webmanifest', 'utf8'))
+  /* stripComments, for the fifth time in three tickets: commenting a line OUT leaves its
+     text in the file, so a regex for `writeFileSync(join('docs', '.nojekyll')` matches the
+     commented-out copy perfectly happily. Two injections written for this very ticket
+     walked straight past assertions phrased that way. */
+  const gen = stripComments(readFileSync('scripts/build-html.mjs', 'utf8'))
+  const app = readFileSync('docs/index.html', 'utf8')
+
+  /* THE SHELL GOES IN ONCE. The PWA injection is not idempotent and fails silently when
+     repeated: two manifest links against one `</head>`, and TWO service-worker
+     registrations racing each other's controllerchange (DEV-7). Nothing shipped was ever
+     affected — `npm run ship` always rebuilds first — but it happened in this working tree
+     while iterating on the manifest, which is exactly when somebody runs half a build. */
+  eq((app.match(/<link rel="manifest"/g) ?? []).length, 1, 'the PWA head was injected more than once')
+  eq((app.match(/serviceWorker\.register/g) ?? []).length, 1,
+    'the service worker is registered more than once, so two registrations race the update path')
+  /* the CONDITION, not the message. The first cut matched `already carries the PWA shell`,
+     which lives in the throw the mutant leaves untouched — so switching the check off with
+     `if (false)` sailed past it. Assert the thing that does the work. */
+  ok(/html\.includes\('rel="manifest"'\)/.test(gen) && /html\.includes\('serviceWorker\.register'\)/.test(gen),
+    'the build no longer refuses to inject the shell twice')
+
+  // 1. Bubblewrap reads the manifest to generate the Android project
+  for (const k of ['id', 'name', 'short_name', 'description', 'lang', 'dir', 'categories',
+    'start_url', 'scope', 'display', 'orientation', 'background_color', 'theme_color'])
+    ok(mf[k] !== undefined && String(mf[k]).length, `the manifest has no ${k}, which Bubblewrap or Play wants`)
+  eq(mf.display, 'standalone', 'the app would launch in a browser chrome')
+  ok(/^#[0-9a-f]{6}$/i.test(mf.theme_color) && /^#[0-9a-f]{6}$/i.test(mf.background_color),
+    'a colour Android has to parse is not a plain hex triple')
+
+  /* 2. THE MASKABLE ICON IS ITS OWN FILE. Android's safe zone is the centred circle of 80%
+        diameter and the plain artwork does not fit it — the bottom hold sits ~208px from
+        centre against a 205px radius — so relabelling the plain icon as maskable gets it
+        shaved by a round launcher mask and loses the contour lines entirely. */
+  const mask = mf.icons.filter(i => i.purpose === 'maskable')
+  eq(mask.length, 1, `${mask.length} maskable icons declared, not one`)
+  const plain = mf.icons.filter(i => i.purpose === 'any').map(i => i.src)
+  ok(!plain.includes(mask[0].src),
+    'the maskable icon is the plain icon relabelled, so a round mask will crop the artwork')
+  ok(/icon-maskable-512\.png[^\n]*purpose: 'maskable'/.test(gen),
+    'the build no longer emits a separate maskable icon, so the next build relabels the plain one')
+  for (const i of mf.icons) ok(existsSync(`docs/${i.src.replace('./', '')}`), `${i.src} is declared and missing`)
+  // ...and it is really the 80% variant, not a copy that happens to have another name
+  const a = readFileSync('docs/icon-512.png'), b = readFileSync('docs/' + mask[0].src.replace('./', ''))
+  ok(!a.equals(b), 'the maskable icon is byte-identical to the plain one, so it is not a safe-zone variant')
+
+  /* 3. `.nojekyll` IS LOAD-BEARING for this ticket. Pages runs Jekyll without it, and Jekyll
+        drops directories beginning with a dot — so `.well-known/assetlinks.json` would 404,
+        the TWA would keep its URL bar, and nothing would say why. */
+  ok(existsSync('docs/.nojekyll'),
+    'docs/.nojekyll is gone, so Pages will run Jekyll and .well-known/assetlinks.json will 404')
+  ok(/writeFileSync\(join\('docs', '\.nojekyll'\)/.test(gen),
+    'the build no longer emits .nojekyll, so the next build drops it and Pages runs Jekyll')
+
+  /* 4. NEVER A PLACEHOLDER FINGERPRINT. A stub assetlinks.json serves, fails verification
+        silently, and leaves a URL bar nobody can explain — worse than having no file. */
+  ok(/SANDBAGGED_SHA256/.test(gen), 'the build no longer takes a fingerprint, so assetlinks can never be written')
+  ok(/\{31\}/.test(gen) || /([0-9A-F]\{2\}:)/.test(gen), 'the build no longer validates the fingerprint shape')
+  ok(/refusing/.test(gen), 'the build no longer refuses a malformed fingerprint')
+  if (existsSync('docs/.well-known/assetlinks.json')) {
+    const al = JSON.parse(readFileSync('docs/.well-known/assetlinks.json', 'utf8'))
+    const fp = al[0]?.target?.sha256_cert_fingerprints?.[0] ?? ''
+    ok(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(fp), `assetlinks carries ${JSON.stringify(fp)}, which is not a fingerprint`)
+    ok(!/^(AA:|00:|XX)/i.test(fp), 'assetlinks carries a placeholder fingerprint, which fails verification silently')
+  }
+
+  /* 5. THE PRIVACY POLICY MUST STAY TRUE. Play requires the URL; the page says the game
+        collects nothing and talks to nothing, and that was verified against the BUILT file
+        rather than from memory. If the bundle grows a tracker or a remote host, the page
+        becomes a false statement on a store listing — so it is asserted, not trusted. */
+  ok(existsSync('docs/privacy.html'), 'the privacy policy is gone, and Play requires the URL')
+  ok(/writeFileSync\(join\('docs', 'privacy\.html'\), privacy\)/.test(gen),
+    'the build no longer emits the privacy policy, so the next build drops the URL Play requires')
+  const pv = readFileSync('docs/privacy.html', 'utf8')
+  ok(/does not collect, transmit, or share any personal data/.test(pv), 'the policy no longer makes its central claim')
+  for (const bad of ['google-analytics', 'googletagmanager', 'gtag(', 'plausible.io', 'sentry.io',
+    'mixpanel', 'segment.com', 'facebook.net', 'doubleclick'])
+    ok(!app.includes(bad), `the bundle contains ${bad}, and docs/privacy.html tells Play there is no tracking`)
+  ok(!/navigator\.sendBeacon/.test(app), 'the bundle can beacon out, and the privacy policy says nothing leaves the device')
+  // the only external hosts in the build are React's licence URL and the SVG namespace
+  const hosts = [...new Set([...app.matchAll(/https?:\/\/([a-z0-9.-]+)/gi)].map(m => m[1].toLowerCase()))]
+  const allowed = new Set(['www.w3.org', 'react.dev'])
+  for (const h of hosts) ok(allowed.has(h), `the build references ${h}; the privacy policy says it talks to nothing`)
+
+  /* 6. THE PACKAGING CONFIG AND THE SITE HAVE TO AGREE, or Bubblewrap generates an app whose
+        asset-link check can never pass. */
+  ok(existsSync('ship/twa-manifest.json'), 'the Bubblewrap config is gone')
+  const twa = JSON.parse(readFileSync('ship/twa-manifest.json', 'utf8'))
+  ok(twa.webManifestUrl.endsWith('/manifest.webmanifest'), 'the TWA config points at no web manifest')
+  ok(twa.webManifestUrl.includes(twa.host), `the TWA config's host ${twa.host} is not where it reads the manifest from`)
+  ok(twa.maskableIconUrl.endsWith(mask[0].src.replace('./', '')),
+    'the TWA config and the web manifest name different maskable icons')
+  ok(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(twa.packageId), `${twa.packageId} is not a valid Android package id`)
+  eq(twa.display, mf.display, 'the TWA and the web manifest disagree about display mode')
+  eq(twa.orientation, mf.orientation, 'the TWA and the web manifest disagree about orientation')
+
+  /* 7. A DOCUMENT THAT MAKES A CLAIM ABOUT THE REPO IS CHECKED AGAINST THE REPO. ship/README.md
+        tells Evan the keystore is gitignored, and that is exactly the kind of sentence that is
+        true when written and false a month later — at the cost of committing a signing key. */
+  /* `.gitignore` comments with `#`, and a rule commented out still contains its own text.
+     Reading the ACTIVE rules is the difference between guarding the signing key and
+     guarding a sentence about it — an injection comments this exact rule out. */
+  const rules = readFileSync('.gitignore', 'utf8').split('\n')
+    .map(l => l.trim()).filter(l => l && !l.startsWith('#'))
+  for (const want of ['ship/*.keystore', 'ship/*.jks'])
+    ok(rules.includes(want),
+      `${want} is not an active gitignore rule, and ship/README.md tells Evan the signing key is ignored`)
+  const rd = readFileSync('ship/README.md', 'utf8')
+  ok(rd.includes(twa.packageId), 'the checklist and the TWA config name different packages')
+  ok(rd.includes('privacy.html'), 'the checklist no longer tells Evan the privacy URL Play asks for')
+  ok(/\.nojekyll/.test(rd), 'the checklist no longer records why .nojekyll is load-bearing')
+})
 test('BAL-13: the act diagnostic measures pressure, not just deaths', () => {
   /* BAL-13 read "act 1 kills ~3% of runs against act 3's 34%" for many versions, and the
      death rate is the wrong number — it says act 1 is not lethal, where the complaint is
@@ -5448,7 +5566,8 @@ test('GUARD-9: the kept injections still injure something', () => {
          byte-compares them at exit, so anything outside the tree would be restored from
          nothing. `scripts/build-html.mjs` is source by every measure that matters here:
          DEV-2's guard already reads it as the source of truth for the service worker. */
-      ok(/^(src|sim|scripts)\//.test(file), `${m.id} patches ${JSON.stringify(file)}, which is not a source path`)
+      ok(/^(src|sim|scripts|ship|docs|\.gitignore)/.test(file),
+        `${m.id} patches ${JSON.stringify(file)}, which is not a source path`)
       ok(from !== to, `${m.id} patches ${file} to exactly what it already says`)
       ok(from.length > 12, `${m.id} has an anchor too short to be unique on purpose`)
     }
