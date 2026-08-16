@@ -822,6 +822,38 @@ export const MUTANTS = [
     why: 'THE EXPENSIVE ONE: the signing key stops being gitignored while the checklist still says it is',
     catches: 'is not an active gitignore rule',
     patch: [['.gitignore', 'ship/*.keystore', '# ship/*.keystore']] },
+
+  // ---- SKIRM-9: the circuit ending wears its own furniture -------------------------
+  { id: 'SKIRM-9/trip-furniture-returns', suite: 'core',
+    why: 'THE BUG: CIRCUIT OVER goes back to naming an act and a stage on a mode that has neither',
+    catches: 'no longer tells a circuit from a trip',
+    patch: [['src/App.tsx', '        <div className="sub">{st.circuit\n          ? <>the circuit',
+      '        <div className="sub">{false\n          ? <>the circuit']] },
+  { id: 'SKIRM-9/zone-dropped', suite: 'core',
+    why: 'the circuit ending stops naming its zone, so it has no furniture of its own at all',
+    catches: 'does not name its zone',
+    patch: [['src/App.tsx', 'the circuit · {circuitZone(st.circuitScore).name.toLowerCase()} · deck',
+      'the circuit · deck']] },
+  { id: 'SKIRM-9/trip-loses-its-own', suite: 'core',
+    why: 'the fix overreaches and the TRIP ending loses the act and stage it is supposed to show',
+    catches: 'the trip ending lost the act and stage',
+    patch: [['src/App.tsx', ': <>{ACT_NAMES[st.act]} · stage {st.tier + 1} · deck {st.runDeck.length}</>}',
+      ': <>deck {st.runDeck.length}</>}']] },
+
+  // ---- PERF-2: the bundle is measured, and the size is pinned ----------------------
+  { id: 'PERF-2/throttle-dropped', suite: 'core',
+    why: 'the perf script stops throttling, so it measures this machine rather than a phone and the answer stops meaning anything',
+    catches: 'no longer throttles both measurements',
+    patch: [['scripts/perf.mjs', "if (rate > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate })   // throttle AFTER setup",
+      '// throttle AFTER setup']] },
+  { id: 'PERF-2/rates-narrowed', suite: 'core',
+    why: 'the sweep stops covering the rates the answer was measured at',
+    catches: 'no longer sweeps the throttle rates',
+    patch: [['scripts/perf.mjs', 'for (const rate of [1, 4, 6]) {\n  const runs = []', 'for (const rate of [1]) {\n  const runs = []']] },
+  { id: 'PERF-2/script-unhooked', suite: 'core',
+    why: 'npm run perf is removed, so nobody re-measures before re-asking the question',
+    catches: 'npm run perf is gone',
+    patch: [['package.json', '"perf": "node scripts/perf.mjs"', '"perf-disabled": "node scripts/perf.mjs"']] },
 ]
 
 /* ---- the runner -------------------------------------------------------------- */

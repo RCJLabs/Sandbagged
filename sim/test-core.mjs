@@ -10,6 +10,7 @@
  */
 import { build } from 'esbuild'
 import { readFileSync, existsSync } from 'node:fs'
+import { gzipSync } from 'node:zlib'
 import { unlinkSync } from 'node:fs'
 
 const results = []
@@ -4083,6 +4084,99 @@ test('ROUTE-12: a signature does something, and the grind lines get one too', ()
     skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
   eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
 })
+test('PERF-2: the bundle is measured, and the size is pinned', () => {
+  /* PERF-2 — "the 190KB question" — asked whether React's weight matters on a mid-range
+     phone and called it unmeasured. Measured (v10.35, `npm run perf`), the row's premise
+     was stale in both numbers and the answer is no.
+
+       react + react-dom alone   190 KB raw    59 KB gzip
+       the whole build           497 KB raw   157 KB gzip
+       so the game itself        307 KB raw   ~98 KB gzip
+
+     React is 38% of it, not "most of the bundle", and the game — not React — is what grew.
+     Bytes were never the question anyway; what a big bundle costs on a slow CPU is parse,
+     compile and first render, so that is what was timed, under Chromium CPU throttling
+     (4x ~ mid-tier phone, 6x ~ low end):
+
+       throttle   interactive   first paint   turn repaint
+       1x              115 ms        --            20 ms
+       4x              378 ms       592 ms         50 ms
+       6x              605 ms       832 ms        110 ms
+
+     A mid-tier phone has the game up in about a third of a second and repaints a turn in
+     50 ms. React's share of that boot is bounded by its share of the script — call it 90 ms
+     on a mid-tier phone — and buying it back means hand-rolling a renderer under four
+     thousand lines of App.tsx. THE ANSWER IS THAT IT DOES NOT MATTER, and the question is
+     closed rather than left open for somebody to re-ask.
+
+     WHAT IS PINNED is the size, because that answer holds at this size and not at any size.
+     The ceiling is generous — roughly a third above today — so it is a tripwire for a
+     dependency arriving, not a budget to manage. If it fires, re-run `npm run perf` and
+     decide with numbers rather than reverting to the guess this ticket replaced. */
+  const raw = readFileSync('docs/index.html')
+  const kb = raw.length / 1024
+  ok(kb < 700, `the build is ${kb.toFixed(0)} KB raw, past the 700 KB tripwire — re-run \`npm run perf\` before assuming it is fine`)
+  ok(kb > 200, `the build is only ${kb.toFixed(0)} KB, which means it is not the whole game`)
+  const gz = gzipSync(raw, { level: 9 }).length / 1024
+  ok(gz < 230, `the build is ${gz.toFixed(0)} KB gzipped, past the 230 KB tripwire — measure before shipping it`)
+
+  // the measurement has to stay runnable, or the note above is unverifiable
+  ok(existsSync('scripts/perf.mjs'), 'the perf measurement is gone, so PERF-2 cannot be re-answered')
+  const perf = readFileSync('scripts/perf.mjs', 'utf8')
+  /* BOTH sites. The script throttles twice — once for the boot and once, after setup, for
+     the turn — and a check for the string anywhere would pass with either one removed,
+     which is exactly how you would end up quoting a phone number measured on a desktop. */
+  eq((perf.match(/Emulation\.setCPUThrottlingRate/g) ?? []).length, 2,
+    'the perf script no longer throttles both measurements, so one of them reports this machine rather than a phone')
+  /* Both sweeps again — boot and turn each iterate the rates, and checking for the literal
+     anywhere passes with one narrowed. Third time in this ticket that a repeated fragment
+     made a single-match assertion vacuous; count when the fragment repeats. */
+  eq((perf.match(/\[1, 4, 6\]/g) ?? []).length, 2,
+    'the perf script no longer sweeps the throttle rates the answer was measured at')
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
+  eq(pkg.scripts.perf, 'node scripts/perf.mjs', 'npm run perf is gone')
+})
+test('SKIRM-9: the circuit ending wears its own furniture', () => {
+  /* Found while shipping NARR-15 and logged rather than bundled, because that ticket was
+     about who SPEAKS. The run-end screen's subtitle was unconditional:
+
+         {ACT_NAMES[st.act]} · stage {st.tier + 1} · deck {st.runDeck.length}
+
+     A circuit is not a trip. It has no acts and no stages, so on CIRCUIT OVER it read
+     "Act 1 · the forest · stage 1" — the act and stage a run happens to have been left on.
+     Same class SKIRM-8 caught twice on the walk-off: a route header naming a route you were
+     never on, and "Burns used 3/3. Got 6 of 5".
+
+     The circuit's own furniture is its zone, worded exactly as the walk-off words it so the
+     mode's two endings read alike. The deck is the one number that means the same thing in
+     both modes, so it stays on both. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const end = region(app, "if (st.phase === 'runEnd')", ["if (st.phase === '"],
+    { min: 800, what: 'the run-end screen' })
+  /* No window anchored on the condition. The first cut took the subtitle with
+     `region(end, '<div className="sub">{st.circuit', ...)`, so switching the branch off
+     moved the ANCHOR and the window failed before the assertion could — GUARD-8 reported a
+     broken guard where the guard was fine and the code was wrong. Same shape A11Y-9 hit.
+     An anchor must not contain the thing it is testing. */
+  ok(/the circuit · \{circuitZone\(st\.circuitScore\)\.name\.toLowerCase\(\)\}/.test(end),
+    'the circuit ending does not name its zone')
+  /* the two endings of one mode have to word it the same way, or they read as two features */
+  const sess = region(app, "if (st.phase === 'sessionEnd')", ["if (st.phase === '"],
+    { min: 800, what: 'the session-end screen' })
+  ok(/the circuit · \{zone\.name\.toLowerCase\(\)\}/.test(sess),
+    'the walk-off screen no longer words the zone the way the other ending does')
+  /* The CONDITION, and then the branch. Asserting only that the branch text exists would
+     pass with the whole thing switched off — the words stay in the file either way. */
+  ok(/<div className="sub">\{st\.circuit/.test(end),
+    'the run-end subtitle no longer tells a circuit from a trip, so it is back to naming an act and a stage it does not have')
+  const circuitBranch = region(end, '? <>the circuit', [': <>'],
+    { min: 40, what: 'the circuit branch of the run-end subtitle' })
+  ok(!/ACT_NAMES/.test(circuitBranch) && !/st\.tier/.test(circuitBranch),
+    'the circuit branch names an act or a stage, which a circuit does not have')
+  // ...while a trip keeps them, because for a trip they are the right numbers
+  ok(/ACT_NAMES\[st\.act\]\} · stage \{st\.tier \+ 1\}/.test(end),
+    'the trip ending lost the act and stage it is supposed to show')
+})
 test('SHIP-3: the site is packageable, and the claims about it are true', () => {
   /* SHIP-3 is packaging rather than porting — one self-contained HTML file with no external
      requests. Everything that does not need a Play account is in the repo; what is left needs
@@ -5566,7 +5660,7 @@ test('GUARD-9: the kept injections still injure something', () => {
          byte-compares them at exit, so anything outside the tree would be restored from
          nothing. `scripts/build-html.mjs` is source by every measure that matters here:
          DEV-2's guard already reads it as the source of truth for the service worker. */
-      ok(/^(src|sim|scripts|ship|docs|\.gitignore)/.test(file),
+      ok(/^(src|sim|scripts|ship|docs|\.gitignore|package\.json)/.test(file),
         `${m.id} patches ${JSON.stringify(file)}, which is not a source path`)
       ok(from !== to, `${m.id} patches ${file} to exactly what it already says`)
       ok(from.length > 12, `${m.id} has an anchor too short to be unique on purpose`)

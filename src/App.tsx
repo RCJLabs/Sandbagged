@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.34 — SHIP-3: everything for Play that does not need Evan's account —
-//   maskable icon, privacy page, Bubblewrap config, and a checklist for the rest
+// SANDBAGGED v10.35 — SKIRM-9: the circuit ending stops wearing trip furniture, and
+//   PERF-2 is answered — React is 38% of the bundle and costs ~90ms on a mid-tier phone
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1458,7 +1458,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.34 · RCJ Labs</div>
+          <div className="sfoot">v10.35 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1687,7 +1687,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.34 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.35 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -3236,8 +3236,16 @@ export default function App() {
     return (
       <div className={skin}>
         <div className="h1" role="heading" aria-level={1}>{st.circuit ? 'CIRCUIT OVER' : won ? 'THE LOST LINE GOES' : 'RUN OVER'}</div>
-        {/* UX-11: this said "Act 1" whatever act you actually died in */}
-        <div className="sub">{ACT_NAMES[st.act]} · stage {st.tier + 1} · deck {st.runDeck.length}</div>
+        {/* UX-11: this said "Act 1" whatever act you actually died in.
+            SKIRM-9: and then it said "Act 1 · the forest · stage 1" on a CIRCUIT, which is
+            not a trip and has no acts or stages — the same class SKIRM-8 caught twice on
+            the walk-off (a route header naming a route you were never on, and "Burns used
+            3/3. Got 6 of 5"). The circuit's own furniture is its zone, worded exactly as
+            the walk-off screen words it so the mode's two endings read alike. The deck is
+            the one number that means the same thing either way, so it stays on both. */}
+        <div className="sub">{st.circuit
+          ? <>the circuit · {circuitZone(st.circuitScore).name.toLowerCase()} · deck {st.runDeck.length}</>
+          : <>{ACT_NAMES[st.act]} · stage {st.tier + 1} · deck {st.runDeck.length}</>}</div>
         <hr className="rule" />
         <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.6, margin: '10px 0' }}>
           {st.circuit
