@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.36 — A11Y-10: a screen change moves focus to its heading, so every
-//   screen announces instead of three. BAL-17 decided: the floor stays at 5.
+// SANDBAGGED v10.37 — SAVE-7: starting an expedition wiped the journal, so the game's
+//   only meta-progression reset every trip. Found while closing NARR-9 as stale.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1488,7 +1488,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.36 · RCJ Labs</div>
+          <div className="sfoot">v10.37 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1717,7 +1717,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.36 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.37 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

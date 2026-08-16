@@ -4084,6 +4084,79 @@ test('ROUTE-12: a signature does something, and the grind lines get one too', ()
     skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
   eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
 })
+test('SAVE-7: a new expedition carries everything that is yours', () => {
+  /* `carryOver`'s own docstring says "Everything that belongs to you rather than to a run.
+     A new expedition must carry all of it; hand-copying a subset is how it got lost."
+     It was hand-copying a subset, and two things had got lost — sitting directly under
+     that sentence for as long as the function existed:
+
+       journal      the game's ONLY meta-progression (NARR-1). Saved and loaded as ACCOUNT
+                    state, dropped by carryOver, so starting an expedition reset it to []
+                    and the next autosave wrote the empty array to disk. You find about two
+                    pages a run; the "known" ending needs ten and the `everypage` deed needs
+                    all fourteen — both unreachable in normal play.
+       dailyTried   SAVE-4's anti-farm gate: you have had your go today even if you bailed.
+                    `dailyDay` was carried and this was not, so starting the daily, coming
+                    off it, and starting an expedition made `dailyUsed` read false again.
+
+     Found while auditing NARR-9, which asked for MORE journal pages on the premise that you
+     read most of them in one run. You read two, and then lost them.
+
+     THIS GUARD DOES NOT NAME THOSE TWO. It diffs what `saveGame` writes as account state
+     against what `carryOver` hands a new run, so the NEXT field added to the save fails
+     here rather than going quiet for a year. That is the difference between fixing two
+     fields and fixing the thing that lost them. */
+  /* BEHAVIOUR FIRST, then the structural rule. A source diff that runs first reports
+     "a field is missing" for a bug whose real symptom is "your journal resets", and the
+     specific message is the more useful one to land on. */
+  const acctState = { ...E.freshRun(0, 0, 1), journal: [1, 2, 3, 4, 5], dailyTried: '2026-08-16', runs: 3 }
+  const started = { ...E.newRun(99, undefined, 0, 0, []), ...E.carryOver(acctState), ...E.modeReset() }
+  eq(JSON.stringify(started.journal), '[1,2,3,4,5]',
+    'the journal does not survive starting an expedition, so the only meta-progression resets')
+  /* `eq` on the field, and NOT a follow-up `ok(dailyUsed(...))`: with dailyTried carried
+     correctly, dailyUsed is true by construction, so that assertion could never be the one
+     that fires. Same vacuous shape SKIRM-8 cut two of. What it was there to say is worth
+     saying, so it is said here: the consequence of losing this field is that starting the
+     daily, coming off it and starting a trip makes `dailyUsed` read false and SAVE-4's
+     one-go rule stops holding. */
+  eq(started.dailyTried, '2026-08-16',
+    'dailyTried does not survive starting an expedition, so the daily can be retried by starting a trip (SAVE-4)')
+
+  const eng = readFileSync('src/engine.ts', 'utf8')
+
+  const save = region(eng, 'export function saveGame', ['export function loadGame'],
+    { min: 400, what: 'saveGame' })
+  // account state is everything OUTSIDE the `run:` block — that block is the run's own
+  const runAt = save.indexOf('run:')
+  ok(runAt > 0, 'saveGame no longer has a run block, so account and run state cannot be told apart')
+  const acct = new Set([...save.slice(0, runAt).matchAll(/(\w+):\s*s\.\w+/g)].map(m => m[1]))
+  const co = region(eng, 'export function carryOver', ['\n}'], { min: 300, what: 'carryOver' })
+  const carried = new Set([...co.matchAll(/(\w+):\s*s\.\w+/g)].map(m => m[1]))
+
+  /* The five that are account state and legitimately NOT carried, each for a stated
+     reason. Anything else missing is the SAVE-7 bug happening again. */
+  const EXEMPT = {
+    arch: 'passed to newRun as an argument, which sets it',
+    style: 'passed to newRun as an argument',
+    mutators: 'passed to newRun as an argument, and it acts on them while building the run',
+    loadout: 'passed to newRun as an argument (as loadouts[arch])',
+    challenge: 'a mode flag, and modeReset() clears every one of them on purpose (MODE-1)',
+  }
+  const missing = [...acct].filter(k => !carried.has(k) && !(k in EXEMPT))
+  eq(missing.length, 0,
+    `saveGame keeps ${missing.join(', ')} as account state and carryOver does not hand ${
+      missing.length === 1 ? 'it' : 'them'} to a new expedition — that is SAVE-7 again`)
+  // and the exemptions have to stay true: each must really be an argument to newRun
+  const start = region(readFileSync('src/App.tsx', 'utf8'), '    const r = newRun(', ['\n'],
+    { min: 30, what: 'the run-start call' })
+  for (const k of ['style', 'arch', 'mutators'])
+    ok(new RegExp(`st\\.${k}`).test(start), `${k} is exempt because newRun takes it, and it no longer does`)
+
+  /* The pages are worth having, which is the reason any of this matters: the ending reads
+     them, and the deed asks for all of them. Neither is reachable if they reset. */
+  ok(E.KNOWN_AT > 2, 'the known ending needs more pages than one run finds, which is the point of persisting them')
+  ok(E.DEEDS.some(d => d.id === 'everypage'), 'the every-page deed is gone')
+})
 test('A11Y-10: a screen change announces, on every screen', () => {
   /* A11Y-9 settled the rule that a live region is for what appears while you are already
      on a screen, and left three blocks carrying `role="status"` while being present when

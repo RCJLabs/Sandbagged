@@ -873,6 +873,26 @@ export const MUTANTS = [
     catches: 'so it is read twice',
     patch: [['src/App.tsx', '        {mate ? (\n          <div className="spot" style={{ borderLeftColor: \'var(--tan)\' }}>',
       '        {mate ? (\n          <div className="spot" style={{ borderLeftColor: \'var(--tan)\' }} role="status">']] },
+
+  // ---- SAVE-7: a new expedition carries everything that is yours --------------------
+  { id: 'SAVE-7/journal-lost', suite: 'core',
+    why: 'THE BUG: the journal stops being carried, so the only meta-progression resets on every expedition and the autosave writes the empty array',
+    catches: 'the only meta-progression resets',
+    patch: [['src/engine.ts', '    journal: s.journal, dailyTried: s.dailyTried,', '    dailyTried: s.dailyTried,']] },
+  { id: 'SAVE-7/daily-gate-lost', suite: 'core',
+    why: "SAVE-4's anti-farm gate stops being carried, so starting a trip makes today's daily available again",
+    catches: 'dailyTried does not survive starting an expedition',
+    patch: [['src/engine.ts', '    journal: s.journal, dailyTried: s.dailyTried,', '    journal: s.journal,']] },
+  { id: 'SAVE-7/diff-stops-diffing', suite: 'core',
+    why: 'a new account field is added to the save and not carried — the next instance of this bug, which the guard exists to catch',
+    catches: 'that is SAVE-7 again',
+    patch: [['src/engine.ts', '      sends: s.sends, wins: s.wins, journal: s.journal, loadout: s.loadout,',
+      '      sends: s.sends, wins: s.wins, journal: s.journal, loadout: s.loadout, trophies: s.trophies,']] },
+  { id: 'SAVE-7/exemption-goes-stale', suite: 'core',
+    why: 'a field stays exempt on the grounds that newRun takes it, after newRun stops taking it',
+    catches: 'it no longer does',
+    patch: [['src/App.tsx', 'newRun(pickSeed(), st.loadouts[st.arch], st.style, st.arch, st.mutators)',
+      'newRun(pickSeed(), st.loadouts[st.arch], st.style, st.arch, [])']] },
 ]
 
 /* ---- the runner -------------------------------------------------------------- */

@@ -3978,9 +3978,30 @@ export function modeReset(): Pick<GameState, typeof MODE_FLAGS[number]> {
 }
 
 /** Everything that belongs to you rather than to a run. A new expedition must
-    carry all of it; hand-copying a subset is how it got lost. */
+    carry all of it; hand-copying a subset is how it got lost.
+
+    SAVE-7: and it got lost. This list was missing two fields the save writes as ACCOUNT
+    state, which is the exact failure the sentence above warns about, sitting directly
+    under it since the function was written:
+
+      `journal` — the game's ONLY meta-progression (NARR-1's words). Saved and loaded at
+        account level, and dropped here, so starting an expedition reset it to [] and the
+        next autosave wrote the empty array to disk. You find about two pages a run, the
+        "known" ending needs ten and the `everypage` deed needs all fourteen — so BOTH
+        were unreachable in normal play, and had been for as long as this function existed.
+        Found while auditing NARR-9, which asked for MORE pages on the premise that you
+        read most of them in one run; you read two, and then lost them.
+
+      `dailyTried` — SAVE-4's anti-farm gate, the one that says you have had your go today
+        even if you bailed. `dailyDay` was carried and this was not, so: start the daily,
+        come off it, start an expedition, and `dailyUsed` reads false again.
+
+    The guard does not check for these two by name. It diffs what `saveGame` writes as
+    account state against what this function returns, so the NEXT field added to the save
+    fails the suite instead of going quiet for a year. */
 export function carryOver(s: GameState): Partial<GameState> {
   return {
+    journal: s.journal, dailyTried: s.dailyTried,
     level: s.level, xp: s.xp, owned: s.owned, sends: s.sends, wins: s.wins,
     runs: s.runs, falls: s.falls, seen: s.seen, book: s.book, ticked: s.ticked,
     established: s.established, history: s.history, bestCircuit: s.bestCircuit,
