@@ -123,8 +123,22 @@ function runOnce(seed) {
     if (JOURNAL_PAGES) s = { ...s, journal: E.JOURNAL.filter(j => j.id !== 7)
       .map(j => j.id).slice(0, JOURNAL_PAGES) }
     let turns = 0, climbs = 0, events = 0, talks = 0, projects = 0, shops = 0, fas = 0, rests = 0, winds = 0, guard = 0, skinAtBoss = -1, reachedBoss = false
+    /* BAL-13: what an act COSTS, not just how often it kills. Recorded at the boundary
+       and nowhere read by the policy, so this cannot move a decision or a roll. */
+    let lastAct = s.act
+    const actExit = []
+    /* The exit value is post-camp, so it says "you can always recover" rather than "you
+       were never under pressure". The trough is the one that answers the complaint. */
+    let lowSkin = s.skin, lowPsyche = s.psyche, camps = 0
     const ACTS_LAST = E.ACTS.length - 1   // "reached the boss" must mean the LAST one
     while (s.phase !== 'runEnd' && guard++ < 400) {
+      if (s.skin < lowSkin) lowSkin = s.skin
+      if (s.psyche < lowPsyche) lowPsyche = s.psyche
+      if (s.act !== lastAct) {
+        actExit.push({ act: lastAct, skin: s.skin, psyche: s.psyche, cash: s.cash,
+          deck: s.runDeck.length, turn: turns, lowSkin, lowPsyche, camps })
+        lastAct = s.act; lowSkin = s.skin; lowPsyche = s.psyche; camps = 0
+      }
       if (s.phase === 'map') {
         const tier = E.ACTS[s.act][s.tier]
         const camp = tier.find(n => n.type === 'camp')
@@ -149,6 +163,7 @@ function runOnce(seed) {
         }
         else n = climb ?? tier[0]
         if (n.type === 'camp') {
+          camps++
           // talk first if anyone is there — it is free and sometimes pays
           const talk = E.availableTalk(s)
           if (talk) {
@@ -344,7 +359,7 @@ function runOnce(seed) {
       deck: s.runDeck.length, skin: s.skin, skinAtBoss, reachedBoss, events, gear: s.gear.length,
       trail: s.trail.length, journal: s.journal.length, talks, projects, shops, fas, rests, faSent: s.faSent ?? 0,
       winds,
-      cash: s.cash, psyche: s.psyche,
+      cash: s.cash, psyche: s.psyche, actExit,
       held: s.gear.length + s.boons.length,
       killedBy: s.result === 'send' ? 'won' : (s.psyche <= 0 ? 'psyche' : s.skin <= 0 ? 'skin' : 'route'),
       sharpened: s.sharpened ?? 0,
@@ -511,6 +526,59 @@ if (mode === 'campaign') {
       `   winds ${windsT}`)
   }
   JOURNAL_PAGES = 0
+}
+
+/* BAL-13: act 1 is a formality — it kills ~3% of runs against act 3's 34%, so the first
+   twenty minutes cannot go wrong. Two attempts have failed: v9.36 tried route length and
+   took the climber spread from 1.4x to 2.9x, and v9.88's boss phases were measured
+   band-neutral because the early bosses are not the completion bottleneck.
+   This measures what act 1 actually COSTS rather than how often it kills, because
+   "cannot go wrong" and "rarely kills" are different claims and only the first is the
+   complaint. If every run leaves act 1 in the same shape, act 1 has no consequences at
+   all — and that is a sharper problem than a low death rate, with different fixes. */
+if (mode === 'acts') {
+  LOADOUT = buildBest()
+  console.log('What each act costs — state on the way OUT of it\n')
+  const rng = new E.RNG(777)
+  const per = [[], [], []]
+  let died = [0, 0, 0], won = 0
+  for (let i = 0; i < N; i++) {
+    const r = runOnce(Math.floor(rng.next() * 2 ** 31))
+    if (r.won) won++; else died[r.act]++
+    for (const e of r.actExit) if (per[e.act]) per[e.act].push(e)
+  }
+  const stat = (xs, k) => {
+    const v = xs.map(x => x[k]).sort((a, b) => a - b)
+    if (!v.length) return '   —  '
+    const mean = v.reduce((a, b) => a + b, 0) / v.length
+    const sd = Math.sqrt(v.reduce((a, b) => a + (b - mean) ** 2, 0) / v.length)
+    return `${mean.toFixed(1).padStart(5)} ±${sd.toFixed(1).padStart(4)}  [${v[0]}–${v[v.length - 1]}]`
+  }
+  console.log('act  reached   LOWEST skin       LOWEST psyche     camps             exit skin         deck')
+  for (let a = 0; a < 3; a++) {
+    const xs = per[a]
+    console.log(`  ${a + 1}  ${String(xs.length).padStart(5)}   ` +
+      ['lowSkin', 'lowPsyche', 'camps', 'skin', 'deck'].map(k => stat(xs, k).padEnd(18)).join(''))
+  }
+  // how often did the act ever put you in real trouble?
+  for (let a = 0; a < 2; a++) {
+    const xs = per[a]; if (!xs.length) continue
+    const tight = xs.filter(x => x.lowSkin <= 3).length
+    const shaken = xs.filter(x => x.lowPsyche <= 1).length
+    console.log(`  act ${a + 1}: skin ever <=3 on ${(100 * tight / xs.length).toFixed(1)}% of runs, ` +
+      `psyche ever <=1 on ${(100 * shaken / xs.length).toFixed(1)}%`)
+  }
+  console.log(`\n  died: act1 ${(100 * died[0] / N).toFixed(1)}%  act2 ${(100 * died[1] / N).toFixed(1)}%  ` +
+    `act3 ${(100 * died[2] / N).toFixed(1)}%   completed ${(100 * won / N).toFixed(1)}%`)
+  /* THE POINT OF THE TABLE: the spread, not the mean. A run that can go wrong leaves an
+     act in a range of states; a formality leaves every run in the same one. */
+  const sd = a => {
+    const v = per[a].map(x => x.skin)
+    if (!v.length) return 0
+    const m = v.reduce((x, y) => x + y, 0) / v.length
+    return Math.sqrt(v.reduce((x, y) => x + (y - m) ** 2, 0) / v.length)
+  }
+  console.log(`  skin spread leaving each act: act1 ±${sd(0).toFixed(2)}  act2 ±${sd(1).toFixed(2)}\n`)
 }
 
 if (mode === 'arch') {

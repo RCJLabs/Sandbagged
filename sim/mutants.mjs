@@ -753,6 +753,29 @@ export const MUTANTS = [
     why: 'the projection draws from the rng, so looking at your result could change a run',
     catches: 'the share draws from the rng',
     patch: [['src/engine.ts', '    score: s.dailyScore,', '    score: s.dailyScore + new RNG(1).int(0),']] },
+
+  // ---- BAL-13: act 1 is frictionless, and no dial fixes that -----------------------
+  { id: 'BAL-13/diagnostic-gone', suite: 'core',
+    why: 'the acts diagnostic is removed, so the finding cannot be re-measured',
+    catches: 'the acts diagnostic is gone',
+    patch: [['sim/run.mjs', "if (mode === 'acts') {", "if (mode === 'acts-disabled') {"]] },
+  { id: 'BAL-13/trough-not-tracked', suite: 'core',
+    why: 'the probe goes back to the act-boundary value, which is post-camp and says "you can recover" instead of "you were under pressure"',
+    catches: 'the skin trough is not actually being tracked',
+    patch: [['sim/run.mjs', '      if (s.skin < lowSkin) lowSkin = s.skin',
+      '      if (false) lowSkin = s.skin']] },
+  { id: 'BAL-13/probe-touches-the-policy', suite: 'core',
+    why: 'the measurement probe reaches into the run loop, so it measures itself',
+    catches: 'measures itself',
+    patch: [['sim/run.mjs', '      if (s.skin < lowSkin) lowSkin = s.skin\n      if (s.psyche < lowPsyche) lowPsyche = s.psyche',
+      '      if (s.skin < lowSkin) lowSkin = s.skin\n      s = E.startBurn(s, rng)\n      if (s.psyche < lowPsyche) lowPsyche = s.psyche']] },
+  { id: 'BAL-13/act-1-grows-teeth', suite: 'slow',
+    why: 'THE THING THE PIN IS FOR: act 1 is given a flat approach cost, which is one of the five levers already known to blow the climber spread',
+    catches: 'under skin pressure',
+    patch: [['src/engine.ts', 'export function startBurn(s: GameState, rng: RNG): GameState {\n  const spec = specOf(s)',
+      'export function startBurn(s: GameState, rng: RNG): GameState {\n'
+      + '  if (s.inRun && s.burn === 1 && s.act === 0) s = { ...s, skin: Math.max(1, s.skin - 2) }\n'
+      + '  const spec = specOf(s)']] },
 ]
 
 /* ---- the runner -------------------------------------------------------------- */

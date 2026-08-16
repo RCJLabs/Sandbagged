@@ -2210,6 +2210,64 @@ if (SLOW) {
       `the deck the game builds completes ${built}% against the starter deck's ${deflt}% — it is offering to make you worse`)
     ok(built > 30, `the built deck completes only ${built}% of campaigns`)
   })
+  test('BAL-13: act 1 is frictionless, and no dial fixes that', () => {
+    /* BAL-13 says act 1 kills ~3% of runs against act 3's 34%, so the first twenty minutes
+       cannot go wrong. Measured properly (v10.33, `node sim/run.mjs acts`), the complaint is
+       sharper than the row and different in kind — act 1 is not merely non-lethal, it is
+       FRICTIONLESS:
+
+           act 1: skin ever <=3 on  4.3% of runs, psyche ever <=1 on 0.6%, 0.4 camps of 3 taken
+           act 2: skin ever <=3 on 30.2% of runs, psyche ever <=1 on 11.3%, 1.4 camps
+
+       You never spend the resources, so no act-1 decision is a decision: camping is not the
+       answer to a problem you never have. Psyche — the resource the game is themed on — is
+       touched on one run in 160.
+
+       FIVE LEVERS WERE SCREENED against all three bars at once (act-1 pressure, the ~44.3
+       band, and the climber spread). Every previous attempt checked only one of the three,
+       which is how v9.36 shipped a route-length change that took the spread 1.4x -> 2.9x.
+
+         fewer camps          no effect at all — removing recovery does nothing, because the
+         no between-act top-up   cost never accrues in the first place
+         flat 1-skin approach act-1 pressure 4.3% -> 28.7%, and the band went UP six points:
+                              the greedy policy answers a cost by taking all three act-1 camps
+                              (3.0 +/- 0.0 against 0.4) and trading climbs for camps. THE SLACK
+                              ABSORBS THE PRESSURE. Add the cost and cut act 1 to two camps and
+                              it does bite (53%) — at spread 4.45x with a climber on 4.0%.
+         +1 grip in act 1     spread 3.78x, lowest climber 2.3%, and -6 points of band
+         one fewer burn       spread 1.78x, lowest climber 2.7% (the control, and it behaved)
+
+       So: THREE INDEPENDENT MECHANISMS — skin, grip, attempts — each put a climber under the
+       5% floor the moment act 1 bites. A fourth, weather, is differential BY CONSTRUCTION and
+       needs no run to rule out: `archOf(s).ignoreWeather` means one archetype ignores it.
+
+       The reason is structural, and it is the thing to read before trying a sixth: act 1 is
+       the only stretch of the game where every climber is at FULL resources. That is exactly
+       why it is frictionless, and exactly why pressure there separates the roster hardest —
+       the differences compound over nine stages with nothing yet spent to recover from.
+       A dial cannot fix this. Changing act 1's SHAPE might; that is a design decision and is
+       Evan's, not a tuning pass.
+
+       WHAT THIS GUARD IS FOR: act 1 being soft is now a measured, deliberate property rather
+       than an oversight, so it is pinned like the band is. If it drifts — in either direction
+       — read the note above before "fixing" it, because five of the obvious fixes are already
+       known to fail and the evidence cost about forty thousand simulated runs. */
+    const out = execSync('node sim/run.mjs acts 600', { encoding: 'utf8', env: { ...process.env, PAGES: '14' } })
+    const rd = re => { const m = re.exec(out); return m ? Number(m[1]) : NaN }
+    const a1skin = rd(/act 1: skin ever <=3 on ([\d.]+)%/)
+    const a2skin = rd(/act 2: skin ever <=3 on ([\d.]+)%/)
+    ok(Number.isFinite(a1skin) && Number.isFinite(a2skin), 'could not read act pressure from the harness')
+
+    // act 1 is soft. Wide, because this is a tripwire and not a measurement.
+    ok(a1skin < 15, `act 1 now puts ${a1skin}% of runs under skin pressure — it used to be ~4%. ` +
+      'If that was deliberate, check the climber spread: every lever tried in BAL-13 that made ' +
+      'act 1 bite dropped a climber under the 5% floor.')
+    // ...and act 2 is not, so the contrast this ticket is about still exists
+    ok(a2skin > 15, `act 2 only puts ${a2skin}% of runs under skin pressure, so the act-1 contrast has gone`)
+    ok(a2skin > a1skin * 2, `act 1 (${a1skin}%) and act 2 (${a2skin}%) are no longer different in kind`)
+
+    // (the diagnostic's own shape is asserted in the core suite, where it costs nothing)
+  })
   test('campaign completion stays in a sane band', () => {
 
     const out = execSync('node sim/run.mjs campaign 150', { encoding: 'utf8' })

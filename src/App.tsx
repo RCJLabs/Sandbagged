@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.32 — ART-4: the day comes out as a picture. No download link — the
-//   share sheet takes the file, or you press and hold the image, which is how phones work
+// SANDBAGGED v10.33 — BAL-13: act 1 is frictionless rather than merely non-lethal, and
+//   five levers were screened to establish that no dial fixes it. No game change.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1458,7 +1458,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.32 · RCJ Labs</div>
+          <div className="sfoot">v10.33 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1687,7 +1687,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.32 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.33 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

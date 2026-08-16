@@ -4083,6 +4083,34 @@ test('ROUTE-12: a signature does something, and the grind lines get one too', ()
     skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
   eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
 })
+test('BAL-13: the act diagnostic measures pressure, not just deaths', () => {
+  /* BAL-13 read "act 1 kills ~3% of runs against act 3's 34%" for many versions, and the
+     death rate is the wrong number — it says act 1 is not lethal, where the complaint is
+     that act 1 is FRICTIONLESS. Measured (v10.33): act 1 puts 4.3% of runs under skin
+     pressure against act 2's 30.2%, touches psyche on 0.6% against 11.3%, and takes 0.4 of
+     the three camps it offers. You never spend the resources, so no act-1 decision is a
+     decision.
+
+     The `acts` mode is what produced that, and the balance ledger pins the numbers. Two
+     things about its SHAPE have to hold or the pin is measuring nothing, and both are
+     source reads, so they live here rather than behind a ten-minute ledger run. */
+  const run = readFileSync('sim/run.mjs', 'utf8')
+  ok(/mode === 'acts'/.test(run), 'the acts diagnostic is gone, so BAL-13 cannot be re-measured')
+  /* THE TROUGH, NOT THE EXIT. The first cut of this measured state at the act boundary and
+     found skin 8.9/9 leaving act 1 — which reads as "act 1 costs nothing" but actually says
+     "you can always camp back to full", because the boundary value is post-camp. The
+     trough is the number that answers the complaint, and it is a different number: 6.9. */
+  ok(/lowSkin/.test(run) && /lowPsyche/.test(run),
+    'the acts mode no longer tracks the trough, and the exit state is post-camp — it would say ' +
+    '"you can recover" where the question is "were you ever under pressure"')
+  ok(/if \(s\.skin < lowSkin\) lowSkin = s\.skin/.test(run), 'the skin trough is not actually being tracked')
+  ok(/skin ever <=3|psyche ever <=1/.test(run), 'the acts mode no longer reports a pressure rate')
+  /* And it must not be able to change what it measures. The probe reads state inside the
+     run loop; if it ever fed a decision, the numbers would be about the probe. */
+  const loop = region(run, 'if (s.skin < lowSkin) lowSkin = s.skin', ['\n      if (s.phase ==='],
+    { min: 120, what: 'the act-boundary probe' })
+  ok(!/\bn =|E\.startBurn|E\.resolve/.test(loop), 'the act probe reaches into the policy, so it measures itself')
+})
 test('ART-4: the day comes out as a picture, and it says what the text says', () => {
   /* SOCIAL-1 gave the daily a result you can paste anywhere, and what it gave was text.
      An image is what people actually post, and the grid was already a picture with no way
