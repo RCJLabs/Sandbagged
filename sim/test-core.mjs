@@ -4084,6 +4084,62 @@ test('ROUTE-12: a signature does something, and the grind lines get one too', ()
     skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
   eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
 })
+test('NARR-18: the node the campaign lives behind says so', () => {
+  /* The trail node read "Something on the trail · ? · No climbing. No telling." and
+     nothing else. It was the ONLY node on the map that quoted no numbers — every other
+     one sells itself with a grade, a forecast, a price or a pitch count — and it is the
+     only route to his pages outside the conversations. Measured over 200 careers: the
+     ones that take these nodes reach the `known` ending 51.1% of the time and the ones
+     that never take one, 0.0%. Taking them is not a sacrifice either; those careers
+     FINISHED more often, 44.7% by trip ten against 37%, because pages become beta.
+
+     THE TWO HALVES OF THIS GUARD PULL AGAINST EACH OTHER ON PURPOSE. The node must say
+     enough that the choice is informed, and it must NOT say which event is coming —
+     `rollEvent` picks after you commit and the not-knowing is the whole node. A guard
+     that only checked the first half would be satisfied by naming the event. */
+  const app = stripComments(readFileSync('src/App.tsx', 'utf8'))
+  const node = region(app, "\n            if (n.type === 'event') {", ['</div>)'],
+    { min: 200, what: 'the trail node' })
+
+  /* TWO BRANCHES, TWO STATES — there is more to find, or you have it all — and the node
+     must name his pages in BOTH. `his pages` occurs in each, so an assertion that merely
+     FINDS the phrase is satisfied by either one on its own: blank the first branch and a
+     `.test()` still passes on the second. That is the repeated-fragment trap, which is the
+     single most common way a guard in this project has gone vacuous, and it caught this
+     one during its own negative test. Count, do not find. */
+  const mentions = (node.match(/his pages/g) ?? []).length
+  eq(mentions, 2,
+    'the trail node stops naming his pages in one of its two states, so it goes quiet in one of them')
+  ok(/pagesHeld\(st\.journal\)/.test(node) && /FINDABLE/.test(node),
+    'the node counts his pages itself instead of asking the engine, so it can disagree with the journal')
+  // and the mystery survives, because that is the node
+  ok(/No telling/.test(node), 'the line that makes it a trail node and not a shop has gone')
+  /* Declared here rather than at module scope: `E` is bound by a dynamic import further
+     down the file, so reading it up there is a temporal dead zone — the fourth of those
+     this project has hit, and the reason SAVE-6 has a comment about it. */
+  const named = E.EVENTS.map(e => e.id).filter(id => node.includes(`'${id}'`) || node.includes(`"${id}"`))
+  eq(named.length, 0,
+    `the node names ${named.join(', ')} before you commit — rollEvent picks after, and the not-knowing is the point`)
+  ok(!/eventId|rollEvent/.test(node),
+    'the node reaches for which event is coming, which would both spoil it and roll the run stream early')
+
+  /* And the journal screen says what the pages are FOR. It said they keep between runs
+     and never once said they are the finale's beta and the ending's threshold — a player
+     who does not know that has no reason to walk up a drainage looking for them. Both
+     numbers must be READ OFF the functions that impose them: `unreadGrip` is the same
+     call the wall makes (NARR-16) and KNOWN_AT is the ending's own threshold, so the
+     screen cannot promise a different game from the one it gives you. */
+  const screen = region(app, 'Pages of the first ascensionist', ['◂ BOOKS'],
+    { min: 200, what: 'the journal screen' })
+  ok(/unreadGrip\(st\.journal\)/.test(screen),
+    'the journal screen states a Grip cost it worked out itself, so it can differ from the wall')
+  ok(/KNOWN_AT/.test(screen),
+    'the ending threshold is written as a literal here, and it is derived from the journal length')
+  ok(/Grip/.test(screen) && /Lost Line/.test(screen),
+    'the journal screen no longer says the pages are beta for the finale')
+  ok(!/\b10\b|\bten\b/.test(screen),
+    'a hardcoded ten — KNOWN_AT is ceil(FINDABLE * 0.7) and moves when the journal does')
+})
 test('NARR-17: one rule says whether a conversation is open', () => {
   /* The availability condition was written out TWICE — once in `postTalk` (the counter)
      and once in `availableTalk` (the fire) — four clauses each, by hand. That is one

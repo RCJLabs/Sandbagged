@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.39 — NARR-17: the story's spine dead-ended in 100% of careers. Marge's
-//   thread gated on one named page, and the pages arrived only behind the gate.
+// SANDBAGGED v10.40 — NARR-18: the only door to the campaign advertised nothing. The
+//   trail node says his pages turn up out there, and the journal says what they are for.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -26,7 +26,7 @@ import {
   coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyGoals, dailyRoute, dailySeed, dailyShare, dailyUsed, tomorrowKey, MOVE_GIFTS, CURSE_TAX,
   supportNow, bedFor,
   SEASON_WEEKS, seasonKey, seasonWeekOf, seasonTitle, nextSeasonTitle, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
-  endSession, endingFor, endingStep, unreadGrip, FINDABLE, pagesHeld, establishedIn, exportSave, exposed, exposureOf,
+  endSession, endingFor, endingStep, unreadGrip, FINDABLE, pagesHeld, KNOWN_AT, nextPage, establishedIn, exportSave, exposed, exposureOf,
   faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
   gearMods, gradeLabel, gradeText, gripShown, holdLabel, honestyOf, importSave,
   jit, leaveEventStep, leaveShopStep, lineCanVary, loadGame, loadoutDeck, mapCliff,
@@ -1488,7 +1488,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.39 · RCJ Labs</div>
+          <div className="sfoot">v10.40 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1717,7 +1717,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.39 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.40 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2153,12 +2153,35 @@ export default function App() {
                   ? 'Cards, gear, tape. Cash only — and it does not cost you the day.'
                   : 'You have been round it already. Take a climb.'}</div>
               </div>)
-            if (n.type === 'event') return (
-              <div key={i} className="menu-item" {...tap(() => takeNode(n, i))}>
-                <div className="row"><span className="big">Something on the trail</span>
-                  <span className="big" style={{ color: 'var(--fade)' }}>?</span></div>
-                <div className="sub">No climbing. No telling.</div>
-              </div>)
+            /* NARR-18. This was "Something on the trail · ? · No climbing. No telling."
+               and nothing else — the ONLY node on the map that quoted no numbers, while
+               every other one sells itself with a grade, a forecast, a price or a pitch
+               count. It is also the only route to his pages outside the conversations.
+               Measured over 200 careers: the ones that take these nodes reach the `known`
+               ending 51.1% of the time and the ones that never take one, 0.0%. And taking
+               them is not even a sacrifice — those careers FINISHED more often (44.7% by
+               trip ten against 37%), because pages become beta. The player was choosing
+               between a graded route with a weather report and a blank, and the blank was
+               where the campaign lived.
+
+               What it must NOT say is WHICH event. `rollEvent` picks after you commit and
+               the not-knowing is the whole node, so "No telling" stays exactly as it was.
+               It now says the one thing that is true of every one of them. */
+            if (n.type === 'event') {
+              const more = nextPage(st) !== null
+              return (
+                <div key={i} className="menu-item"
+                  {...tap(() => takeNode(n, i), 'Something on the trail')}>
+                  <div className="row"><span className="big">Something on the trail</span>
+                    <span className="big" style={{ color: 'var(--fade)' }}>?</span></div>
+                  <div className="sub">No climbing. No telling.</div>
+                  <div className="sub" style={{ marginTop: 2,
+                    color: more ? 'var(--green)' : 'var(--fade)' }}>
+                    {more
+                      ? `his pages turn up out here · you are carrying ${pagesHeld(st.journal)} of ${FINDABLE}`
+                      : `you have found all ${FINDABLE} of his pages`}</div>
+                </div>)
+            }
             const r = ROUTES[n.routeIdx]
             return (
               <div key={i} className="menu-item" {...tap(() => takeNode(n, i))}>
@@ -2487,6 +2510,17 @@ export default function App() {
       <div className="row"><span className="h1" role="heading" aria-level={1}>THE JOURNAL</span>
         <span className="sub">{st.journal.length}/{JOURNAL.length}</span></div>
       <div className="sub">Pages of the first ascensionist. They keep between runs.</div>
+      {/* NARR-18: it said they persist and never once said what they are FOR. A player
+          who does not know the pages are beta and an ending has no reason to walk up a
+          drainage looking for them. Both numbers are read off the functions that impose
+          them — `unreadGrip` is the same call the wall makes (NARR-16) and KNOWN_AT is
+          the ending's own threshold — so this screen cannot promise a different game
+          from the one you get. */}
+      <div className="sub" style={{ color: 'var(--tan)', marginTop: 3, lineHeight: 1.5 }}>
+        They are the beta for The Lost Line: every hold on it is
+        {' '}+{unreadGrip(st.journal)} Grip for what you have not read.
+        {' '}Carry {KNOWN_AT} of them up there and you top out knowing whose route it was.
+      </div>
       <hr className="rule" />
       <div style={{ maxHeight: 'min(620px * var(--fs), 70dvh)', overflowY: 'auto' }}>
         {JOURNAL.map(j => {
