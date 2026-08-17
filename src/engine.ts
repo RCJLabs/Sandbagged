@@ -201,6 +201,13 @@ export const UNREAD_GRIP = 1
    shift. UNREAD_MAX is NARR-7's range, and it now runs off every findable page. */
 export const BLIND_HOLD = 8
 export const UNREAD_MAX = 6
+/* NARR-17. Page 7 is the one he wrote at the top, and you get it by getting there —
+   which makes it the only page that is not FINDABLE, not beta you can carry up, and not
+   part of any count of how much of him you have read. That fact was spelled `7` in nine
+   places across three files, and `!== 7` reads as an off-by-one rather than as a design
+   statement. NARR-16 was two expressions of "six" drifting apart; this is nine of
+   "seven" waiting to. */
+export const SUMMIT_PAGE = 7
 /* FA-1. The game is named for a first ascensionist and has never let you make
    one. An unclimbed line has no grade, no beta anywhere in the world, and a
    season of dirt on it. */
@@ -2311,7 +2318,7 @@ export const DEEDS: Deed[] = [
   { id: 'wet', name: 'Bad Conditions', text: 'Send a boulder in the wet — humid or drizzle.',
     done: s => Object.values(s.book).some(b => b.weather === 2 || b.weather === 5) },
   { id: 'pages', name: 'The Whole Story', text: 'Find ten pages of his journal.',
-    done: s => s.journal.filter(p => p !== 7).length >= 10 },
+    done: s => pagesHeld(s.journal) >= 10 },
   { id: 'lostline', name: 'The Lost Line', text: 'Top out the finale.',
     done: s => s.wins >= 1 },
   { id: 'fa', name: 'First Ascensionist', text: 'Put up a line of your own.',
@@ -2350,7 +2357,7 @@ export const DEEDS: Deed[] = [
     // the bare 'kept' this used to compare against — so it could never be earned
     done: s => s.ending.endsWith('kept') },
   { id: 'everypage', name: 'Every Last Page', text: 'Find every page of his journal, not just the ten.',
-    done: s => JOURNAL.every(p => p.id === 7 || s.journal.includes(p.id)) },
+    done: s => JOURNAL.every(p => p.id === SUMMIT_PAGE || s.journal.includes(p.id)) },
 ]
 export const deedsDone = (s: GameState) => DEEDS.filter(d => d.done(s)).map(d => d.id)
 
@@ -2775,7 +2782,24 @@ export const isBoon = (id: string) => !!boonById(id)
    Camps had a rest button and nothing else. These are the people you
    meet at the fire. Marge's thread is the spine — she was his partner. */
 export type Talk = {
-  id: string; who: string; act: number; after?: string; needsPage?: number
+  id: string; who: string; act: number; after?: string
+  /* NARR-17. This was `needsPage: n` — a gate on ONE NAMED PAGE — and it deadlocked the
+     story. `marge4` asked for page 4, which is SEVENTH in delivery order because the
+     journal is interleaved on purpose (1, 8, 2, 9, 3, 10, 4, ...), so it wanted seven
+     page grants. Ten of the fourteen grants in the game live inside the Marge chain that
+     page 4 unblocks, and the only supply from outside it is four events reached through
+     one map node. Measured over 200 careers of ten expeditions: `marge4` through
+     `marge8` fired in 0.0% of them, the talks plateaued at 15 of 20 by trip six and never
+     moved again, and the "known" epilogue never happened once in 673 wins.
+
+     A gate on a COUNT cannot deadlock: any page satisfies it, so the supply is never
+     downstream of the gate. It is also what the scene means — she recognises his
+     handwriting on a page you brought back, and it does not matter which page it is. */
+  needsPages?: number
+  /* The one gate that really is about a specific page: you have been to the top and read
+     what he left there. Named rather than spelled `needsPage: 7`, because "he wrote this
+     at the summit" is the whole reason and the number said none of it. */
+  needsSummit?: boolean
   text: string
   /* NARR-12: a reply with `arch` set is that climber's line — it shows only to
      them. Flavour only (never an `outcome`), so who you are changes the
@@ -2972,7 +2996,10 @@ export const TALKS: Talk[] = [
       { label: 'I could bring something back.', text: '"Bring yourself back. Start there."', outcome: { skin: 2 } },
       { label: 'You do not stop. You come down and go back up.', text: 'She looks at your frostbitten kit and goes very still. "That is exactly what he used to say. It was not a compliment then either."', arch: 'alpine' },
     ] },
-  { id: 'marge4', who: 'Marge', act: 1, after: 'marge3', needsPage: 4,
+  /* NARR-17: was `needsPage: 4`, the seventh page in delivery order and the reason
+     nobody has ever seen this line. Three of his pages is a real gate — she is reacting
+     to a body of handwriting, not to one scrap — and it clears on the default policy. */
+  { id: 'marge4', who: 'Marge', act: 1, after: 'marge3', needsPages: 3,
     text: 'That is his hand. I would know it upside down in the rain. Where.',
     replies: [
       { label: 'Under a cairn, well off the trail.', text: 'She reads it four times. Then she gives it back. "Keep it. It is beta now, not a letter."', outcome: { journal: 0 } },
@@ -2983,7 +3010,7 @@ export const TALKS: Talk[] = [
       { label: 'Come with me.', text: '"No." A long pause. "Take the cams. He would want them up there and not in my shed."', outcome: { cardRarity: 'rare' } },
       { label: 'Thank you.', text: '"Do not thank me. Come back down."', outcome: { journal: 0 } },
     ] },
-  { id: 'marge6', who: 'Marge', act: 0, after: 'marge5', needsPage: 7,
+  { id: 'marge6', who: 'Marge', act: 0, after: 'marge5', needsSummit: true,
     text: 'You have got that look. The one he used to come back with.',
     replies: [
       { label: 'I found it. He did it first.', text: '"Of course he did." She is quiet for a long time. "Thirty years I have been angry at a man for dying on something he had already climbed." She laughs, once, and it is not really a laugh.' },
@@ -3204,6 +3231,20 @@ export function talkById(s: GameState, id: string | null): Talk | null {
   return null
 }
 
+/** Is this conversation available right now?
+ *
+ *  NARR-17: this condition was written out TWICE — once in `postTalk` and once in
+ *  `availableTalk` — which is one divergence away from a talk being reachable at the
+ *  counter and not at the fire, or the other way round. It is the same shape NARR-16
+ *  came from: one rule, spelled in two places, waiting for somebody to change one of
+ *  them. Written once, and both callers ask it. */
+export function talkOpen(t: Talk, s: GameState): boolean {
+  return t.act <= s.act && !s.seen.includes(t.id)
+    && (!t.after || s.seen.includes(t.after))
+    && (t.needsPages === undefined || pagesHeld(s.journal) >= t.needsPages)
+    && (!t.needsSummit || s.journal.includes(SUMMIT_PAGE))
+}
+
 /** A trading post has people in it. Somebody who has been out there is
     exactly who tells you something you did not know. */
 export function postTalk(s: GameState): Talk | null {
@@ -3211,10 +3252,7 @@ export function postTalk(s: GameState): Talk | null {
   // This has to look PAST her rather than stop at her: she holds seven of the
   // seventeen and sits at the front of the queue, so filtering the first
   // available conversation returned nothing almost every time.
-  return TALKS.find(t =>
-    t.who !== 'Marge' && t.act <= s.act && !s.seen.includes(t.id)
-    && (!t.after || s.seen.includes(t.after))
-    && (t.needsPage === undefined || s.journal.includes(t.needsPage))) ?? null
+  return TALKS.find(t => t.who !== 'Marge' && talkOpen(t, s)) ?? null
 }
 
 export function availableTalk(s: GameState): Talk | null {
@@ -3224,10 +3262,7 @@ export function availableTalk(s: GameState): Talk | null {
   // then a line of yours that has matured since — the repeats, the consensus
   const con = consensusTalk(s)
   if (con) return con
-  return TALKS.find(t =>
-    t.act <= s.act && !s.seen.includes(t.id)
-    && (!t.after || s.seen.includes(t.after))
-    && (t.needsPage === undefined || s.journal.includes(t.needsPage))) ?? null
+  return TALKS.find(t => talkOpen(t, s)) ?? null
 }
 
 /** One beta card per journal page you carry. Finale only — this is why the
@@ -3248,7 +3283,7 @@ export const BETA_CARDS: Record<number, string> = {
    now ask for "the next one he wrote" and the pool does the rest. */
 export function nextPage(s: GameState): number | null {
   const found = new Set(s.journal)
-  const p = JOURNAL.find(j => j.id !== 7 && !found.has(j.id))
+  const p = JOURNAL.find(j => j.id !== SUMMIT_PAGE && !found.has(j.id))
   return p ? p.id : null
 }
 /* You cannot carry the whole journal up there. Measured: seven pages is worth
@@ -4338,7 +4373,7 @@ export function endSession(s0: GameState, rng: RNG): GameState {
       s = gainXp({ ...s, wins: s.wins + 1, psyche: psycheMax(s),
         archWins: Array.from(new Set([...(s.archWins ?? []), s.arch])),
         mutatorWin: (s.mutatorWin ?? false) || s.mutators.length > 0,
-        journal: Array.from(new Set([...s.journal, 7])),
+        journal: Array.from(new Set([...s.journal, SUMMIT_PAGE])),
         styleMax: s.topRope ? s.styleMax
           : Math.min(ASCENT.length - 1, Math.max(s.styleMax, s.style + 1)) }, 100, rng)
       // topping out the finale is not a result screen — there is something up there
@@ -6111,7 +6146,11 @@ export type EndingKind = 'known' | 'partial' | 'stranger'
 /* NARR-11 rescaled these. They were 5 and 2 out of seven pages; there are
    fifteen now, so they are proportions rather than counts and cannot drift
    apart from the journal again. */
-export const FINDABLE = JOURNAL.filter(j => j.id !== 7).length
+export const FINDABLE = JOURNAL.filter(j => j.id !== SUMMIT_PAGE).length
+/** How many of his pages you are carrying. The summit page is not one of them — you
+    read it after the climb, so it is never beta and never counts toward knowing him. */
+export const pagesHeld = (journal: number[]) =>
+  journal.filter(p => p !== SUMMIT_PAGE).length
 export const KNOWN_AT = Math.ceil(FINDABLE * 0.7)
 export const PARTIAL_AT = Math.ceil(FINDABLE * 0.3)
 
@@ -6119,7 +6158,7 @@ export const PARTIAL_AT = Math.ceil(FINDABLE * 0.3)
     driven by every findable page rather than by the first six. Page 7 is the summit
     page — you read it AFTER the climb, so it has never counted and still does not. */
 export function unreadGrip(journal: number[]): number {
-  const held = Math.min(journal.filter(p => p !== 7).length, FINDABLE)
+  const held = Math.min(pagesHeld(journal), FINDABLE)
   /* CEIL, not round. Six grip spread over fourteen pages means about two pages a step
      whichever way it rounds, so two of the steps are always flat — the only choice is
      WHERE. Rounding puts them at the start, so the first page you ever find changes

@@ -1008,19 +1008,101 @@ test('NARR-13: a line of yours comes back a trip later with the consensus', () =
   eq(E.talkById(mk({}), 'con:Nonexistent'), null, 'a phantom line resolved to a talk')
 })
 
-test('every conversation is reachable', () => {
-  let st = { ...E.freshRun(0, 0, 1), seen: [], journal: [1, 2, 3, 4, 5, 6, 7], act: 0 }
-  const seen = []
-  for (const act of [0, 1, 2, 0, 1, 2]) {
-    st = { ...st, act }
-    for (let i = 0; i < 40; i++) {
-      const t = E.availableTalk(st)
-      if (!t) break
-      seen.push(t.id); st = { ...st, seen: [...st.seen, t.id] }
+test('NARR-17: every conversation is reachable WITHOUT being handed his journal', () => {
+  /* This test opened with `journal: [1, 2, 3, 4, 5, 6, 7]`. It HANDED ITSELF the pages,
+     so it proved the chain works GIVEN them and never once asked whether they arrive.
+     That is how NARR-17 sat here for versions while passing:
+
+       `marge4` gated on PAGE 4, which is SEVENTH in delivery order — the journal is
+       interleaved on purpose (1, 8, 2, 9, 3, 10, 4, ...) — so it wanted seven page
+       grants. And TEN of the fourteen page grants in the game live inside the Marge
+       chain that page 4 unblocks. Pages gated the talks; the talks supplied the pages.
+
+     Measured over 200 careers of ten expeditions each: `marge4` through `marge8` fired in
+     0.0% of them, the talks plateaued at 15 of 20 by trip six and never moved again, and
+     the "known" epilogue never happened once in 673 wins.
+
+     So the walk starts with NOTHING and may only collect what a reply actually hands
+     over. It is given no event pages at all — the four events that grant one are the only
+     supply from outside the chain, and a story that needs them is a story that depends on
+     a map node advertising "No climbing. No telling." The chain has to stand up alone. */
+  /* AND THE INVARIANT, so a future gate cannot re-create the deadlock a different way:
+     whatever a talk asks for must be suppliable from OUTSIDE its own chain. A gate whose
+     pages only arrive downstream of it is a gate that never opens, and that is true
+     regardless of what the walk above happens to reach in what order. */
+  const downstream = id => {
+    const out = new Set([id])
+    for (;;) {
+      const before = out.size
+      for (const t of E.TALKS) if (t.after && out.has(t.after)) out.add(t.id)
+      if (out.size === before) return out
     }
   }
+  const gated = E.TALKS.filter(t => t.needsPages !== undefined)
+  ok(gated.length > 0, 'nothing gates on his pages any more, so this guard is asserting nothing')
+  for (const g of gated) {
+    const closed = downstream(g.id)
+    const outside = E.TALKS.filter(t => !closed.has(t.id))
+      .reduce((n, t) => n + t.replies.filter(r => r.outcome?.journal !== undefined).length, 0)
+    ok(outside >= g.needsPages,
+      `${g.id} wants ${g.needsPages} of his pages and only ${outside} page grant(s) exist ` +
+      `outside the chain it gates — that is the NARR-17 deadlock again`)
+  }
+
+  /* AND IT BITES. Everything above is about the gate being satisfiable; a gate that is
+     never checked satisfies all of it and gates nothing. So: her line about recognising
+     his handwriting must not be available to somebody carrying no handwriting. */
+  const g0 = E.TALKS.find(t => t.needsPages !== undefined)
+  const primed = { ...E.freshRun(0, 0, 1), act: 2, journal: [],
+    seen: E.TALKS.filter(t => t.id !== g0.id).map(t => t.id) }
+  eq(E.availableTalk(primed), null,
+    `${g0.id} is offered to a player carrying none of his pages, so its gate is not checked`)
+  const enough = E.JOURNAL.filter(j => j.id !== E.SUMMIT_PAGE).map(j => j.id).slice(0, g0.needsPages)
+  eq(enough.length, g0.needsPages, 'the journal is shorter than the gate asks for')
+  ok(E.talkOpen(g0, { ...primed, journal: enough }),
+    `${g0.id} stays shut with exactly as many of his pages as it asks for`)
+
+  const grantPage = (st, t) => {
+    let journal = st.journal
+    for (const r of t.replies) {
+      if (r.outcome?.journal === undefined) continue
+      const next = E.nextPage({ ...st, journal })
+      if (next !== null) journal = [...journal, next]
+    }
+    return journal
+  }
+  const walk = st => {
+    const got = []
+    for (const act of [0, 1, 2]) {
+      st = { ...st, act }
+      for (let i = 0; i < 40; i++) {
+        const t = E.availableTalk(st)
+        if (!t) break
+        got.push(t.id)
+        st = { ...st, seen: [...st.seen, t.id], journal: grantPage(st, t) }
+      }
+    }
+    return [st, got]
+  }
+  // trip one, from nothing
+  let [st, seen] = walk({ ...E.freshRun(0, 0, 1), seen: [], journal: [], act: 0 })
+  /* Topping out is the only way to get the summit page, and `marge6` is gated on having
+     been up there — correctly, since the scene is her reading it on your face. So the
+     second trip starts the way a real second trip does. */
+  ok(!seen.includes('marge6'), 'marge6 fires before you have been to the top, which is the scene it is')
+  st = { ...st, journal: [...st.journal, E.SUMMIT_PAGE] }
+  const [, more] = walk(st)
+  seen = [...seen, ...more]
+
   eq(seen.length, E.TALKS.length,
-    `unreachable: ${E.TALKS.map(t => t.id).filter(i => !seen.includes(i)).join(', ')}`)
+    `unreachable on talk supply alone: ${
+      E.TALKS.map(t => t.id).filter(i => !seen.includes(i)).join(', ')}`)
+
+  /* The summit gate is the one exception and must stay a single named page rather than
+     drifting back to a count, because "you have been to the top" is not a quantity. */
+  const summit = E.TALKS.filter(t => t.needsSummit)
+  eq(summit.length, 1, 'the summit gate is gone, or there is more than one of it')
+  eq(E.pagesHeld([E.SUMMIT_PAGE]), 0, 'the summit page counts toward knowing him, and you read it after')
 })
 test('the journal makes the finale readable', () => {
   // pages were worth ~16 points, then nothing once decks improved. They now

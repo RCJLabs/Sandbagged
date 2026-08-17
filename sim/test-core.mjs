@@ -4084,6 +4084,32 @@ test('ROUTE-12: a signature does something, and the grind lines get one too', ()
     skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
   eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
 })
+test('NARR-17: one rule says whether a conversation is open', () => {
+  /* The availability condition was written out TWICE — once in `postTalk` (the counter)
+     and once in `availableTalk` (the fire) — four clauses each, by hand. That is one
+     divergence away from a conversation that exists at one and not the other, and it is
+     the same shape NARR-16 came from: a single rule spelled in two places, waiting for
+     somebody to edit one of them. The behaviour is guarded in test.mjs; this guards the
+     shape, because the behaviour test only ever walks ONE of the two callers. */
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const post = region(eng, 'export function postTalk', ['export function availableTalk'],
+    { min: 120, what: 'postTalk' })
+  const avail = region(eng, 'export function availableTalk', ['\nexport '],
+    { min: 100, what: 'availableTalk' })
+  for (const [what, src] of [['the counter', post], ['the fire', avail]]) {
+    ok(/talkOpen\(/.test(src), `${what} works out availability for itself again, so the two can disagree`)
+    ok(!/needsPages|needsSummit/.test(src),
+      `${what} reads a gate field directly, which is how the two copies drifted in the first place`)
+  }
+  /* And the gates are named for what they mean. `needsPage: 7` was a number that said
+     nothing about being at the summit, which is why nobody noticed it was summit-only. */
+  ok(!/needsPage\b/.test(eng), 'the old single-page gate is back, and it is what deadlocked the story')
+  const decl = declBody(eng, 'export function talkOpen')
+  ok(/needsPages/.test(decl) && /needsSummit/.test(decl),
+    'talkOpen has stopped checking one of the two gates, so that gate is decoration')
+  ok(/pagesHeld\(/.test(decl),
+    'talkOpen counts his pages itself instead of asking pagesHeld, which also feeds the wall')
+})
 test('NARR-16: the finale screen cannot promise what the wall does not honour', () => {
   /* The map card read `{journal.filter(p => p <= 6).length}/6 of his pages` and, at six,
      `you can read the whole thing` — while the engine was counting to fourteen and still

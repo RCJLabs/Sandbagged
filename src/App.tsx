@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.38 — NARR-16: the eight journal pages NARR-11 added were worth nothing
-//   on the finale. Holding all fourteen measured the same as holding six.
+// SANDBAGGED v10.39 — NARR-17: the story's spine dead-ended in 100% of careers. Marge's
+//   thread gated on one named page, and the pages arrived only behind the gate.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -26,7 +26,7 @@ import {
   coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyGoals, dailyRoute, dailySeed, dailyShare, dailyUsed, tomorrowKey, MOVE_GIFTS, CURSE_TAX,
   supportNow, bedFor,
   SEASON_WEEKS, seasonKey, seasonWeekOf, seasonTitle, nextSeasonTitle, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
-  endSession, endingFor, endingStep, unreadGrip, FINDABLE, establishedIn, exportSave, exposed, exposureOf,
+  endSession, endingFor, endingStep, unreadGrip, FINDABLE, pagesHeld, establishedIn, exportSave, exposed, exposureOf,
   faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
   gearMods, gradeLabel, gradeText, gripShown, holdLabel, honestyOf, importSave,
   jit, leaveEventStep, leaveShopStep, lineCanVary, loadGame, loadoutDeck, mapCliff,
@@ -1488,7 +1488,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.38 · RCJ Labs</div>
+          <div className="sfoot">v10.39 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1717,7 +1717,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.38 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.39 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2193,7 +2193,7 @@ export default function App() {
                     the SAME function the wall does, so it cannot promise what the route
                     does not honour. */}
                 {r.finale ? (() => {
-                  const held = st.journal.filter(p => p !== 7).length
+                  const held = pagesHeld(st.journal)
                   const blind = unreadGrip(st.journal)
                   return (
                     <div className="sub" style={{ color: blind === 0 ? 'var(--green)' : 'var(--red)' }}>

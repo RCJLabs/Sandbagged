@@ -120,7 +120,7 @@ function runOnce(seed, carry) {
     s = { ...s, mutators: MUTS, topRope: TOPROPE,
       skin: TOPROPE ? s.skin : Math.max(2, s.skin - E.TOPROPE_SKIN) }
     // NARR-11: was hardcoded [1..6], so it could never grant a page above 6
-    if (JOURNAL_PAGES) s = { ...s, journal: E.JOURNAL.filter(j => j.id !== 7)
+    if (JOURNAL_PAGES) s = { ...s, journal: E.JOURNAL.filter(j => j.id !== E.SUMMIT_PAGE)
       .map(j => j.id).slice(0, JOURNAL_PAGES) }
     if (carry) s = { ...s, ...carry }
     let turns = 0, climbs = 0, events = 0, talks = 0, projects = 0, shops = 0, fas = 0, rests = 0, winds = 0, guard = 0, skinAtBoss = -1, reachedBoss = false
@@ -631,7 +631,7 @@ if (mode === 'career') {
     for (let t = 0; t < TRIPS; t++) {
       const r = runOnce(Math.floor(rng.next() * 2 ** 31), carry)
       // page 7 is the summit page: only a completed expedition brings it back
-      const j = r.won ? [...new Set([...r.journalOut, 7])] : r.journalOut
+      const j = r.won ? [...new Set([...r.journalOut, E.SUMMIT_PAGE])] : r.journalOut
       carry = { seen: r.seenOut, journal: j }
       pagesAt[t] = (pagesAt[t] ?? 0) + j.length
       talksAt[t] = (talksAt[t] ?? 0) + r.seenOut.filter(x => E.TALKS.some(k => k.id === x)).length
