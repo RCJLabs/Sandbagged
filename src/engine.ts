@@ -131,7 +131,7 @@ type Piles = { draw: Card[]; discard: Card[]; exhaust: Card[]; hand: Card[] }
 export type Phase = 'menu' | 'map' | 'climb' | 'burnEnd' | 'sessionEnd'
   | 'reward' | 'camp' | 'runEnd' | 'pack' | 'collection' | 'event' | 'journal' | 'deck' | 'talk'
   | 'glossary' | 'gear' | 'logbook' | 'shop' | 'circuitNext' | 'saves' | 'stats'
-  | 'prepare' | 'more' | 'epilogue' | 'history' | 'line' | 'claim' | 'deeds'
+  | 'prepare' | 'more' | 'epilogue' | 'history' | 'line' | 'claim' | 'deeds' | 'met'
 export type NodeType = 'climb' | 'camp' | 'boss' | 'event' | 'project' | 'shop' | 'fa'
   | 'established'
 // Skin is worth ~16 points of completion — far too coarse for a small
@@ -447,6 +447,12 @@ export type GameState = {
   loadout: string[]
   act: number
   seen: string[]
+  /* NARR-19. `seen` records THAT a conversation happened and nothing about it. Marge's
+     thread is seven beats delivered over about six expeditions — days of real time — and
+     there was nowhere to read it back, so an arc arrived as seven half-remembered
+     moments. This is what you SAID, by talk id, which is the half the game was throwing
+     away: their line is authored and can always be looked up, your answer could not. */
+  said: Record<string, string>
   talkId: string | null
   talkReply: string | null
   coaching: boolean
@@ -627,6 +633,7 @@ export const campSkinFor = (s: GameState) =>
 type SaveData = {
   v: number; level: number; xp: number; owned: string[]; sends: number; wins: number
   journal: number[]; loadout: string[]; style: number; styleMax: number; seen: string[]
+  said: Record<string, string>
   arch?: number; loadouts?: string[][]; book?: Record<string, LogEntry>; bestCircuit?: number
   ticked?: string[]; established?: Established[]; hints?: boolean; grades?: GradeScale
   tweak?: Tweak | null
@@ -667,7 +674,7 @@ export function saveGame(s: GameState) {
     const d: SaveData = {
       v: SAVE_FILE_VERSION, level: s.level, xp: s.xp, owned: s.owned,
       sends: s.sends, wins: s.wins, journal: s.journal, loadout: s.loadout,
-      style: s.style, styleMax: s.styleMax, seen: s.seen, coaching: s.coaching, sound: s.sound, ambience: s.ambience, haptics: s.haptics, assist: s.assist, cbSafe: s.cbSafe,
+      style: s.style, styleMax: s.styleMax, seen: s.seen, said: s.said, coaching: s.coaching, sound: s.sound, ambience: s.ambience, haptics: s.haptics, assist: s.assist, cbSafe: s.cbSafe,
       tutorialDone: s.tutorialDone, motion: s.motion, textScale: s.textScale, reach: s.reach,
       arch: s.arch, loadouts: s.loadouts, book: s.book, bestCircuit: s.bestCircuit, ticked: s.ticked, established: s.established, hints: s.hints, grades: s.grades, tweak: s.tweak,
       larder: s.larder, titles: s.titles, graceWeek: s.graceWeek, dailyMet: s.dailyMet,
@@ -765,6 +772,19 @@ export function importSave(code: string, slot: number): boolean {
    about LENGTH. */
 const cap = <T,>(v: T[] | undefined, n: number): T[] =>
   Array.isArray(v) ? v.slice(0, n) : []
+/* SAVE-6's `cap` is for arrays and NARR-19's `said` is a map, so it needs its own bound.
+   Same reasoning, different shape: a crafted save — or an import code — carrying fifty
+   thousand keys is accepted, written back out, and then rendered by the transcript. Keys
+   and values are bounded too, because one 10MB string is the same attack as a million
+   short ones. The count is DERIVED from the cast plus the lines you can have put up,
+   which is every id that can ever be a key. */
+const capSaid = (v: unknown, n: number): Record<string, string> =>
+  v && typeof v === 'object' && !Array.isArray(v)
+    ? Object.fromEntries(Object.entries(v as Record<string, unknown>)
+        .filter(([, x]) => typeof x === 'string')
+        .slice(0, n)
+        .map(([k, x]) => [k.slice(0, 80), (x as string).slice(0, 240)]))
+    : {}
 
 export function loadGame(slot = 0): Partial<GameState> | null {
   try {
@@ -788,6 +808,7 @@ export function loadGame(slot = 0): Partial<GameState> | null {
       journal: cap(d.journal, JOURNAL.length),
       ...(d.loadout && d.loadout.length === DECK_SIZE ? { loadout: d.loadout } : {}),
       style: d.style ?? 0, styleMax: d.styleMax ?? 0, seen: cap(d.seen, EVENTS.length),
+      said: capSaid(d.said, TALKS.length + ESTABLISHED_MAX * 2),
       coaching: d.coaching ?? true, sound: d.sound ?? true, ambience: d.ambience ?? true, haptics: d.haptics ?? true, assist: d.assist ?? false, cbSafe: d.cbSafe ?? false,
       tutorialDone: d.tutorialDone ?? false,
       motion: d.motion ?? true, textScale: d.textScale ?? 0, reach: d.reach ?? 'off',
@@ -3117,6 +3138,15 @@ export const TALKS: Talk[] = [
    without moving a single number. The Boulderer, the default and the sim's
    climber, is the everyclimber and gets no gated line, so the guarded runs are
    untouched. */
+/** NARR-19. How much of the cast you have actually spoken to. Counted HERE rather than
+    on the screen so the Books entry, the transcript header and the guard cannot each
+    arrive at a different number — which is the NARR-16 shape, and it started as one
+    expression in two places there too. Only the authored cast counts: `fa:` and `con:`
+    ids also live in `seen`, and they are reactions to your own climbing rather than
+    people you met. */
+export const metCount = (s: GameState) =>
+  TALKS.filter(t => s.seen.includes(t.id)).length
+
 export const repliesFor = (t: Talk, s: GameState) =>
   t.replies.filter(r => !r.arch || (s.inRun && archOf(s).id === r.arch))
 
@@ -4061,6 +4091,12 @@ export function modeReset(): Pick<GameState, typeof MODE_FLAGS[number]> {
 export function carryOver(s: GameState): Partial<GameState> {
   return {
     journal: s.journal, dailyTried: s.dailyTried,
+    /* NARR-19. Added to `saveGame` first, on purpose, to see whether this guard had
+       actually bought anything — and it fired on the first new account field since it was
+       written: "saveGame keeps said as account state and carryOver does not hand it to a
+       new expedition". A transcript that emptied itself every trip would have been a
+       feature whose whole subject is memory, losing its memory. */
+    said: s.said,
     level: s.level, xp: s.xp, owned: s.owned, sends: s.sends, wins: s.wins,
     runs: s.runs, falls: s.falls, seen: s.seen, book: s.book, ticked: s.ticked,
     established: s.established, history: s.history, bestCircuit: s.bestCircuit,
@@ -4109,7 +4145,7 @@ export function freshRun(routeIdx: number, deckTier: number, seed: number): Game
     level: 1, xp: 0, owned: [], sends: 0, wins: 0, packCards: [], skirmish: null,
     afterPack: 'menu', journal: [], eventId: null, eventResult: null,
     loadout: DEFAULT_LOADOUT.slice(), style: 0, styleMax: 0, act: 0,
-    seen: [], eventsSeen: [], talkId: null, talkReply: null, phaseSeen: '', onProject: false,
+    seen: [], said: {}, eventsSeen: [], talkId: null, talkReply: null, phaseSeen: '', onProject: false,
     runout: 0, lastPiece: -1, pitch: 0, cash: 0, psyche: PSYCHE_MAX,
     circuit: false, circuitScore: 0, bestCircuit: 0, slot: 0, runSeed: 0, ending: '', topRope: true, history: [], archWins: [], mutatorWin: false, runs: 0, falls: 0,
     shopCards: [], shopGear: [], shopKit: [], kit: [], bought: [],

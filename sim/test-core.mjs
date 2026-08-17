@@ -4084,6 +4084,87 @@ test('ROUTE-12: a signature does something, and the grind lines get one too', ()
     skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
   eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
 })
+test('NARR-19: the conversations are a thread you can read back', () => {
+  /* `seen` recorded THAT a conversation happened and nothing whatever about it, and your
+     own half was discarded the moment you left the fire. Marge's thread is SEVEN BEATS
+     delivered across about six expeditions — days of real time — so an arc arrived as
+     seven half-remembered moments with no way to look at it. `said` is the half the game
+     was throwing away. */
+  const app = stripComments(readFileSync('src/App.tsx', 'utf8'))
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+
+  /* IT IS WRITTEN WHERE A REPLY IS TAKEN, and it stores the LABEL. An index rots the
+     moment a reply is reordered or reworded — and it would rot SILENTLY, showing you a
+     sentence you never said, which is worse than showing nothing. */
+  const reply = region(app, '                setSt({ ...next, seed: rng.s, talkReply: r.text,',
+    ['\n              })'], { min: 80, what: 'taking a reply' })
+  /* `/said:/` is NOT the assertion here, though it looks like one: `said: st.said` matches
+     it and throws the answer away, which is precisely the bug. The claim is that something
+     is recorded AGAINST THIS TALK. Caught by the injection written for this ticket. */
+  ok(/\[talk\.id\]:/.test(reply), 'your half of the conversation is thrown away again')
+  ok(/r\.label/.test(reply), 'the reply is recorded by something other than its label, which rots when replies move')
+  ok(!/indexOf|\bi\b\s*[,}]/.test(reply), 'the reply is recorded by position, so reordering replies rewrites your past')
+
+  /* IT SURVIVES A NEW EXPEDITION. SAVE-7's diff already refuses to let an account field
+     go uncarried — and it FIRED on this one, which is the whole reason that guard was
+     written as a diff rather than as two field names. This is the behaviour behind it. */
+  const acct = { ...E.freshRun(0, 0, 1), said: { marge1: 'I am not a journalist.' }, seen: ['marge1'] }
+  const started = { ...E.newRun(9, undefined, 0, 0, []), ...E.carryOver(acct), ...E.modeReset() }
+  eq(started.said?.marge1, 'I am not a journalist.',
+    'the transcript empties itself every expedition, which is a memory feature losing its memory')
+
+  /* AND IT IS BOUNDED, because it is read straight off disk (SAVE-6). A map needs its own
+     clamp — `cap` only knows about arrays — and the count is not the only axis: one 10MB
+     value is the same attack as a million short ones. */
+  const many = {}
+  for (let i = 0; i < 400; i++) many[`k${i}`] = 'x'
+  localStorage.setItem('sandbagged.save.9', JSON.stringify(
+    { v: E.SAVE_FILE_VERSION, level: 3, said: many }))
+  const loadedMany = E.loadGame(9)
+  ok(Object.keys(loadedMany.said).length < 400,
+    `said is taken at whatever size the file claims (${Object.keys(loadedMany.said).length} keys)`)
+  localStorage.setItem('sandbagged.save.9', JSON.stringify({ v: E.SAVE_FILE_VERSION, level: 3,
+    said: { ['j'.repeat(500)]: 'y'.repeat(9000), ok: 'fine', bad: 7 } }))
+  const loadedBig = E.loadGame(9)
+  /* SAVE-6's sharpest lesson was that a crafted field must be DROPPED rather than take the
+     whole save down — and this is where that goes wrong quietly: calling `.slice` on a
+     number throws, `loadGame` catches, and the entire slot reads as unreadable. Found by
+     injecting the removal of the type filter and watching the test crash instead of fail. */
+  ok(loadedBig, 'one crafted value in the map takes the whole save down with it, which is SAVE-6 again')
+  const [k0] = Object.keys(loadedBig.said).filter(k => k.startsWith('j'))
+  ok(k0 === undefined || k0.length < 500, 'a key is taken at whatever length the file claims')
+  ok((loadedBig.said[k0 ?? 'ok'] ?? '').length < 9000, 'a value is taken at whatever length the file claims')
+  eq(loadedBig.said.bad, undefined, 'a non-string value survives the loader and is rendered as your answer')
+  localStorage.setItem('sandbagged.save.9', JSON.stringify({ v: E.SAVE_FILE_VERSION, level: 3, said: 'not a map' }))
+  eq(JSON.stringify(E.loadGame(9).said), '{}', 'a non-map where a map belongs is not replaced with one')
+
+  /* THE SCREEN SHOWS BOTH HALVES, grouped by person and in authored order — which is what
+     makes it an arc rather than a log, since `after` means the authored order is the only
+     order they can happen in. A trip-ordered list would interleave five people. */
+  const screen = region(app, "if (st.phase === 'met') {", ['◂ BOOKS'],
+    { min: 400, what: 'the transcript' })
+  ok(/t\.text/.test(screen), 'the transcript stops showing what they said')
+  ok(/st\.said\[t\.id\]/.test(screen), 'the transcript stops showing what you said')
+  ok(/TALKS\.filter\(t => t\.who === who/.test(screen),
+    'the transcript is no longer grouped by person, so seven beats read as five people interleaved')
+  /* Conversations that happened before any of this shipped are in `seen` and absent from
+     `said`. Inventing an answer for them would be putting words in the player's mouth. */
+  ok(/This was before anyone was writing it down/.test(screen),
+    'an old conversation with no recorded answer is rendered without saying so')
+
+  /* ONE COUNTER. The Books entry, the transcript header and this guard must not each
+     arrive at their own number — that is exactly the shape NARR-16 came from, and it also
+     began as one expression written in two places. */
+  ok(/metCount\(st\)/.test(screen), 'the transcript header counts for itself')
+  const books = region(app, 'Who You Have Met', ['on={go('], { min: 40, what: 'the Books entry' })
+  ok(/metCount\(st\)/.test(books), 'the Books entry counts for itself, so the two can disagree')
+  /* Behaviour first, then the shape — an injection should land on the sharper claim, and
+     "it counts your own lines as people" says more than "it does not filter TALKS". */
+  eq(E.metCount({ ...E.freshRun(0, 0, 1), seen: ['marge1', 'fa:Broken Arete', 'con:Broken Arete'] }), 1,
+    'metCount counts conversations about your own lines as people you have met')
+  ok(/TALKS\.filter/.test(region(eng, 'export const metCount', ['\n\nexport '], { min: 40, what: 'metCount' })),
+    'metCount counts something other than the authored cast')
+})
 test('NARR-18: the node the campaign lives behind says so', () => {
   /* The trail node read "Something on the trail · ? · No climbing. No telling." and
      nothing else. It was the ONLY node on the map that quoted no numbers — every other

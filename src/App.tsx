@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.40 — NARR-18: the only door to the campaign advertised nothing. The
-//   trail node says his pages turn up out there, and the journal says what they are for.
+// SANDBAGGED v10.41 — NARR-19: seven beats of Marge's thread over six expeditions, and
+//   nowhere to read it back. Who You Have Met keeps both halves of every conversation.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -26,7 +26,8 @@ import {
   coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyGoals, dailyRoute, dailySeed, dailyShare, dailyUsed, tomorrowKey, MOVE_GIFTS, CURSE_TAX,
   supportNow, bedFor,
   SEASON_WEEKS, seasonKey, seasonWeekOf, seasonTitle, nextSeasonTitle, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
-  endSession, endingFor, endingStep, unreadGrip, FINDABLE, pagesHeld, KNOWN_AT, nextPage, establishedIn, exportSave, exposed, exposureOf,
+  endSession, endingFor, endingStep, unreadGrip, FINDABLE, pagesHeld, KNOWN_AT, nextPage,
+  metCount, establishedIn, exportSave, exposed, exposureOf,
   faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
   gearMods, gradeLabel, gradeText, gripShown, holdLabel, honestyOf, importSave,
   jit, leaveEventStep, leaveShopStep, lineCanVary, loadGame, loadoutDeck, mapCliff,
@@ -1385,7 +1386,7 @@ export default function App() {
      same thing instead of closing the app. */
   const BACK_TO: Partial<Record<Phase, Phase>> = {
     prepare: 'menu', more: 'menu', deck: 'prepare',
-    collection: 'more', logbook: 'more', journal: 'more', stats: 'more',
+    collection: 'more', logbook: 'more', journal: 'more', met: 'more', stats: 'more',
     glossary: 'more', saves: 'more', history: 'more', deeds: 'more',
   }
   const goBack = () => setSt(s => ({ ...s, phase: BACK_TO[s.phase] ?? 'menu',
@@ -1488,7 +1489,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.40 · RCJ Labs</div>
+          <div className="sfoot">v10.41 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1717,7 +1718,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.40 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.41 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -1922,6 +1923,9 @@ export default function App() {
           <Item t="Logbook" sub={`${inAct.filter(r => st.book[r.name]).length}/${inAct.length} ticked`}
             on={go('logbook')} />
           <Item t="The Journal" sub={`${st.journal.length}/${JOURNAL.length} pages`} on={go('journal')} />
+          <Item t="Who You Have Met"
+            sub={metCount(st) ? `${metCount(st)}/${TALKS.length} conversations` : 'nobody yet'}
+            on={go('met')} />
           <Item t="The Numbers" sub="everything recorded" on={go('stats')} />
           <Item t="Deeds" sub={`${deedsDone(st).length}/${DEEDS.length} done`} on={go('deeds')} />
           <Item t="Every Trip" sub={st.history.length ? `last ${Math.min(st.history.length, HISTORY_MAX)} runs` : 'nothing yet'}
@@ -2505,6 +2509,66 @@ export default function App() {
     </div>
   )
 
+  /* NARR-19. Marge's thread is seven beats delivered across about six expeditions — days
+     of real time — and there was nowhere to read it back. `seen` knew that each one had
+     happened; nothing showed it, and your own answers were discarded at the fire. So an
+     arc arrived as seven half-remembered moments.
+
+     Grouped BY PERSON and in their authored order, because that is what makes it an arc
+     rather than a log: Marge's seven read as a thread, and the order they are written in
+     is the order they can only happen in (`after` chains them). A trip-ordered list would
+     interleave five people and read as noise.
+
+     SCOPED TO THE CAST, and that is a carve-out rather than an oversight. `fa:` and `con:`
+     conversations are generated from lines YOU put up — they are reactions to your
+     climbing, not the story — and their prose is rebuilt from current state, so a
+     transcript of them would show text that was never said. They are counted and named,
+     not quoted. */
+  if (st.phase === 'met') {
+    const cast = [...new Set(TALKS.map(t => t.who))]
+      .filter(who => TALKS.some(t => t.who === who && st.seen.includes(t.id)))
+    const mine = st.seen.filter(id => id.startsWith('fa:') || id.startsWith('con:'))
+    return (
+      <div className={skin}>
+        <div className="row"><span className="h1" role="heading" aria-level={1}>WHO YOU HAVE MET</span>
+          <span className="sub">{metCount(st)}/{TALKS.length}</span></div>
+        <div className="sub">What they said, and what you said back. It keeps between runs.</div>
+        <hr className="rule" />
+        <div style={{ maxHeight: 'min(600px * var(--fs), 66dvh)', overflowY: 'auto' }}>
+          {cast.length ? cast.map(who => (
+            <div key={who} style={{ marginBottom: 12 }}>
+              <div className="lbl">{who.toUpperCase()}</div>
+              {TALKS.filter(t => t.who === who && st.seen.includes(t.id)).map(t => (
+                <div key={t.id} className="menu-item">
+                  <div className="sub" style={{ lineHeight: 1.6 }}>{t.text}</div>
+                  {st.said[t.id] ? (
+                    <div className="sub" style={{ color: 'var(--tan)', marginTop: 4, lineHeight: 1.55 }}>
+                      you · {st.said[t.id]}</div>
+                  ) : (
+                    /* Everything said before this shipped is in `seen` and not in `said`.
+                       The honest thing is to say so rather than invent an answer. */
+                    <div className="sub" style={{ color: 'var(--fade)', marginTop: 4 }}>
+                      you said something. This was before anyone was writing it down.</div>
+                  )}
+                </div>))}
+            </div>)) : (
+            <div className="menu-item"><div className="sub">
+              Nobody yet. There are people at the camps and behind the counter at the posts.</div></div>)}
+          {mine.length ? (
+            <div style={{ marginTop: 4 }}>
+              <div className="lbl">ABOUT YOUR OWN LINES</div>
+              <div className="menu-item"><div className="sub" style={{ lineHeight: 1.6 }}>
+                {mine.length} conversation{mine.length > 1 ? 's' : ''} about lines you put up
+                yourself. Those are written fresh each time from what the valley currently
+                thinks, so they are not quoted here.</div></div>
+            </div>) : null}
+        </div>
+        <button className="btn go" style={{ width: '100%', marginTop: 8 }} onClick={goBack}>◂ BOOKS</button>
+        <style>{CSS}</style>
+      </div>
+    )
+  }
+
   if (st.phase === 'journal') return (
     <div className={skin}>
       <div className="row"><span className="h1" role="heading" aria-level={1}>THE JOURNAL</span>
@@ -3084,8 +3148,14 @@ export default function App() {
               <div key={i} className="menu-item" {...tap(() => {
                 const rng = new RNG(st.seed)
                 const next = r.outcome ? applyOutcome(st, r.outcome, rng) : st
+                /* NARR-19: `seen` recorded THAT this happened and nothing about it, so
+                   your half of the conversation was thrown away the moment you left the
+                   fire. The label is stored rather than an index — an index rots the
+                   moment a reply is reordered or reworded, and the label is the thing the
+                   transcript has to show anyway. */
                 setSt({ ...next, seed: rng.s, talkReply: r.text,
-                  seen: Array.from(new Set([...st.seen, talk.id])) })
+                  seen: Array.from(new Set([...st.seen, talk.id])),
+                  said: { ...st.said, [talk.id]: r.label } })
               })}>
                 <div className="big">{r.label}</div>
               </div>))}
