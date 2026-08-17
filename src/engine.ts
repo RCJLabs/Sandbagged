@@ -177,6 +177,30 @@ export const TOPROPE_SKIN = 3
    do the thing they were always described as doing: without them you cannot
    read the route, and every hold on it is harder for that. */
 export const UNREAD_GRIP = 1
+/* NARR-16. What reading everything is worth, and what the wall costs you anyway.
+
+   This used to be one expression — `JOURNAL.length - 1 - held(pages 1..6)` — in which
+   both halves meant "six": six findable pages, six grip of blindness, read them all and
+   the route is legible. NARR-11 grew the journal to fifteen and pulled the two halves
+   apart. The first became FOURTEEN. The second stayed capped at six. Two things happened
+   at once, neither of them measured:
+
+     - the finale got a flat EIGHT grip harder per hold for everybody, blind or read.
+       Eleven versions of balance have since been pinned on top of that, so it is real
+       now whether or not it was intended, and taking it back out is a bigger change
+       than leaving it in. It is named rather than reverted.
+
+     - the eight pages NARR-11 added became worth NOTHING on the wall. Measured mean
+       hold grip on the finale: no pages 24.37, pages 1-6 18.37, ALL FOURTEEN FINDABLE
+       18.37 — identical. Holding only the eight new ones measured 24.37, the same as
+       holding none of them. They have BETA_CARDS entries and a place in the ending;
+       they just could not be read.
+
+   Split back into the two constants it always was. BLIND_HOLD is the flat part and does
+   not move, so both measured endpoints are exactly where they were and the band does not
+   shift. UNREAD_MAX is NARR-7's range, and it now runs off every findable page. */
+export const BLIND_HOLD = 8
+export const UNREAD_MAX = 6
 /* FA-1. The game is named for a first ascensionist and has never let you make
    one. An unclimbed line has no grade, no beta anywhere in the world, and a
    season of dirt on it. */
@@ -3810,7 +3834,7 @@ export function buildRoute(s: GameState, rng: RNG): { holds: Hold[]; feet: Hold[
   const asc = s.inRun ? styleMods(s.style) : styleMods(0)
   const bump = bumpFor(spec.grade + (s.inRun ? mm.gradeUp : 0)), biteBump = Math.ceil(bump / 2)
   // no chalk, no tick marks, no trail: what you have not read, you cannot climb
-  const unread = spec.finale ? Math.max(0, JOURNAL.length - 1 - s.journal.filter(p => p <= 6).length) : 0
+  const unread = spec.finale ? BLIND_HOLD + unreadGrip(s.journal) : 0
   const blind = unread * UNREAD_GRIP
   const weights: Record<string, number> = {}
   for (const k of Object.keys(st.w)) weights[k] = st.w[k] * (rock.boost[k] ?? 1)
@@ -6090,6 +6114,20 @@ export type EndingKind = 'known' | 'partial' | 'stranger'
 export const FINDABLE = JOURNAL.filter(j => j.id !== 7).length
 export const KNOWN_AT = Math.ceil(FINDABLE * 0.7)
 export const PARTIAL_AT = Math.ceil(FINDABLE * 0.3)
+
+/** NARR-16. How much of the finale you cannot read, on NARR-7's six-grip scale,
+    driven by every findable page rather than by the first six. Page 7 is the summit
+    page — you read it AFTER the climb, so it has never counted and still does not. */
+export function unreadGrip(journal: number[]): number {
+  const held = Math.min(journal.filter(p => p !== 7).length, FINDABLE)
+  /* CEIL, not round. Six grip spread over fourteen pages means about two pages a step
+     whichever way it rounds, so two of the steps are always flat — the only choice is
+     WHERE. Rounding puts them at the start, so the first page you ever find changes
+     nothing. Ceiling puts them at the end, where the last pages are already paying you
+     in the ending and the every-page deed. The first page he wrote should be worth
+     something on the wall; the fourteenth does not need to be. */
+  return UNREAD_MAX - Math.ceil(UNREAD_MAX * held / FINDABLE)
+}
 
 /** What you understand when you get up there. */
 export function endingFor(s: GameState): EndingKind {

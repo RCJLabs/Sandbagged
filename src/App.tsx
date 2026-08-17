@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.37 — SAVE-7: starting an expedition wiped the journal, so the game's
-//   only meta-progression reset every trip. Found while closing NARR-9 as stale.
+// SANDBAGGED v10.38 — NARR-16: the eight journal pages NARR-11 added were worth nothing
+//   on the finale. Holding all fourteen measured the same as holding six.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -26,7 +26,7 @@ import {
   coach, codeSeed, copyLimit, cropStep, dailyForecast, dailyGoals, dailyRoute, dailySeed, dailyShare, dailyUsed, tomorrowKey, MOVE_GIFTS, CURSE_TAX,
   supportNow, bedFor,
   SEASON_WEEKS, seasonKey, seasonWeekOf, seasonTitle, nextSeasonTitle, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
-  endSession, endingFor, endingStep, establishedIn, exportSave, exposed, exposureOf,
+  endSession, endingFor, endingStep, unreadGrip, FINDABLE, establishedIn, exportSave, exposed, exposureOf,
   faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
   gearMods, gradeLabel, gradeText, gripShown, holdLabel, honestyOf, importSave,
   jit, leaveEventStep, leaveShopStep, lineCanVary, loadGame, loadoutDeck, mapCliff,
@@ -1488,7 +1488,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.37 · RCJ Labs</div>
+          <div className="sfoot">v10.38 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1717,7 +1717,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.37 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.38 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2187,14 +2187,21 @@ export default function App() {
                 {st.runDeck.some(c => c.read) || st.customDeck?.some(c => c.read) ? (
                   <div className="sub" style={{ color: 'var(--green)' }}>
                     you can read the sequence on this one</div>) : null}
-                {r.finale ? (
-                  <div className="sub" style={{
-                    color: st.journal.length >= JOURNAL.length - 1 ? 'var(--green)' : 'var(--red)' }}>
-                    {st.journal.filter(p => p <= 6).length}/6 of his pages —
-                    {st.journal.filter(p => p <= 6).length >= 6
-                      ? ' you can read the whole thing'
-                      : ` every hold is +${Math.max(0, 6 - st.journal.filter(p => p <= 6).length)} Grip for what you do not know`}
-                  </div>) : null}
+                {/* NARR-16. This said `n/6 of his pages` and `you can read the whole
+                    thing` at six — while the engine was counting fourteen and still
+                    charging eight Grip a hold at that exact moment. The screen now reads
+                    the SAME function the wall does, so it cannot promise what the route
+                    does not honour. */}
+                {r.finale ? (() => {
+                  const held = st.journal.filter(p => p !== 7).length
+                  const blind = unreadGrip(st.journal)
+                  return (
+                    <div className="sub" style={{ color: blind === 0 ? 'var(--green)' : 'var(--red)' }}>
+                      {held}/{FINDABLE} of his pages — {blind === 0
+                        ? 'you have read everything he wrote'
+                        : `every hold is +${blind} Grip for what you have not`}
+                    </div>)
+                })() : null}
                 <div className="sub">{r.style} · top out at {r.clear} · {r.crux} crux
                   {r.roped ? <span style={{ color: 'var(--red)' }}> · {r.pitches} pitches, roped</span> : null}
                   {r.roped ? (

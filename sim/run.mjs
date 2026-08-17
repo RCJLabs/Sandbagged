@@ -112,7 +112,7 @@ const PROJECTS = process.env.PROJECTS !== '0'   // does the sim take projects?  
 // unmoved. On, the harness buys a Second Wind at every post and spends it at the
 // last fall — the buy-and-spend path the ticket needs to measure the feature.
 const KIT_BURN = process.env.KIT_BURN === '1'
-function runOnce(seed) {
+function runOnce(seed, carry) {
     const rng = new E.RNG(seed)
     // balance is measured at the real difficulty — TOPROPE=1 to measure the
     // beginner path instead
@@ -122,6 +122,7 @@ function runOnce(seed) {
     // NARR-11: was hardcoded [1..6], so it could never grant a page above 6
     if (JOURNAL_PAGES) s = { ...s, journal: E.JOURNAL.filter(j => j.id !== 7)
       .map(j => j.id).slice(0, JOURNAL_PAGES) }
+    if (carry) s = { ...s, ...carry }
     let turns = 0, climbs = 0, events = 0, talks = 0, projects = 0, shops = 0, fas = 0, rests = 0, winds = 0, guard = 0, skinAtBoss = -1, reachedBoss = false
     /* BAL-13: what an act COSTS, not just how often it kills. Recorded at the boundary
        and nowhere read by the policy, so this cannot move a decision or a roll. */
@@ -355,7 +356,7 @@ function runOnce(seed) {
       }
       break
     }
-    return { won: s.phase === 'runEnd' && s.result === 'send', tier: s.tier, act: s.act, turns, climbs,
+    return { seenOut: s.seen, journalOut: s.journal, won: s.phase === 'runEnd' && s.result === 'send', tier: s.tier, act: s.act, turns, climbs,
       deck: s.runDeck.length, skin: s.skin, skinAtBoss, reachedBoss, events, gear: s.gear.length,
       trail: s.trail.length, journal: s.journal.length, talks, projects, shops, fas, rests, faSent: s.faSent ?? 0,
       winds,
@@ -610,4 +611,51 @@ if (mode === 'arch') {
       `${('skin ' + (100 * kill.skin / N).toFixed(0) + '%').padStart(11)}`)
   }
   ARCH = 0
+}
+
+/* NARR audit: how a CAREER reads, not a run. Talks chain by `after` and gate on
+   journal pages; both `seen` and `journal` are account state that carryOver now
+   keeps (SAVE-7). So the question is not "how many talks in a run" but "how many
+   expeditions before the story finishes". */
+if (mode === 'career') {
+  const TRIPS = Number(process.env.TRIPS ?? 10)
+  LOADOUT = buildBest()
+  const rng = new E.RNG(777)
+  const firstSeen = new Map()   // talk id -> [trip index...]
+  const pagesAt = [], talksAt = [], wonAt = []
+  const END = { known: 0, partial: 0, stranger: 0 }
+  let finished = 0, finishTrip = []
+  for (let c = 0; c < N; c++) {
+    let carry = { seen: [], journal: [] }
+    let done = -1
+    for (let t = 0; t < TRIPS; t++) {
+      const r = runOnce(Math.floor(rng.next() * 2 ** 31), carry)
+      // page 7 is the summit page: only a completed expedition brings it back
+      const j = r.won ? [...new Set([...r.journalOut, 7])] : r.journalOut
+      carry = { seen: r.seenOut, journal: j }
+      pagesAt[t] = (pagesAt[t] ?? 0) + j.length
+      talksAt[t] = (talksAt[t] ?? 0) + r.seenOut.filter(x => E.TALKS.some(k => k.id === x)).length
+      wonAt[t] = (wonAt[t] ?? 0) + (r.won ? 1 : 0)
+      for (const id of r.seenOut) {
+        if (!E.TALKS.some(k => k.id === id)) continue
+        const a = firstSeen.get(id) ?? []
+        if (!a.includes(c)) { a.push(c); firstSeen.set(id, a) }
+      }
+      if (done < 0 && E.TALKS.every(k => carry.seen.includes(k.id))) done = t
+      if (r.won) END[E.endingFor({ journal: r.journalOut.includes(7) ? r.journalOut : [...r.journalOut, 7] })]++
+    }
+    if (done >= 0) { finished++; finishTrip.push(done + 1) }
+  }
+  console.log(`${N} careers x ${TRIPS} expeditions\n`)
+  console.log('trip   completed%   talks seen (cum)   journal pages (cum)')
+  for (let t = 0; t < TRIPS; t++)
+    console.log(`  ${String(t + 1).padStart(2)}   ${(100 * wonAt[t] / N).toFixed(1).padStart(8)}%   ` +
+      `${(talksAt[t] / N).toFixed(1).padStart(14)}/${E.TALKS.length}   ${(pagesAt[t] / N).toFixed(1).padStart(14)}/15`)
+  console.log(`\n  all ${E.TALKS.length} talks seen within ${TRIPS} trips: ${(100 * finished / N).toFixed(1)}%` +
+    (finishTrip.length ? `  (median trip ${finishTrip.sort((a,b)=>a-b)[Math.floor(finishTrip.length/2)]})` : ''))
+  const tot = END.known + END.partial + END.stranger
+  console.log(`\n  epilogue over ${tot} wins: known ${(100*END.known/tot).toFixed(1)}%  partial ${(100*END.partial/tot).toFixed(1)}%  stranger ${(100*END.stranger/tot).toFixed(1)}%   (known needs ${E.KNOWN_AT}, partial ${E.PARTIAL_AT} of ${E.FINDABLE})`)
+  console.log('\n  talk                     careers reaching it')
+  for (const k of E.TALKS)
+    console.log(`  ${k.id.padEnd(10)} ${k.who.padEnd(14)} ${(100 * (firstSeen.get(k.id)?.length ?? 0) / N).toFixed(1).padStart(6)}%`)
 }

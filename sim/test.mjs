@@ -1034,9 +1034,67 @@ test('the journal makes the finale readable', () => {
     const b = E.startBurn(s, rng)
     return b.holdDeck.reduce((a, h) => a + h.grip, 0) / b.holdDeck.length
   }
-  const blind = gripAt(0), read = gripAt(6)
+  /* NARR-16: `read` was `gripAt(6)`, which was the whole journal when this was
+     written and is six of fourteen findable pages now. Six pages is a HALF-read
+     journal; asking it to behave like a read one is how the eight pages NARR-11
+     added went eleven versions being worth nothing. Read means read. */
+  const blind = gripAt(0), read = gripAt(E.JOURNAL.length)
   ok(blind > read + 3, `an unread finale is only ${(blind - read).toFixed(1)} Grip harder`)
   ok(gripAt(3) < blind && gripAt(3) > read, 'the penalty does not scale with pages')
+})
+test('NARR-16: every page he wrote is worth the same on the wall', () => {
+  /* The finale's blindness was one expression — `JOURNAL.length - 1 - held(pages 1..6)`
+     — in which both halves meant SIX. NARR-11 grew the journal to fifteen, the first
+     half became FOURTEEN, and the second stayed capped at six. Measured mean hold grip
+     on the finale before the fix:
+
+         no pages            24.37
+         pages 1-6           18.37
+         ALL FOURTEEN        18.37   <- identical. The eight new pages did nothing.
+         the eight new ONLY  24.37   <- identical to holding none of them at all.
+
+     They have BETA_CARDS entries and they count toward the ending; they simply could
+     not be read on the wall. The map screen said `6/6 of his pages — you can read the
+     whole thing` at the exact moment eight Grip a hold of blindness remained.
+
+     THE INVARIANT, rather than the numbers: what the wall charges you may depend on HOW
+     MANY of his pages you hold and must not depend on WHICH. The old guard next door
+     compared blind against read and passed either way, because a uniform bug is invisible
+     to a relative test — so this compares two disjoint halves of the same journal. */
+  const finale = E.ROUTES.findIndex(r => r.finale)
+  const gripOf = journal => {
+    const rng = new E.RNG(77)
+    const s = { ...E.freshRun(finale, 0, 5), inRun: true, skirmish: null, weather: 1, rock: 0,
+      journal, runDeck: E.DEFAULT_LOADOUT.map(E.spawn) }
+    return E.startBurn(s, rng).holdDeck.reduce((a, h) => a + h.grip, 0)
+  }
+  const all = E.JOURNAL.filter(j => j.id !== 7).map(j => j.id)
+  eq(all.length, E.FINDABLE, 'FINDABLE and the journal disagree about what is findable')
+  const front = all.slice(0, 7), back = all.slice(7)
+  eq(front.length, back.length, 'the halves differ in size, so comparing them proves nothing')
+  ok(!front.some(p => back.includes(p)), 'the halves overlap, so a dead half could hide in one')
+  eq(gripOf(front), gripOf(back),
+    `seven of his pages are worth ${gripOf(front)} and seven others ${gripOf(back)} — NARR-16 again`)
+  ok(gripOf([]) > gripOf(back), 'the back of the journal is worth nothing on the wall, which was the bug')
+  ok(gripOf(back) > gripOf(all), 'holding twice as much of it reads no better')
+
+  /* The two endpoints are where the band is pinned and the fix was not allowed to move
+     them: BLIND_HOLD is NARR-11's flat cost, kept because eleven versions have been
+     balanced on top of it, and UNREAD_MAX is NARR-7's range. */
+  eq(E.unreadGrip([]), E.UNREAD_MAX, 'reading nothing is no longer the full penalty')
+  eq(E.unreadGrip(all), 0, 'you can read every page he wrote and the wall still calls you blind')
+  eq(E.unreadGrip([...all, 7]), 0, 'a full journal plus the summit page no longer reads as sighted')
+  /* The summit page must not count, and asserting that on a FULL journal proves nothing:
+     `Math.min(held, FINDABLE)` clamps fifteen back to fourteen, so counting page 7 by
+     mistake is invisible there. An injection that counted it survived this guard on
+     exactly that. It has to be asked where the count is not clamped — you have topped
+     out once and gone back out with nothing else, which is a real state and the very one
+     the mistake would reward. */
+  eq(E.unreadGrip([7]), E.UNREAD_MAX,
+    'the summit page is being counted as beta you carried up — you read it AFTER the climb')
+  eq(E.unreadGrip([...all.slice(0, 2), 7]), E.unreadGrip(all.slice(0, 2)),
+    'the summit page is worth a step of relief on a part-read journal — you read it AFTER the climb')
+  ok(E.BLIND_HOLD > 0 && E.UNREAD_MAX > 0, 'the two halves of the old constant are not both real')
 })
 test('only the finale is affected by what you have read', () => {
   const gripAt = (idx, pages) => {

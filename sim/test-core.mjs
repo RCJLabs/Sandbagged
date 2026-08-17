@@ -4084,6 +4084,47 @@ test('ROUTE-12: a signature does something, and the grind lines get one too', ()
     skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
   eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
 })
+test('NARR-16: the finale screen cannot promise what the wall does not honour', () => {
+  /* The map card read `{journal.filter(p => p <= 6).length}/6 of his pages` and, at six,
+     `you can read the whole thing` — while the engine was counting to fourteen and still
+     charging eight Grip a hold at that exact moment. Two hand-rolled counts of the same
+     thing, in two files, and NARR-11 moved one of them.
+
+     The behaviour is guarded in test.mjs. THIS guards the shape that let it happen: there
+     must be ONE function that says how blind you are, and both the wall and the screen
+     must call it. A second hand-rolled page count on either side is the bug returning,
+     whatever number it happens to agree with today. */
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const app = stripComments(readFileSync('src/App.tsx', 'utf8'))
+
+  // the wall asks the function rather than counting for itself
+  const blind = region(eng, '  const unread = spec.finale', ['\n'],
+    { min: 30, what: "the finale's blindness" })
+  ok(/unreadGrip\(/.test(blind), 'the wall counts pages itself again instead of asking unreadGrip')
+  ok(/BLIND_HOLD/.test(blind), "NARR-11's flat cost is no longer named, so it is an unexplained number again")
+  ok(!/<=\s*6|journal\.filter/.test(blind),
+    'the wall is back to hand-rolling a page count, which is exactly what drifted')
+
+  // and so does the screen. The anchor deliberately stops short of the call itself.
+  const card = region(app, '{r.finale ? (() => {', ['})() : null}'],
+    { min: 120, what: "the finale's map card" })
+  ok(/unreadGrip\(st\.journal\)/.test(card),
+    'the map card works out its own blindness again, so it can disagree with the route')
+  ok(/FINDABLE/.test(card), 'the card is back to a literal page total, which is the half NARR-11 moved')
+  ok(!/\/6\b|<=\s*6/.test(card), 'the card still says six pages, and there are fourteen')
+
+  /* The one thing a source guard cannot see: that the two agree. So ask them. */
+  const all = E.JOURNAL.filter(j => j.id !== 7).map(j => j.id)
+  ok(E.unreadGrip(all.slice(0, 1)) < E.unreadGrip([]),
+    'the FIRST page he wrote buys nothing on the wall, which is the whole reason for the ceiling')
+  ok(E.unreadGrip(all) === 0 && E.unreadGrip([]) === E.UNREAD_MAX,
+    'the endpoints moved, and the band is pinned on them')
+  // and it only ever goes one way: reading more of him can never make the wall worse
+  const held = [], ladder = []
+  for (const page of all) { held.push(page); ladder.push(E.unreadGrip(held)) }
+  ok(ladder.every((v, i) => i === 0 || v <= ladder[i - 1]),
+    `finding a page makes the finale HARDER somewhere: ${ladder.join(',')}`)
+})
 test('SAVE-7: a new expedition carries everything that is yours', () => {
   /* `carryOver`'s own docstring says "Everything that belongs to you rather than to a run.
      A new expedition must carry all of it; hand-copying a subset is how it got lost."
