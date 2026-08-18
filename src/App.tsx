@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.44 — ENG-9: engine.ts 6,527 -> 5,882. Data out, rules stay, and every
-//   caller still sees one engine, because engine.ts re-exports everything it moved.
+// SANDBAGGED v10.45 — UX-19: reported from a phone — the tutorial pushed COMMIT off the
+//   bottom and it could not be reached. A11Y-5's sticky bar had never worked; it is fixed.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -477,7 +477,30 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
    working thumb and gives it a bigger target. Layout only. */
 /* DEV-1: this is the worst of them — A11Y-5 exists to put COMMIT under the thumb,
    and it was putting it inside the OS swipe-up zone. */
-.reach .climb-foot{position:sticky;bottom:calc(6px + env(safe-area-inset-bottom));z-index:5;margin-top:8px;
+/* UX-19. This was "position: sticky" and gated behind the one-handed setting, and it
+   NEVER WORKED — proven with a bare sticky-bottom control div dropped into the same
+   parent, which sat at 1170px in an 874px viewport. So A11Y-5's thumb-reachable
+   COMMIT bar was inert for every player, and DEV-1's whole point — COMMIT out of the OS
+   gesture strip — was never actually achieved either.
+
+   Two changes. FIXED rather than sticky, because a fixed element's position does not
+   depend on scroll semantics, on which ancestor is a scroll container, or on the page
+   scrolling at all: its rect either sits in the viewport or it does not, which is also
+   what makes it verifiable. And UNGATED, because "the primary action must be reachable"
+   is not a one-handed preference — reported from a phone where the first-run tutorial
+   banner pushed COMMIT off the bottom of the screen and it could not be reached.
+
+   Sized to the content column rather than the viewport, so it lines up with the page it
+   belongs to instead of spanning the bezel. */
+/* The selector is deliberately over-specific. The weather tint sets
+   .wrap[class*="wx-"]>* to position:relative at (0,2,0), and a plain .climb-foot is
+   (0,1,0) — so the first cut of this fix computed to position:relative and the bar simply
+   did not move. Matching the tint's own shape outranks it outright rather than relying on
+   which rule happens to come later in the sheet. */
+.wrap[class*="wx-"]>.climb-foot,
+.wrap>.climb-foot{position:fixed;left:50%;transform:translateX(-50%);
+ width:min(366px, calc(100vw - 24px));
+ bottom:calc(6px + env(safe-area-inset-bottom));z-index:5;
  padding:7px 9px 8px;border-radius:12px;background:var(--paper);
  border:1.5px solid var(--ink);box-shadow:0 -3px 14px rgba(0,0,0,.22)}
 .reach-l .commit-bar{flex-direction:row-reverse}
@@ -846,6 +869,12 @@ export default function App() {
   const [campMode, setCampMode] = useState<'rest' | 'sharpen' | 'cut'>('rest')
   const [sheet, setSheet] = useState(false)
   const [legend, setLegend] = useState(false)   // UX-17: the glyph/family key, in reach of a climb
+  /* UX-19: the controls are fixed now, so they are out of flow and would cover whatever
+     ends the climb screen — the bail row, and the tutorial's own explanation of what
+     COMMIT does. Measured rather than guessed at with a magic number, because the bar
+     grows a second row whenever you are carrying kit. */
+  const footRef = useRef<HTMLDivElement>(null)
+  const [footH, setFootH] = useState(0)
   /* ART-4: the picture sheet. Declared UP HERE, with the other two sheets, because the
      A11Y-8 focus/Escape effect below has to see it — a `const` used above its declaration
      is a temporal dead zone, which is the shape SAVE-6 shipped as a NaN and tsc caught
@@ -924,6 +953,27 @@ export default function App() {
      `preventScroll` because the browser's scroll-into-view fights a screen that opens
      part-scrolled; `booted` is in the deps because arriving at the menu from the splash is
      a screen change too. */
+  /* UX-19: measure the fixed control bar so the spacer below it is exactly its height.
+     Declared here, with the other effects and AFTER `booted`, because reading a state
+     value above its declaration is the temporal dead zone that tsc has caught four times
+     in this file already. */
+  useEffect(() => {
+    const el = footRef.current
+    if (!el) { if (footH !== 0) setFootH(0); return }
+    /* The whole strip the bar occupies, not just its own height: it is fixed to the bottom
+       of the VIEWPORT, so on a screen tall enough that the page does not overflow it still
+       sits down there while the content ends higher up. Reserving only offsetHeight left
+       the bail row underneath it at 874px — caught by hit-testing rather than by looking.
+       Measuring from its top to the viewport floor also picks up the safe-area inset,
+       which JS cannot read out of env() directly. */
+    const measure = () => setFootH(el.offsetHeight)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    window.addEventListener('resize', measure)
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure) }
+  }, [st.phase, st.kit.length, st.textScale, st.reach])
+
   useEffect(() => {
     if (!booted) return
     const h = document.querySelector('[role="heading"][aria-level="1"]') as HTMLElement | null
@@ -1489,7 +1539,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.44 · RCJ Labs</div>
+          <div className="sfoot">v10.45 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1718,7 +1768,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.44 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.45 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -3978,10 +4028,20 @@ export default function App() {
         <div className="sub" style={{ marginTop: 2 }}>
           They go in the order you placed them — a hand that comes off stops holding
           for the other one.</div>) : null}
+      {/* UX-19: the bail link and the burn count moved ABOVE the controls. They used to
+          follow them, and once the controls became a fixed bar anything after them in flow
+          could end up underneath it — which it did, on a viewport tall enough that the page
+          did not scroll. Ordering it this way means nothing trails the bar at all, which
+          removes the whole class of problem rather than reserving space for it. It also
+          reads better: a secondary way out does not belong below the primary action. */}
+      <div className="row" style={{ marginTop: 3 }}>
+        <span className="sub tap" {...tap(bail)}>bail off this one</span>
+        <span className="sub">burn {st.burn} of {attemptsFor(st)}</span>
+      </div>
       {/* A11Y-5: the primary controls live in a foot that, in one-handed mode,
           becomes a thumb-side sticky bottom bar. Two-handed, it is just the row
           it always was. */}
-      <div className="climb-foot">
+      <div className="climb-foot" ref={footRef}>
       <div className="row commit-bar" style={{ marginTop: 8, alignItems: 'center' }}>
         <button className="btn" disabled={!undo.length}
           onClick={() => { if (!undo.length) return
@@ -4013,10 +4073,13 @@ export default function App() {
           })}
         </div>) : null}
       </div>
-      <div className="row" style={{ marginTop: 3 }}>
-        <span className="sub tap" {...tap(bail)}>bail off this one</span>
-        <span className="sub">burn {st.burn} of {attemptsFor(st)}</span>
-      </div>
+      {/* UX-19: reserves what the fixed bar occupies. Its height is measured, because the
+          bar grows a row when you carry kit; the clearance underneath is CSS, because it
+          has to include env(safe-area-inset-bottom) and JS cannot read that. Reserving
+          only the height left the bail row under the bar on a screen tall enough not to
+          scroll — found by hit-testing, not by looking at it. */}
+      <div aria-hidden="true"
+        style={{ height: footH, marginBottom: 'calc(14px + env(safe-area-inset-bottom))' }} />
       {sheet ? (
         <div className="sheet" {...tap(() => setSheet(false), 'Close what is left')}>
           <div className="sheetin" ref={sheetRef} tabIndex={-1} role="dialog" aria-modal="true"

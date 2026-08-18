@@ -4084,6 +4084,75 @@ test('ROUTE-12: a signature does something, and the grind lines get one too', ()
     skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
   eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
 })
+test('UX-19: the primary action is on the screen without scrolling', () => {
+  /* REPORTED FROM A PHONE: on the first-run tutorial, COMMIT could not be reached — the
+     teaching banner pushed it off the bottom and the page would not scroll to it.
+
+     Two things were wrong and only one of them was the tutorial.
+
+     The banner costs 75px at NORMAL text and 113px at LARGER, and the climb screen has no
+     slack: measured page overflow on the tutorial climb was 8px at 874/NORMAL, 142px at
+     740/NORMAL, 107px at 874/LARGE and 252px at 874/LARGER. So on any phone shorter than
+     about 870 CSS px, a first-timer is told to press a button that is not on screen.
+
+     And A11Y-5's thumb-reachable COMMIT bar — the thing that was supposed to prevent
+     exactly this — HAD NEVER WORKED. It was position:sticky, and a bare sticky-bottom
+     control div dropped into the same parent sat at 1170px in an 874px viewport. So
+     DEV-1's goal of keeping COMMIT out of the OS gesture strip was never met either.
+
+     The bar is FIXED now, and ungated. Fixed because its position does not depend on
+     scroll semantics, on which ancestor is a scroll container, or on the page scrolling at
+     all — which is also the only reason this is verifiable: its rect either sits inside the
+     viewport or it does not. Ungated because "the primary action must be reachable" is not
+     a one-handed preference. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const stripped0 = stripComments(app)
+  /* Matched as a whole declaration rather than through a region() anchored on the selector.
+     Three of this guard's own injections rewrite that selector, so anchoring on it meant the
+     window vanished and GUARD-8's "the opening anchor is gone" fired instead of the
+     assertion that names the defect — an anchor must not contain the thing it is testing,
+     and I broke that rule three times in one guard. */
+  /* THE SELECTOR FIRST, then the declaration — an injection should land on the assertion
+     that names its defect, and every one of these rewrites the selector. NOT GATED: the old
+     rule was .reach .climb-foot, so the bar only existed for players who had found the
+     one-handed setting, and it did not work for them either. */
+  const stripped = stripped0
+  ok(!/\.reach\s+\.climb-foot\s*\{/.test(stripped),
+    'the control bar is behind the one-handed setting again, so most players never get it')
+  /* And it must outrank the weather tint, which sets position:relative on every direct child
+     of .wrap at (0,2,0). The first cut of this fix used a bare .climb-foot at (0,1,0) and
+     computed to relative — the bar did not move at all, and what caught that was a hit-test,
+     not a reading. */
+  ok(/\.wrap\[class\*="wx-"\]>\.climb-foot/.test(stripped),
+    'the rule no longer outranks the weather tint, which sets position:relative on .wrap children')
+  const decl = /\.wrap>\.climb-foot\{([^}]*)\}/.exec(stripped0)
+  ok(decl, 'the .wrap>.climb-foot rule is gone, so the control bar is styled by something else')
+  const rule = decl[1]
+  ok(/position:fixed/.test(rule), 'the control bar is not fixed, so it depends on scrolling working')
+  ok(!/position:sticky/.test(rule), 'the control bar is sticky again, which never pinned anything in this document')
+  // DEV-1: and it stays out of the gesture strip
+  ok(/env\(safe-area-inset-bottom\)/.test(rule),
+    'the control bar sits in the OS gesture strip again, which is the DEV-1 bug')
+
+  /* Nothing may FOLLOW the bar in flow: it is out of flow now, so anything after it can end
+     up underneath it — which the bail row did, on a viewport tall enough not to scroll. */
+  const footAt = stripped.indexOf('className="climb-foot"')
+  const bailAt = stripped.indexOf('{...tap(bail)}')
+  ok(footAt > 0, 'the climb foot has gone')
+  ok(bailAt > 0, 'the bail control has gone from the climb screen')
+  ok(bailAt < footAt,
+    'the bail link is below the fixed control bar again, where it can be covered by it')
+
+  /* The reserve is MEASURED, because the bar grows a second row whenever you carry kit —
+     a magic number would be wrong for exactly the players carrying most. */
+  const eff = region(stripped, '    const el = footRef.current', ['  useEffect('],
+    { min: 120, what: 'the bar measurement' })
+  ok(/ResizeObserver/.test(eff), 'the bar height is no longer observed, so the reserve goes stale when it grows')
+  ok(/offsetHeight/.test(eff), 'the reserve is a literal again rather than the bar it is reserving for')
+  /* The dependency list is INSIDE that window rather than anchored by its own contents, for
+     the same reason: the injection that drops `st.kit` would otherwise delete the anchor. */
+  ok(/st\.kit/.test(eff), 'the reserve stops re-measuring when kit changes, and kit adds a row to the bar')
+})
 test('ENG-9: content is content, and every caller still sees one engine', () => {
   /* `engine.ts` was 6,527 lines. The split was tried once (v6.6) and reverted, and the
      stated reason was mechanical import surgery. Two rules make the retry hold, and both
@@ -5789,13 +5858,15 @@ test('DEV-1: content is inset past the notch and the home indicator', () => {
   const html = readFileSync('index.html', 'utf8')
   ok(/viewport-fit=cover/.test(html), 'the viewport no longer opts out — this guard needs rewriting')
   const rule = name => cssRule(app, name)
-  // the page, the bottom-anchored sheets, and the sticky one-handed COMMIT bar
+  // the page, the bottom-anchored sheets, and the fixed COMMIT bar
   ok(/env\(safe-area-inset-bottom\)/.test(rule('.wrap{max-width')),
     'the page is not padded past the home indicator')
   ok(/env\(safe-area-inset-bottom\)/.test(rule('.sheetin{')),
     'a bottom-anchored sheet still ends inside the indicator strip')
-  ok(/env\(safe-area-inset-bottom\)/.test(rule('.reach .climb-foot{')),
-    'one-handed COMMIT still sits in the OS swipe-up zone')
+  /* UX-19 renamed this rule: the bar is fixed and ungated now, not `.reach`-only and
+     sticky. The anchor moved with it and this guard broke loudly, which is the point. */
+  ok(/env\(safe-area-inset-bottom\)/.test(rule('.wrap>.climb-foot{')),
+    'the COMMIT bar still sits in the OS swipe-up zone')
   // and the viewport unit must be the dynamic one on a phone
   ok(/\.wrap\{[^}]*min-height:100dvh/.test(app),
     'the page is still sized in vh, so it is taller than the visible viewport')
