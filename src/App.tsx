@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.45 — UX-19: reported from a phone — the tutorial pushed COMMIT off the
-//   bottom and it could not be reached. A11Y-5's sticky bar had never worked; it is fixed.
+// SANDBAGGED v10.46 — ROUTE-16: The Cornice and The Hanging Slab were the same route.
+//   Found while baselining ROPE-2, by three statistics agreeing to three figures.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1539,7 +1539,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.45 · RCJ Labs</div>
+          <div className="sfoot">v10.46 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1768,7 +1768,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.45 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.46 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

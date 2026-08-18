@@ -15,6 +15,7 @@ On disk now:
 | | |
 |---|---|
 | roped routes | **4 of 37** — The Nose Direct (3 pitches), Coffin Crack (3), The Cornice (2), The Hanging Slab (2) |
+| | *(corrected v10.46: it was **3** distinct lines when this spec was written. The Cornice and The Hanging Slab were mechanically identical — same shape, same signature stats — and reported identical send, ground-fall and caught-fall rates across 600 sessions each. `ROUTE-16` differentiated the Hanging Slab with the closing ice window its own note had always promised, so the count is honestly four now.)* |
 | where | **all in Act 3** |
 | Circuit | every fourth line is roped, 2 pitches (`n % 4 === 3`) |
 | protection | 8 pieces, carried as `clip` **bonus** cards (not moves — clipping is a quick action, not a limb) |

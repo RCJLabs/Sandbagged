@@ -388,8 +388,26 @@ export const ROUTES: RouteSpec[] = [
     note: 'The line beside The Sandbag. Same man, same optimistic grade in the book.' },
   { name: 'The Rotisserie', signature: 'thespit', grade: 6, style: 'power', clear: 13, crux: 2, feet: 'easy',
     note: 'South-facing, like the Arete next door, and somehow hotter. Bring water.' },
+  /* ROUTE-16. This was THE CORNICE AGAIN. Same grade, same style, same clear, same crux,
+     same feet, same roped, same pitches — and a signature with the same stats too
+     (`thecornice` and `thehang` are both base sloper, dGrip 3, read 1). Two of the four
+     roped lines in the game were one line under two names, which is how the rope content
+     came to look twice as big as it is. Found while baselining ROPE-2: the two reported
+     identical send rates, ground-fall rates and caught-falls-per-session across 600 runs
+     each on different seeds, which is not a coincidence anything but duplication produces.
+
+     The mechanic that tells them apart was already written in this route's own note. "A
+     band of ice that lets go in the afternoon" is a closing weather window — ROUTE-6's
+     mechanic, which the finale uses and no other scripted line does. So the prose is not
+     changed to fit the fix; the fix is what the prose already said. It lands EARLIER than
+     the finale's (0.5 against 0.65) because this is two pitches and the note says
+     afternoon, and it takes the feet rather than sharpening everything: ice releasing over
+     slab is a Support problem. Never Power — the absolute rule from ENG-20. */
   { name: 'The Hanging Slab', signature: 'thehang', grade: 8, style: 'slab', clear: 14, crux: 3, feet: 'hard',
     roped: true, pitches: 2,
+    window: { at: 0.5, dSupport: -2,
+      warn: 'Something lets go above you and skitters off down the slab.',
+      text: 'The ice band is going. Meltwater everywhere and nothing under your feet.' },
     note: 'Two pitches of slab under a band of ice that lets go in the afternoon.' },
 ]
 

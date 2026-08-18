@@ -4084,6 +4084,83 @@ test('ROUTE-12: a signature does something, and the grind lines get one too', ()
     skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
   eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
 })
+test('ROUTE-16: no line is another line wearing a different name', () => {
+  /* THE CORNICE AND THE HANGING SLAB WERE THE SAME ROUTE. Identical grade, style, clear,
+     crux, feet, roped and pitches — and signatures with identical stats as well
+     (`thecornice` and `thehang` are both base sloper, dGrip 3, read 1). Two of the game's
+     four roped lines were one line under two names, which made the rope content look twice
+     the size it is.
+
+     Found by accident, while baselining ROPE-2: the two reported identical send rates,
+     ground-fall rates AND caught-falls-per-session across 600 sessions each on different
+     seeds. Three statistics agreeing to three figures is not something sampling does.
+
+     ROUTE-12 already asserts every signature is real, is named, is used at most once, and
+     DOES something. All four passed. None of them asks whether two signatures do the SAME
+     thing, or whether two routes are the same route — which is the shape of this bug and
+     the reason it sat there. */
+  const key = r => JSON.stringify([r.grade, r.style, r.clear, r.crux, r.feet,
+    !!r.roped, r.pitches ?? 0, !!r.finale, !!r.window, (r.phases ?? []).length, r.dBite ?? 0])
+  const byShape = new Map()
+  for (const r of E.ROUTES) {
+    const k = key(r)
+    if (!byShape.has(k)) byShape.set(k, [])
+    byShape.get(k).push(r.name)
+  }
+  /* Two EASY boulders being statistically alike is not the complaint — a V0 and a V1 slab
+     will always resemble each other. The complaint is a line with a FEATURE, because that is
+     the game promising something specific twice. So the check is scoped to lines carrying
+     one: a signature, a rope, a window, phases, or finale billing. */
+  const featured = r => r.signature || r.sigTag || r.roped || r.window || (r.phases ?? []).length || r.finale
+  for (const [k, names] of byShape) {
+    if (names.length < 2) continue
+    const rs = E.ROUTES.filter(r => names.includes(r.name))
+    if (!rs.some(featured)) continue
+    /* A shared shape is still fine if the signatures differ MECHANICALLY. Names and notes
+       are not mechanics — that was exactly the fig leaf here. */
+    const sigs = rs.map(r => {
+      const g = E.sigById(r.signature ?? r.sigTag ?? '')
+      return g ? JSON.stringify([g.base, g.dGrip ?? 0, g.read ?? 0, g.dBite ?? 0,
+        g.dContact ?? 0, g.crux ?? false]) : 'none'
+    })
+    ok(new Set(sigs).size === sigs.length,
+      `${names.join(' and ')} are the same line with different names — same shape ${k} and signatures that differ only in prose`)
+  }
+
+  /* I FIRST WROTE THIS AS "no two signatures may be mechanically identical anywhere", and
+     running it showed the rule was over-broad in two different ways rather than finding two
+     more bugs.
+
+     `therail` and `thesitdown` are identical and SHOULD be: they are ROUTE-15's `local`
+     pool, which pays in information and never in power (`read: 1`, nothing else) exactly so
+     that naming a hold cannot move the band. Identical mechanics is the point; the line they
+     belong to is what tells them apart.
+
+     `thenave` and `softtouch` are identical too (crimp, dGrip 3, read 2) but they sit on
+     routes that are NOT alike — Cathedral Traverse at grade 4 mixed clear 10, The Sandbag at
+     grade 3 crimp-ladder clear 11. That is duplicated FLAVOUR, not duplicated gameplay, and
+     it is a much smaller thing than two identical lines. Logged rather than asserted.
+
+     So the rule that carries the defect is the one above: two routes of the SAME SHAPE must
+     have signatures that differ mechanically. The Cornice and The Hanging Slab failed it;
+     these pairs do not. What remains worth stating on its own is only that a `local`
+     signature must never grow teeth, because that would be band-active by the back door. */
+  for (const g of E.SIGNATURES) if (g.local)
+    ok(!(g.dGrip || g.dBite || g.dContact || g.crux),
+      `${g.id} is tagged onto generated lines and now moves the numbers, which is band-active by the back door`)
+
+  /* The specific fix, so it cannot quietly revert: The Hanging Slab's own note promises "a
+     band of ice that lets go in the afternoon", and it now has the closing window that says
+     so. Prose and mechanics agreeing is NARR-20's rule, applied to a route. */
+  const hang = E.ROUTES.find(r => r.name === 'The Hanging Slab')
+  ok(hang, 'The Hanging Slab is gone')
+  ok(hang.window, 'The Hanging Slab promises ice that lets go and no longer has a window that does it')
+  ok((hang.window.dSupport ?? 0) < 0, 'the ice band no longer takes the feet, which is what ice over slab does')
+  eq(hang.window.dBite, undefined, 'the window sharpens every hold, where the note only promises the feet going')
+  // ENG-20's absolute rule, restated where a new window could break it
+  for (const r of E.ROUTES) if (r.window)
+    eq('dPower' in r.window, false, `${r.name}'s window moves Power, which no condition in this game may ever do`)
+})
 test('UX-19: the primary action is on the screen without scrolling', () => {
   /* REPORTED FROM A PHONE: on the first-run tutorial, COMMIT could not be reached — the
      teaching banner pushed it off the bottom and the page would not scroll to it.
