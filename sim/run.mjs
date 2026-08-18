@@ -98,6 +98,19 @@ if (mode === 'costing') {
 }
 
 const EVENT_BIAS = process.argv[4] === 'events'
+/* NARR-21. The harness had exactly two opinions about the trail node — never take one, or
+   take every single one — and a real player is neither. That mattered more than it looked:
+   the whole campaign audit (NARR-16..NARR-20) was closed against those two extremes, so
+   `known` ending figures of 0.0% and 51.1% BRACKETED the truth without ever measuring it.
+   And NARR-18 is unmeasurable by either, because it changed what the node SAYS and the sim
+   cannot read.
+
+   `reads` models the player that node is now written for: they know his pages turn up out
+   there, so they take it WHILE THERE ARE STILL PAGES TO FIND, and stop bothering once the
+   journal is full. That last clause is why this is a better model than `events` even for an
+   enthusiast — `events` keeps spending stages on trail nodes after there is nothing left to
+   find, which no informed player does. */
+const READS = process.argv[4] === 'reads'
 let STYLE = Number(process.env.STYLE ?? 0), LOADOUT = undefined, JOURNAL_PAGES = 0, ARCH = 0
 let SHARP_AT = Number(process.env.SHARP_AT ?? 99)
 const FORECAST = process.env.FORECAST !== '0'
@@ -154,6 +167,8 @@ function runOnce(seed, carry) {
         else if (shop && E.postOpen(s) && s.cash >= E.PRICE.common) n = shop   // free, so go in
         else if (proj && PROJECTS && s.skin > E.PROJECT_SKIN + 2) n = proj
         else if (evt && EVENT_BIAS) n = evt
+        // NARR-21: takes the trail node only while he still has something left to say
+        else if (evt && READS && E.nextPage(s) !== null) n = evt
         else if (FORECAST) {
           // read the forecast: take the best-conditioned climb on offer
           const fcs = E.forecastFor(s)

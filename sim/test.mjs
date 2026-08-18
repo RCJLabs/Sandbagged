@@ -2064,6 +2064,60 @@ if (SLOW) {
     for (let i = 1; i < pcts.length; i++)
       ok(pcts[i] >= pcts[i - 1] - 2, `${pcts[i]}% with more pages than ${pcts[i - 1]}% with fewer`)
   })
+  test('NARR-21: the pages reach the ending they exist for', () => {
+    /* THE HOLE THIS FILLS. The campaign audit (NARR-16..NARR-20) was closed against two
+       harness policies: never take a trail node, and take every one. They produced `known`
+       ending figures of 0.0% and 51.1%, which BRACKET the truth without ever measuring it —
+       and NARR-18 is unmeasurable by either, because it changed what the node SAYS and the
+       sim cannot read. Five versions of narrative work, and no number anybody could defend.
+
+       `reads` is the player that node is now written for: they know his pages turn up out
+       there, so they take it while there are still pages to find and stop once the journal
+       is full. Measured at 60 careers x 8 expeditions:
+
+           policy    completion   pages/15   known    partial   stranger
+           climbs         28.3%        6.0     0.0%      82.0%      18.0%
+           reads          41.7%       11.2    43.1%      48.3%       8.6%
+
+       AND THE FINDING IS THAT `reads` IS INDISTINGUISHABLE FROM `events`: at 200x10 they
+       measure 50.7% and 51.1% known, 12.5 pages each. The clause I added — stop once the
+       journal is full — almost never fires inside a realistic career, because the journal
+       does not fill inside one. That is not a defect in the model, it is the answer: the
+       trail node costs nothing (completion is HIGHER with it, 41.7% against 28.3%, because
+       pages become beta), so the optimal informed policy really is "take every one". The
+       two "extremes" were never extremes. They were "believes the label" and "does not".
+
+       WHAT THIS STILL CANNOT MEASURE: whether a human reads the label. That is the one
+       question left in the audit and no harness can answer it. */
+    const career = policy => {
+      const out = execSync(`TRIPS=8 node sim/run.mjs career 60 ${policy}`, { encoding: 'utf8' })
+      const ep = /known ([\d.]+)%\s+partial ([\d.]+)%\s+stranger ([\d.]+)%/.exec(out)
+      ok(ep, `could not read an epilogue split out of the ${policy || 'climbs'} career`)
+      const rows = [...out.matchAll(/\/20\s+([\d.]+)\/15/g)].map(m => Number(m[1]))
+      ok(rows.length >= 8, `read ${rows.length} expedition rows, not the eight asked for`)
+      return { known: Number(ep[1]), stranger: Number(ep[3]), pages: rows[rows.length - 1] }
+    }
+    const reads = career('reads')
+    /* The band, with a date on it, in the shape BAL-14 established: what gets defended is
+       the band, and the number in the comment is what somebody last chose.
+       Set 2026-08-17 at 43.1% known / 11.2 pages. */
+    ok(reads.known > 25,
+      `an informed player reaches the known ending only ${reads.known}% of the time — the pages no longer arrive`)
+    ok(reads.pages > 9,
+      `an informed player finishes eight expeditions with ${reads.pages} of 14 pages, and the ending needs ten`)
+    ok(reads.stranger < 20,
+      `${reads.stranger}% of informed wins still top out as a stranger to him`)
+
+    /* AND THE DELTA IS THE TICKET'S ACTUAL CLAIM: that knowing what the trail node is for
+       is worth the ending. A band on `reads` alone would still pass if the node became
+       free for everybody. */
+    const blind = career('')
+    ok(reads.known - blind.known > 20,
+      `knowing what the trail node is for is worth only ${(reads.known - blind.known).toFixed(1)} points of the known ending`)
+    ok(reads.pages - blind.pages > 3,
+      `reading the node is worth only ${(reads.pages - blind.pages).toFixed(1)} pages, so NARR-18 bought nothing`)
+  })
+
   test('the campaign has not drifted since it was last set', () => {
     /* BAL-14. Between v9.24 and v9.34 the campaign fell from 53% to 43.5% at a
        full journal, and the archetype floor was lowered to accommodate it
