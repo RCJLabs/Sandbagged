@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.41 — NARR-19: seven beats of Marge's thread over six expeditions, and
-//   nowhere to read it back. Who You Have Met keeps both halves of every conversation.
+// SANDBAGGED v10.42 — NARR-20: the largest body of prose in the game did not know the
+//   story existed. Ten events answer a page of his, for whoever is carrying it.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -27,7 +27,7 @@ import {
   supportNow, bedFor,
   SEASON_WEEKS, seasonKey, seasonWeekOf, seasonTitle, nextSeasonTitle, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
   endSession, endingFor, endingStep, unreadGrip, FINDABLE, pagesHeld, KNOWN_AT, nextPage,
-  metCount, establishedIn, exportSave, exposed, exposureOf,
+  metCount, loreFor, establishedIn, exportSave, exposed, exposureOf,
   faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
   gearMods, gradeLabel, gradeText, gripShown, holdLabel, honestyOf, importSave,
   jit, leaveEventStep, leaveShopStep, lineCanVary, loadGame, loadoutDeck, mapCliff,
@@ -1489,7 +1489,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.41 · RCJ Labs</div>
+          <div className="sfoot">v10.42 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1718,7 +1718,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.41 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.42 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2260,6 +2260,13 @@ export default function App() {
         <div className="h1" role="heading" aria-level={1}>{ev.title.toUpperCase()}</div>
         <hr className="rule" />
         <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.65, margin: '10px 0 14px' }}>{ev.text}</div>
+        {/* NARR-20. Only if you are carrying the page this one answers. Set apart from the
+            event's own text rather than blended into it, because it is you recognising
+            something you read and not part of what is in front of you. */}
+        {loreFor(ev, st) ? (
+          <div className="spot" style={{ borderLeftColor: 'var(--tan)', marginBottom: 12 }}>
+            <b style={{ color: 'var(--tan)' }}>HIS PAGES</b>
+            {loreFor(ev, st)}</div>) : null}
         {st.eventResult ? (
           <>
             <div className="menu-item" style={{ borderWidth: 2 }}>

@@ -1954,11 +1954,33 @@ export type GameEvent = {
      branch you took, so nothing could look back even if it wanted to.
      An event can now require a specific choice you made earlier, as `id:index`. */
   after?: string
+  /* NARR-20. The events are the largest body of prose in the game — thirty-six of them,
+     more words than the journal and the conversations put together — and only nine of them
+     knew the story existed at all. So the biggest thing in the game was narratively inert
+     while the smallest thing in it carried the whole campaign.
+
+     The fix is NOT more events, and it is not sprinkling the dead man through all
+     thirty-six: a world where every rockfall reminds you of him is worse, not better. It
+     is that the ones which COULD know about him, do — once you have read the page that
+     says so. Ten events gain a line that appears only when you are carrying the specific
+     page it answers, so the terrain starts recognising him as you read him.
+
+     A SPECIFIC PAGE, deliberately, and it is the one place that is right. NARR-17 was a
+     lesson about gating PROGRESSION on a named page — nothing there could open without
+     it. Nothing depends on this: miss the page and you miss a sentence. Gating it on a
+     count instead would print "he wrote about this rock" to somebody who has read three
+     pages about the weather.
+
+     TEXT AND NEVER POWER. `lore` has no outcome and cannot have one — ROUTE-10, ENG-24 and
+     NARR-12 all settled that this project pays narrative in INFORMATION — which is also
+     what makes it band-neutral by construction rather than by measurement. */
+  lore?: { page: number; text: string }
   choices: { label: string; outcome: EventOutcome }[]
 }
 export const EVENTS: GameEvent[] = [
   { id: 'storm', title: 'Weather Coming In',
     text: 'Anvil cloud over the ridge. Maybe an hour, maybe twenty minutes.',
+    lore: { page: 14, text: 'Six hours under it watching water come down the line he wanted, then out in the dark. He calls that the seventh attempt. He does not say what number this one would be.' },
     choices: [
       { label: 'Get on it wet', outcome: { text: 'You climb it damp and it goes, barely. Your skin pays.', skin: -2, xp: 12 } },
       { label: 'Sit it out under the boulder', outcome: { text: 'An hour under an overhang. You lose the day but keep the skin.', xp: 4 } },
@@ -2015,6 +2037,7 @@ export const EVENTS: GameEvent[] = [
     ] },
   { id: 'chalkbag', title: 'Somebody Left A Bag',
     text: 'A chalk bag under a boulder, rain-stiff, no name in it. Been there a season at least.',
+    lore: { page: 15, text: 'No name in it. He had a whole page about that — a name is a way of telling people you were there, and he had decided against it. Somebody else may just have been careless.' },
     choices: [
       { label: 'Read what is written inside', outcome: { text: 'Somebody wrote their beta on the lining in biro.', boon: true } },
       { label: 'Take it', outcome: { text: 'Good brush inside. Somebody else brushed these holds first.', card: 'Brush' } },
@@ -2022,6 +2045,7 @@ export const EVENTS: GameEvent[] = [
     ] },
   { id: 'sandbag', title: 'A Friendly Grade',
     text: 'Guy at the parking lot says the line at the far end is a soft V2. Great warm-up, he says.',
+    lore: { page: 2, text: 'He had climbed harder and never climbed anything that made less sense. A grade is a rumour that got organised. This one is barely organised.' },
     choices: [
       { label: 'Believe him', outcome: { text: 'It is not a V2. It was never a V2.', curse: 'Sandbagged Beta', xp: 14 } },
       { label: 'Go look at it yourself first', outcome: { text: 'You walk up, look at it, and walk away. Good instincts.', xp: 6 } },
@@ -2034,12 +2058,14 @@ export const EVENTS: GameEvent[] = [
     ] },
   { id: 'campsite', title: 'The Old Campsite',
     text: 'Fire ring grown over, a bent pot, and a stuff sack wedged under a rock.',
+    lore: { page: 4, text: 'He told Marge he was working the Cathedral. This is not the Cathedral. Somebody sat here on their own for a long time and let her go on thinking it.' },
     choices: [
       { label: 'Go through it', outcome: { text: 'Notebook pages, a wire brush, and a name you half recognise.', journal: 0, card: 'Guidebook' } },
       { label: 'Make camp and leave it alone', outcome: { text: 'You sleep well in somebody else\'s good spot.', skin: 1, xp: 4 } },
     ] },
   { id: 'seep', title: 'Seepage',
     text: 'The whole lower band is weeping. Half the crag is off.',
+    lore: { page: 3, text: 'Nine days a year, he reckoned. The rest of the time it seeps and the crux is a waterfall. You are standing in the rest of the time.' },
     choices: [
       { label: 'Hike higher to the dry stuff', outcome: { text: 'Steep approach, cold wind, perfect friction up top.', skin: -1, xp: 16 } },
       { label: 'Take the day off', outcome: { text: 'You read in the van and let the skin come back.', skin: 1, xp: 4 } },
@@ -2053,6 +2079,7 @@ export const EVENTS: GameEvent[] = [
     ] },
   { id: 'choss', title: 'A Line Nobody Has Done',
     text: 'Obvious prow, obvious holds, no chalk anywhere. There is usually a reason.',
+    lore: { page: 9, text: 'You have read about this rock. Everything up here is rubbish, and then somewhere one fin of something hard and grey that nobody has touched. This is the rubbish. That is almost encouraging.' },
     choices: [
       { label: 'Try it', outcome: { text: 'Two good moves and a lot of gravel. You learn something.', skin: -1, cardRarity: 'common', xp: 12 } },
       { label: 'There is a reason', outcome: { text: 'You save it for a day with more skin.', xp: 4 } },
@@ -2073,12 +2100,14 @@ export const EVENTS: GameEvent[] = [
     ] },
   { id: 'moss', act: 0, title: 'Under the Moss',
     text: 'A clean line of holds, entirely green. Somebody would have to brush it.',
+    lore: { page: 1, text: 'No chalk, no tick marks, no trail. He sat under his for a whole evening and did not touch it. You could do that. You are not going to.' },
     choices: [
       { label: 'Spend the afternoon brushing', outcome: { text: 'Four hours on a wire brush. It is a real line now.', card: 'Wire Brush', xp: 10 } },
       { label: 'Leave it for the locals', outcome: { text: 'Somebody else can have that one.', psyche: 1 } },
     ] },
   { id: 'logging', act: 0, title: 'The Logging Road',
     text: 'Fresh gate across the spur road. The walk in just became four miles.',
+    lore: { page: 10, text: 'Four hours if the creek is low, six if it is not, eleven times, and it never once got shorter. He stopped resenting the walk. You are not there yet.' },
     choices: [
       { label: 'Walk it', outcome: { text: 'Two hours each way. The crag is empty, at least.', skin: -1, xp: 14 } },
       { label: 'Find another way in', outcome: { text: 'A deer trail and a fence. It works.', cash: -10, xp: 8 } },
@@ -2131,6 +2160,7 @@ export const EVENTS: GameEvent[] = [
   // ---------------- ACT 3 · the alpine wall ----------------
   { id: 'window', act: 2, title: 'The Window',
     text: 'Thirty hours of high pressure, then a week of snow. That is the forecast.',
+    lore: { page: 6, text: 'Conditions are perfect. Skin is good. That is the last thing he wrote down before he went up, and you are reading it off the same forecast.' },
     choices: [
       { label: 'Go now, go tired', outcome: { text: 'You climb through it on no sleep and it works.', skin: -2, xp: 22 } },
       { label: 'Wait for the next one', outcome: { text: 'Nine days out. You rest properly, at least.', psyche: 2, skin: 2 } },
@@ -2143,6 +2173,7 @@ export const EVENTS: GameEvent[] = [
     ] },
   { id: 'rockfall', act: 2, title: 'Rockfall',
     text: 'Something the size of a fridge comes down the gully while you are in it.',
+    lore: { page: 12, text: 'He wrote that he is frightened up there the whole time, and that what he has is a willingness to be frightened for nine hours. You have managed about four seconds and you would like that on the record.' },
     choices: [
       { label: 'Get under the overhang', outcome: { text: 'You sit it out for an hour, listening.', psyche: -1, xp: 10 } },
       { label: 'Run for the moraine', outcome: { text: 'You make it. Barely, and with a dead leg.', skin: -2, xp: 18 } },
@@ -3138,6 +3169,14 @@ export const TALKS: Talk[] = [
    without moving a single number. The Boulderer, the default and the sim's
    climber, is the everyclimber and gets no gated line, so the guarded runs are
    untouched. */
+/** NARR-20. The line this event has for somebody who has read the page it answers, or ''
+    for everybody else. Asked HERE rather than worked out on the screen, so the guard and
+    the game read the same rule — and because `lore` gates on a page and the screen has no
+    business knowing that. Text only: there is deliberately no outcome to return. */
+export function loreFor(e: GameEvent, s: GameState): string {
+  return e.lore && s.journal.includes(e.lore.page) ? e.lore.text : ''
+}
+
 /** NARR-19. How much of the cast you have actually spoken to. Counted HERE rather than
     on the screen so the Books entry, the transcript header and the guard cannot each
     arrive at a different number — which is the NARR-16 shape, and it started as one

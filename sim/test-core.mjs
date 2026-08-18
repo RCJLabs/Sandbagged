@@ -4084,6 +4084,64 @@ test('ROUTE-12: a signature does something, and the grind lines get one too', ()
     skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
   eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
 })
+test('NARR-20: the events know about him, once you have read him', () => {
+  /* Thirty-six events and more words than the journal and the conversations put together —
+     the largest body of prose in the game — and only nine of them knew the story existed.
+     The biggest thing in the game was narratively inert while the smallest carried the
+     whole campaign. Ten events now answer a specific page, and only for somebody carrying
+     it. What this guard CANNOT check is whether each line actually answers its page; that
+     is a reading, and it is written down in the ticket instead. What it can check is every
+     way the mechanism goes wrong. */
+  const withLore = E.EVENTS.filter(e => e.lore)
+  ok(withLore.length >= 8, `only ${withLore.length} events have anything to say about him`)
+  /* AND NOT ALL OF THEM. A world where every rockfall reminds you of a dead man is worse,
+     not better — the restraint is the design, so it is asserted rather than trusted. */
+  ok(withLore.length < E.EVENTS.length / 2,
+    `${withLore.length} of ${E.EVENTS.length} events mention him, which is no longer restraint`)
+
+  const findable = new Set(E.JOURNAL.filter(j => j.id !== E.SUMMIT_PAGE).map(j => j.id))
+  const pages = new Set()
+  for (const e of withLore) {
+    ok(findable.has(e.lore.page),
+      `${e.id} answers page ${e.lore.page}, which is not a findable page — the summit page is read after everything`)
+    ok(!pages.has(e.lore.page),
+      `page ${e.lore.page} is answered by more than one event, so one page is doing all the work`)
+    pages.add(e.lore.page)
+    ok(e.lore.text.length > 60, `${e.id}'s line is too short to be saying anything`)
+    ok(e.lore.text !== e.text, `${e.id} repeats its own text back as a discovery`)
+    /* TEXT AND NEVER POWER — ROUTE-10, ENG-24 and NARR-12 all settled this, and it is also
+       what makes the whole ticket band-neutral by construction rather than by measurement.
+       Checked on the DATA as well as the type, because a stray field is not a type error. */
+    eq(e.lore.outcome, undefined, `${e.id}'s line carries an outcome, so narrative has become power`)
+    eq(Object.keys(e.lore).sort().join(','), 'page,text', `${e.id}'s line has grown a field beyond page and text`)
+  }
+
+  // it appears only for somebody carrying the page, and it is the right line
+  const one = withLore[0]
+  const blank = { ...E.freshRun(0, 0, 1), journal: [] }
+  eq(E.loreFor(one, blank), '', 'the line shows to somebody who has not read the page it answers')
+  eq(E.loreFor(one, { ...blank, journal: [one.lore.page] }), one.lore.text,
+    'the line does not show to somebody carrying the page it answers')
+  eq(E.loreFor(one, { ...blank, journal: [E.SUMMIT_PAGE] }), '',
+    'the summit page unlocks lines about pages you have not read')
+  const noLore = E.EVENTS.find(e => !e.lore)
+  eq(E.loreFor(noLore, { ...blank, journal: [...findable] }), '',
+    'an event with nothing to say invents something for a full journal')
+
+  /* THE SCREEN ASKS, and does not work the gate out for itself — the NARR-16 and NARR-17
+     shape, twice fixed already. And the engine must never call it: the moment resolution
+     reads this, a sentence has become a number. */
+  const app = stripComments(readFileSync('src/App.tsx', 'utf8'))
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const scr = region(app, "if (st.phase === 'event') {", ['{st.eventResult ?'],
+    { min: 200, what: 'the event screen' })
+  ok(/loreFor\(ev, st\)/.test(scr), 'the event screen no longer shows his pages at all')
+  ok(!/ev\.lore/.test(scr), 'the screen reads the field directly, so it can gate differently from the engine')
+  const engCalls = (eng.match(/loreFor\(/g) ?? []).length
+  eq(engCalls, 1, `loreFor is called ${engCalls} times inside the engine — it is declared there and must never be USED there, or text has become power`)
+  ok(!/lore/.test(region(eng, 'export function applyOutcome', ['\nexport '], { min: 200, what: 'applyOutcome' })),
+    'applying an outcome reads the lore, which is the one thing it must never do')
+})
 test('NARR-19: the conversations are a thread you can read back', () => {
   /* `seen` recorded THAT a conversation happened and nothing whatever about it, and your
      own half was discarded the moment you left the fire. Marge's thread is SEVEN BEATS
