@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.47 — ROPE-2: the three pieces of protection ROPE-1 built could not be
-//   obtained by any reasonable route. They are on the shelf now. The teeth stay off.
+// SANDBAGGED v10.48 — ROPE-2 finished: The Lost Line is the one route whose shape you
+//   choose. Solo it as he did, or rope it — and the headwall is above the last belay.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1302,13 +1302,16 @@ export default function App() {
     buzz([0, 25, 40, 25], st.haptics)
     setSt({ ...startBurn({ ...spent, burn: st.burn + 1 }, rng), seed: rng.s })
   }
-  function startClimb(routeIdx: number, nodeIdx = -1, line = 0) {
+  /* ROPE-2 §3: `roped` is the finale's own choice, threaded rather than set on state first —
+     `takeNode` and `startClimb` both build the climb out of `st`, so a setSt beforehand would
+     be read stale and the choice would silently not apply. */
+  function startClimb(routeIdx: number, nodeIdx = -1, line = 0, roped = false) {
     const rng = new RNG(st.seed)
     const f = nodeIdx >= 0 ? forecastFor(st)[nodeIdx] : null
     const weather = f ? f.weather : rng.int(WEATHER.length)
     const rock = f ? f.rock : rng.int(ROCK.length)
     const next = startBurn({ ...st, ...modeReset(), routeIdx, weather, rock,
-      line, burn: 1, beta: [], worked: [] }, rng)
+      line, burn: 1, beta: [], worked: [], ropedUp: roped }, rng)
     // write the "you abandoned it" state now, so quitting mid-climb costs the
     // node rather than letting you reroll a bad start
     if (st.inRun) saveGame({ ...next, tier: st.tier + 1 })
@@ -1455,7 +1458,7 @@ export default function App() {
 
   const toMenu = () => setSt(s => ({ ...s, phase: 'menu', skirmish: null, result: null,
     log: [], runDeck: s.inRun ? s.runDeck : [] }))
-  function takeNode(n: MapNode, i = -1) {
+  function takeNode(n: MapNode, i = -1, roped = false) {
     if (n.type === 'camp') { setCampMode('rest'); setSt(s => ({ ...s, phase: 'camp' })); return }
     if (n.type === 'project') {
       if (st.skin <= 1) return
@@ -1508,7 +1511,7 @@ export default function App() {
       setSt(s => ({ ...s, eventId: ev.id, eventResult: null, phase: 'event', seed: rng.s }))
       return
     }
-    startClimb(n.routeIdx, i)
+    startClimb(n.routeIdx, i, 0, roped)
   }
   function chooseEvent(ci: number) {
     const ev = EVENTS.find(e => e.id === st.eventId)
@@ -1539,7 +1542,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.47 · RCJ Labs</div>
+          <div className="sfoot">v10.48 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1768,7 +1771,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.47 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.48 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2293,6 +2296,36 @@ export default function App() {
                   color: good > 0 ? 'var(--green)' : good < 0 ? 'var(--red)' : 'var(--fade)' }}>
                   ☁ {w.name} · ⛰ {rk.name}{good > 0 ? ' · ▲ in nick' : good < 0 ? ' · ▼ out of nick' : ''}
                 </div>
+                {/* ROPE-2 §3. The only route in the game whose SHAPE you choose, and the choice
+                    is made here — on the ground, before you commit — because that is the whole
+                    point of it. Two explicit buttons rather than a tap on the card, so neither
+                    option is the one you get by not reading.
+
+                    His fourth page: "Told Marge I was working the Cathedral. She would come if
+                    I asked and I am not asking. This one is mine to be stupid about." So
+                    roping up is a choice against his example and soloing it is following him —
+                    and NEITHER PAYS BETTER. The moment one does, the decision stops being
+                    about him and starts being an optimisation. */}
+                {r.finale ? (() => {
+                  const rack = st.runDeck.filter(c => c.clip).length
+                  return (
+                    <div style={{ marginTop: 7 }}>
+                      <div className="sub" style={{ color: 'var(--tan)', lineHeight: 1.5 }}>
+                        He went alone and told her he was on the Cathedral.</div>
+                      <div className="row" style={{ marginTop: 5, gap: 6 }}>
+                        <button className="btn go" style={{ flex: 1 }}
+                          onClick={e => { e.stopPropagation(); takeNode(n, i, false) }}>
+                          SOLO IT ▸</button>
+                        <button className="btn" style={{ flex: 1 }} disabled={!rack}
+                          onClick={e => { e.stopPropagation(); if (rack) takeNode(n, i, true) }}>
+                          {rack ? 'ROPE UP ▸' : 'NO RACK'}</button>
+                      </div>
+                      <div className="sub" style={{ marginTop: 4, color: 'var(--fade)', lineHeight: 1.45 }}>
+                        {rack
+                          ? 'Roped: three pitches, and a belay wipes the pump. The headwall is above the last one.'
+                          : 'Nothing to clip. A post in the alpine sells protection.'}</div>
+                    </div>)
+                })() : null}
               </div>)
           })}
         </div>
@@ -3409,6 +3442,16 @@ export default function App() {
         <div className="sub">{pages} of {JOURNAL.length} pages · {gradeLabel(spec, st.grades)}</div>
         <InkRule seed={71} color="var(--ink)" />
         <div style={{ fontSize: 'calc(13px * var(--fs))', lineHeight: 1.7, marginTop: 10 }}>{body}</div>
+        {/* ROPE-2 §4. One line, on how you got up, and it is the only place the choice is
+            ever mentioned again. Text, never a number — no XP, no card, no title, nothing
+            that would make either option the correct one. His page 4 is "this one is mine to
+            be stupid about"; the whole weight of roping up is that you declined to be. */}
+        <div className="spot" style={{ borderLeftColor: 'var(--tan)' }}>
+          <b style={{ color: 'var(--tan)' }}>HOW YOU GOT UP</b>
+          {st.ropedUp
+            ? 'You put gear in the whole way. He did not, and he wrote a page about why — this one is mine to be stupid about. You read it, and then you were sensible. Both of those are yours to keep.'
+            : 'Nothing in, the whole way, the way he did it. Nobody was going to find out either way, which is exactly the part that makes it count.'}
+        </div>
         {honest !== 'none' && honest !== 'fair' ? (
           <div className="spot" style={{ borderLeftColor: 'var(--tan)' }}>
             <b style={{ color: 'var(--tan)' }}>AND ONE OTHER THING</b>

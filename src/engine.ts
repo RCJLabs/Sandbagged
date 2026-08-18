@@ -367,6 +367,18 @@ export type GameState = {
   runSeed: number
   ending: string
   topRope: boolean
+  /* ROPE-2 §3. Did you rope up for The Lost Line? A CHOICE, made on the ground, and the
+     only route in the game you get to decide the shape of. Run state, not account state:
+     it is a decision about this attempt. */
+  ropedUp: boolean
+  /* ROPE-2 §4. And the DURABLE record of it, because `ropedUp` is about this attempt and
+     Marge asks about it on a later trip. Her line is gated on the summit page, which means
+     you have already topped out and gone home to be having the conversation — so gating it
+     on `ropedUp` made it UNREACHABLE, and my first cut did exactly that with a comment
+     claiming otherwise. Measured before it shipped: `repliesFor` returned one reply, not
+     two, on the expedition where the talk can actually fire. NARR-17's whole lesson, and I
+     walked into it inside the same session. */
+  ropedFinale: boolean
   history: RunRecord[]
   /* META-10: the mastery deeds (quiver, hardway) used to read `history`, which
      is capped at 20 and evicts oldest-first — so a deed could tick and later
@@ -569,7 +581,7 @@ type SaveData = {
   seasonId?: string; seasonScore?: number; seasonBest?: number
   seasonDays?: number; seasonWeeks?: number[]
   mutators?: string[]
-  runs?: number; falls?: number; ending?: string; topRope?: boolean; history?: RunRecord[]
+  runs?: number; falls?: number; ending?: string; topRope?: boolean; ropedFinale?: boolean; history?: RunRecord[]
   archWins?: number[]; mutatorWin?: boolean
   coaching?: boolean; sound?: boolean; ambience?: boolean; haptics?: boolean; assist?: boolean; cbSafe?: boolean; tutorialDone?: boolean
   motion?: boolean; textScale?: number; reach?: 'off' | 'left' | 'right'
@@ -582,7 +594,7 @@ type SaveData = {
        — and lost the trail, the branch you took at each event, and which line you
        were on. */
     shoppedAt?: number[]; vanRaided?: number[]; trail?: string[]
-    eventChose?: string[]; reroll?: number; line?: number } | null
+    eventChose?: string[]; reroll?: number; line?: number; ropedUp?: boolean } | null
   /* DEV-3: the Circuit sets `inRun: false`, so the `run` block above never
      covered it and NOT ONE LINE of an endless run was ever written down — a
      twenty-line streak was pure memory, gone to a reload or an evicted tab, with
@@ -609,7 +621,7 @@ export function saveGame(s: GameState) {
       seasonId: s.seasonId, seasonScore: s.seasonScore, seasonBest: s.seasonBest,
       seasonDays: s.seasonDays, seasonWeeks: s.seasonWeeks,
       mutators: s.mutators,
-      runs: s.runs, falls: s.falls, ending: s.ending, topRope: s.topRope,
+      runs: s.runs, falls: s.falls, ending: s.ending, topRope: s.topRope, ropedFinale: s.ropedFinale,
       history: s.history.slice(0, HISTORY_MAX), archWins: s.archWins, mutatorWin: s.mutatorWin,
       /* SAVE-2: this used to drop the whole run whenever `tier` ran past the end
          of the act's map — and it always does at a boss, because a boss IS the
@@ -624,7 +636,7 @@ export function saveGame(s: GameState) {
             act: s.act, gear: s.gear, boons: s.boons, kit: s.kit, cash: s.cash, psyche: s.psyche,
             runSeed: s.runSeed, eventsSeen: s.eventsSeen,
             shoppedAt: s.shoppedAt, vanRaided: s.vanRaided, trail: s.trail,
-            eventChose: s.eventChose, reroll: s.reroll, line: s.line }
+            eventChose: s.eventChose, reroll: s.reroll, line: s.line, ropedUp: s.ropedUp }
         : null,
       circuit: s.circuit
         ? { score: s.circuitScore, deck: s.runDeck.map(c => c.name), skin: s.skin,
@@ -754,7 +766,7 @@ export function loadGame(slot = 0): Partial<GameState> | null {
       seasonBest: d.seasonBest ?? 0, seasonDays: d.seasonDays ?? 0,
       seasonWeeks: cap(d.seasonWeeks, SEASON_WEEKS).map(n => Number(n) || 0),
       runs: d.runs ?? 0, falls: d.falls ?? 0, ending: d.ending ?? '',
-      topRope: d.topRope ?? true, history: cap(d.history, HISTORY_MAX),
+      topRope: d.topRope ?? true, ropedFinale: d.ropedFinale ?? false, history: cap(d.history, HISTORY_MAX),
       archWins: cap(d.archWins, ARCHETYPES.length), mutatorWin: d.mutatorWin ?? false,
       ...(d.run ? { inRun: true,
         /* SAVE-1: an unknown card name used to throw out of `spawn` and take the
@@ -772,7 +784,8 @@ export function loadGame(slot = 0): Partial<GameState> | null {
         // SAVE-4: the anti-farm gates and the trip's own record
         shoppedAt: cap(d.run.shoppedAt, MAP_NODES), vanRaided: cap(d.run.vanRaided, MAP_NODES),
         trail: cap(d.run.trail, MAP_NODES), eventChose: cap(d.run.eventChose, MAP_NODES),
-        reroll: d.run.reroll ?? 0, line: d.run.line ?? 0 } : {}),
+        reroll: d.run.reroll ?? 0, line: d.run.line ?? 0,
+        ropedUp: d.run.ropedUp ?? false } : {}),
       ...(d.circuit ? (() => {
         const rng = new RNG(d.circuit.seed ?? 1)
         return { circuit: true, circuitScore: d.circuit.score ?? 0,
@@ -2229,7 +2242,10 @@ export type Talk = {
   /* NARR-12: a reply with `arch` set is that climber's line — it shows only to
      them. Flavour only (never an `outcome`), so who you are changes the
      conversation, never the reward or the balance. */
-  replies: { label: string; text: string; outcome?: EventOutcome; arch?: string }[]
+  /* NARR-12's `arch` is a climber-specific line. ROPE-2 adds `roped`: a line only somebody
+     who roped the finale can give, which is the one thing Marge has a view on. Same rule as
+     `arch` — flavour only, never a different reward. */
+  replies: { label: string; text: string; outcome?: EventOutcome; arch?: string; roped?: boolean }[]
 }
 /* NARR-14. Thirty-seven routes and nobody belayed. The game had a spotter (coaching,
    which is a hint system wearing a person) and it had TALKS (people you meet once and
@@ -2441,10 +2457,18 @@ export const TALKS: Talk[] = [
       { label: 'I found it. He did it first.', text: '"Of course he did." She is quiet for a long time. "Thirty years I have been angry at a man for dying on something he had already climbed." She laughs, once, and it is not really a laugh.' },
       { label: 'Say nothing.', text: 'She looks at you, and then at the fire, and does not ask again. Some of it she works out anyway.', outcome: { journal: 0 } },
     ] },
+  /* ROPE-2 §4: she is the person who would have come if he had asked — his eleventh page is
+     about her letting him not ask. So whether you roped up is the one thing she has a view
+     on, and it is a `roped` reply rather than an `arch` one: same shape as NARR-12's
+     climber-specific lines, same rule, FLAVOUR ONLY. Both replies pay the same, because the
+     moment one pays better the choice stops being about him. */
   { id: 'marge7', who: 'Marge', act: 0, after: 'marge6',
     text: 'One thing. Did he name it?',
     replies: [
       { label: 'He left that to whoever came next.', text: '"Then it is yours." She hands you the coffee. "Do not put your own name on it either. He would think that was hilarious and he would be right."', outcome: { psyche: 2 } },
+      { label: 'He left that to whoever came next. I had gear in the whole way.',
+        text: 'She looks at you for a long moment. "Good." Then, and it costs her something: "He would have called that a lack of commitment. He was wrong about that, and it took me twenty-two years and a funeral to be sure."',
+        roped: true, outcome: { psyche: 2 } },
     ] },
   { id: 'dale1', who: 'Dale', act: 0,
     text: 'Everybody wants the ghost story. Nobody wants to hear he was a bit of a show-off who left his rubbish at the crag.',
@@ -2560,7 +2584,12 @@ export const metCount = (s: GameState) =>
   TALKS.filter(t => s.seen.includes(t.id)).length
 
 export const repliesFor = (t: Talk, s: GameState) =>
-  t.replies.filter(r => !r.arch || (s.inRun && archOf(s).id === r.arch))
+  t.replies.filter(r => (!r.arch || (s.inRun && archOf(s).id === r.arch))
+    /* ROPE-2 §4: a `roped` line only exists for somebody who roped the finale — read off the
+       DURABLE record, not off `ropedUp`. Her line needs the summit page, so it fires on a
+       later expedition, by which point `ropedUp` has been cleared by `newRun`. Gating on it
+       made the reply unreachable; measured, not assumed. */
+    && (!r.roped || s.ropedFinale))
 
 /* FA-1c. You name a line and grade it, and until now nobody said a word about
    it. Grading is a social act — undergrading and overgrading are both claims
@@ -3325,6 +3354,23 @@ const bumpFor = (g: number) => Math.min(3, Math.floor(g / 2))
     and the finale — are never varied. */
 export const specOf = (s: GameState): RouteSpec => {
   const base = s.skirmish ?? ROUTES[s.routeIdx]
+  /* ROPE-2 §3. THE ONE ROUTE YOU CHOOSE THE SHAPE OF. Solo it and it is one push of fifteen
+     holds: pump accumulates the whole way, the window shuts at 0.65, and the Headwall at
+     0.85 leaves nowhere to shake out. Rope it and it is three pitches — and because a belay
+     is `pump: 0, runout: 0`, that is a large gift on a route whose difficulty IS accumulated
+     pump.
+
+     What pays for it, and neither half is a special case:
+       - the rack takes deck slots that would have been moves, which is ROPE-1's whole trade;
+       - and THE HEADWALL SITS ABOVE THE LAST BELAY. `pitches: 3` puts belays at 5 and 10 of
+         15, and the Headwall phase begins at 0.85 — hold 13. So the final third is still one
+         unbroken push, with `noRest` and the window already shut. You buy two resets and you
+         do not buy the top. That falls out of the numbers rather than being written in, which
+         is why the guard asserts it: change `pitches` or the phase and it must still hold.
+
+     Everything else about the line is untouched — same grade, same holds, same phases, same
+     journal beta. It is the same route, climbed differently. */
+  if (base.finale && s.ropedUp) return { ...base, roped: true, pitches: 3 }
   const l = LINES[s.line]
   if (!l || !s.line || base.finale || base.tutorial || base.holds) return base
   // a short boulder can end up with more cruxes than holds, which is not a
@@ -3543,7 +3589,7 @@ export function carryOver(s: GameState): Partial<GameState> {
        written: "saveGame keeps said as account state and carryOver does not hand it to a
        new expedition". A transcript that emptied itself every trip would have been a
        feature whose whole subject is memory, losing its memory. */
-    said: s.said,
+    said: s.said, ropedFinale: s.ropedFinale,
     level: s.level, xp: s.xp, owned: s.owned, sends: s.sends, wins: s.wins,
     runs: s.runs, falls: s.falls, seen: s.seen, book: s.book, ticked: s.ticked,
     established: s.established, history: s.history, bestCircuit: s.bestCircuit,
@@ -3592,7 +3638,7 @@ export function freshRun(routeIdx: number, deckTier: number, seed: number): Game
     level: 1, xp: 0, owned: [], sends: 0, wins: 0, packCards: [], skirmish: null,
     afterPack: 'menu', journal: [], eventId: null, eventResult: null,
     loadout: DEFAULT_LOADOUT.slice(), style: 0, styleMax: 0, act: 0,
-    seen: [], said: {}, eventsSeen: [], talkId: null, talkReply: null, phaseSeen: '', onProject: false,
+    seen: [], said: {}, eventsSeen: [], talkId: null, talkReply: null, ropedUp: false, ropedFinale: false, phaseSeen: '', onProject: false,
     runout: 0, lastPiece: -1, pitch: 0, cash: 0, psyche: PSYCHE_MAX,
     circuit: false, circuitScore: 0, bestCircuit: 0, slot: 0, runSeed: 0, ending: '', topRope: true, history: [], archWins: [], mutatorWin: false, runs: 0, falls: 0,
     shopCards: [], shopGear: [], shopKit: [], kit: [], bought: [],
@@ -3857,6 +3903,8 @@ export function endSession(s0: GameState, rng: RNG): GameState {
         archWins: Array.from(new Set([...(s.archWins ?? []), s.arch])),
         mutatorWin: (s.mutatorWin ?? false) || s.mutators.length > 0,
         journal: Array.from(new Set([...s.journal, SUMMIT_PAGE])),
+        // ROPE-2 §4: recorded at the top, next to the page you find there
+        ropedFinale: s.ropedFinale || s.ropedUp,
         styleMax: s.topRope ? s.styleMax
           : Math.min(ASCENT.length - 1, Math.max(s.styleMax, s.style + 1)) }, 100, rng)
       // topping out the finale is not a result screen — there is something up there

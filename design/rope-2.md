@@ -1,5 +1,8 @@
 # ROPE-2 — The Lost Line, roped
 
+**STATUS: done, v10.48.** §3 (the second way up) and §4 (the epilogue and Marge) shipped; the
+rack was made obtainable in v10.47; §2's "teeth" option was **retracted** — see 2a.
+
 A spec, not an implementation. Written 2026-08-17 against v10.44.
 
 ## 1. What exists today, verified rather than remembered

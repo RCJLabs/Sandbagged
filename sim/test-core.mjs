@@ -4084,6 +4084,62 @@ test('ROUTE-12: a signature does something, and the grind lines get one too', ()
     skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
   eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
 })
+test('ROPE-2: The Lost Line is the one route you choose the shape of', () => {
+  /* Solo it and it is one push of fifteen holds. Rope it and it is three pitches — and a
+     belay is `pump: 0, runout: 0`, which is a large gift on a route whose difficulty IS
+     accumulated pump. What pays for it: the rack takes deck slots (ROPE-1's trade), and THE
+     HEADWALL SITS ABOVE THE LAST BELAY, so the final third is still one unbroken push with
+     `noRest` and the window already shut. That last property falls out of the arithmetic
+     rather than being written in, which is exactly why it is asserted here — change
+     `pitches` or move the phase and it has to still hold. */
+  const f = E.ROUTES.findIndex(r => r.finale)
+  ok(f >= 0, 'there is no finale')
+  const at = roped => E.specOf({ ...E.freshRun(f, 0, 1), inRun: true, skirmish: null, ropedUp: roped })
+  const solo = at(false), rope = at(true)
+  // BOTH shapes exist and are actually different
+  ok(!solo.roped, 'the finale is roped whether you chose it or not, so there is no choice left')
+  ok(rope.roped && (rope.pitches ?? 0) >= 2, 'choosing to rope up does not rope the route')
+  /* And it is THE SAME ROUTE otherwise — not an easier variant. Compared field by field so a
+     future edit cannot quietly make one of them a different climb. */
+  for (const k of ['name', 'grade', 'style', 'clear', 'crux', 'feet'])
+    eq(JSON.stringify(rope[k]), JSON.stringify(solo[k]), `roping the finale changed its ${k}`)
+  eq(JSON.stringify(rope.phases), JSON.stringify(solo.phases), 'roping the finale changed its phases')
+  eq(JSON.stringify(rope.window), JSON.stringify(solo.window), 'roping the finale changed its weather window')
+
+  /* THE PROPERTY THE WHOLE TRADE RESTS ON. */
+  const per = rope.clear / rope.pitches
+  const lastBelay = per * (rope.pitches - 1)
+  const headwall = rope.phases.find(p => p.noRest)
+  ok(headwall, 'the finale has no no-rest phase, so there is nothing the belays must not reach')
+  ok(Math.ceil(headwall.at * rope.clear) > lastBelay,
+    `the last belay (hold ${lastBelay}) is at or above the headwall (hold ${Math.ceil(headwall.at * rope.clear)}) — roping up now buys you a reset on the last push, which is the one thing it must not`)
+
+  /* PER ATTEMPT vs DURABLE, and the difference is not cosmetic: Marge's line is gated on the
+     summit page, so it fires on a LATER expedition. My first cut gated her reply on `ropedUp`
+     — run state, cleared by `newRun` — which made it unreachable, with a comment claiming the
+     opposite. That is NARR-17's lesson, walked into in the same session. */
+  const topped = { ...E.freshRun(0, 0, 1), ropedUp: true, ropedFinale: true, journal: [E.SUMMIT_PAGE] }
+  const next = { ...E.newRun(9, undefined, 0, 0, []), ...E.carryOver(topped), ...E.modeReset() }
+  eq(next.ropedUp, false, 'how you climbed one finale carries into the next expedition, and it should not')
+  eq(next.ropedFinale, true, 'the record of roping it does NOT survive, so Marge can never mention it')
+  const m7 = E.TALKS.find(t => t.replies.some(r => r.roped))
+  ok(m7, 'nobody has anything to say about how you got up')
+  const replies = st => E.repliesFor(m7, { ...st, inRun: true, journal: [E.SUMMIT_PAGE], seen: [m7.after] })
+  ok(replies(next).length > replies({ ...next, ropedFinale: false }).length,
+    'the roped reply is unreachable on the expedition where that conversation actually happens')
+
+  /* NEITHER OPTION PAYS BETTER. The moment one does, the choice stops being about him and
+     becomes an optimisation — ROUTE-10, ENG-24 and NARR-12's rule, applied to a decision
+     rather than to a line of text. Compared as outcomes, field by field. */
+  const roped = m7.replies.find(r => r.roped), plain = m7.replies.find(r => !r.roped && !r.arch)
+  eq(JSON.stringify(roped.outcome), JSON.stringify(plain.outcome),
+    'roping it and soloing it pay differently, so the decision is an optimisation now')
+
+  /* OFF BAND BY CONSTRUCTION: the harness never ropes it, so the pinned campaign number
+     cannot move. `newRun` must default to soloing. */
+  eq(E.newRun(5, undefined, 0, 0, []).ropedUp, false,
+    'a new run ropes the finale by default, which puts this on the measured band')
+})
 test('ROPE-2: the rack ROPE-1 built can actually be got', () => {
   /* THREE CARDS CARRY `clip: true` AND NONE OF THEM WAS OBTAINABLE. Quickdraw, Wired Nut and
      Bomber Cam are what ROPE-1's whole decision rests on — "carrying protection costs deck
