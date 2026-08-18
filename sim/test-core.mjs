@@ -4084,6 +4084,60 @@ test('ROUTE-12: a signature does something, and the grind lines get one too', ()
     skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
   eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
 })
+test('ENG-9: content is content, and every caller still sees one engine', () => {
+  /* `engine.ts` was 6,527 lines. The split was tried once (v6.6) and reverted, and the
+     stated reason was mechanical import surgery. Two rules make the retry hold, and both
+     are asserted here rather than remembered.
+
+     ONE: engine.ts RE-EXPORTS everything it moves out, so nothing that imports from
+     './engine' changes — App.tsx and sim/entry.ts were not touched by any of this. The
+     moment a caller has to know which file a thing lives in, the split has started costing
+     what v6.6 paid.
+
+     TWO: data out, rules stay. `CARDS` is the trap — 346 lines that read like the biggest
+     content block in the game and are really `Record<string, CardDef> = {}` filled by a
+     loop over `mv(...)` factories. Moving it moves the factories, and then the content file
+     holds rules. Same for `TALKS`, whose section is wrapped in five functions that need
+     GameState. Both correctly stayed, and this guard fails if either arrives. */
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  const content = readFileSync('src/content.ts', 'utf8')
+  const types = readFileSync('src/types.ts', 'utf8')
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const barrel = readFileSync('sim/entry.ts', 'utf8')
+
+  // ONE: every caller still sees a single engine
+  for (const [what, src] of [['the screens', app], ['the sim barrel', barrel]]) {
+    ok(!/from '\.\/content'|from '\.\.\/src\/content'/.test(src),
+      `${what} imports content directly, so engine.ts has stopped being the one door`)
+    ok(!/from '\.\/types'|from '\.\.\/src\/types'/.test(src),
+      `${what} imports types directly, so engine.ts has stopped being the one door`)
+  }
+  /* And the re-export is real: a name that moved must still be reachable through E, which
+     is the only thing the callers actually rely on. */
+  for (const n of ['ROUTES', 'EVENTS', 'JOURNAL', 'BOONS', 'MUTATORS', 'WEATHER', 'ROCK', 'ASCENT', 'SEQUENCES'])
+    ok(E[n] !== undefined, `${n} moved out and is no longer re-exported, so every caller of it breaks`)
+
+  // TWO: nothing in the content file is a rule
+  ok(!/\bexport function\b/.test(content),
+    'a function has moved into the content file, which is how a content file becomes a second engine')
+  ok(!/=>\s*\{[\s\S]{0,400}\bs\.\w+/.test(content) || !/GameState/.test(content),
+    'the content file has started reading GameState, so it is no longer content')
+  /* Written as `!A || B` first, and the injection walked straight through it: with a value
+     import ADDED ALONGSIDE the type import, both halves were true and the disjunction held.
+     An assertion must be sensitive to the thing under test and nothing else, so this counts
+     value imports rather than asking whether a type import exists somewhere. */
+  const valueImports = [...content.matchAll(/^import\s+(?!type\b)[^\n]*from '\.\/engine'/gm)]
+  eq(valueImports.length, 0,
+    'the content file imports VALUES from the engine, which is a real import cycle rather than an erased one')
+  // the two that must not have come, and the reason each is a rule
+  ok(/export const CARDS/.test(eng) && /\bmv\(/.test(eng),
+    'CARDS moved to the content file — it is built by factories, so the factories went with it')
+  ok(/export const TALKS/.test(eng),
+    'TALKS moved to the content file, and its section is five functions that need GameState')
+  // types.ts stays leaf: no values, no imports at all
+  ok(!/export (const|function)/.test(types), 'a value has moved into the leaf types file')
+  ok(!/^import/m.test(types), 'the leaf types file has grown an import, so it is no longer a leaf')
+})
 test('NARR-20: the events know about him, once you have read him', () => {
   /* Thirty-six events and more words than the journal and the conversations put together —
      the largest body of prose in the game — and only nine of them knew the story existed.
@@ -5713,9 +5767,13 @@ test('UI-4: the map says what each stage ahead of you is', () => {
   ok(/boss \? 'var\(--red\)' : 'var\(--fade\)'/.test(app), 'the boss does not stand out in ink')
   // and the engine's node types must all be accounted for, so a new one cannot
   // silently arrive as an anonymous circle
-  const eng = readFileSync('src/engine.ts', 'utf8')
-  const types = (/export type NodeType = ([^\n]+)/.exec(eng)?.[1] ?? '')
-    .split('|').map(t => t.trim().replace(/'/g, '')).filter(Boolean)
+  /* ENG-9: `NodeType` moved to src/types.ts and this broke loudly, which is the split
+     working. Repointed at the MAPS rather than at the other file — every node type that
+     actually appears on a map must have a mark. That is a stronger question than the one
+     it was asking: a member of the type union that no map ever uses used to be demanded a
+     mark, and a type is not what draws the circle. It also stops this guard caring which
+     file a type declaration lives in, which is why it broke. */
+  const types = [...new Set(E.ACTS.flat(2).map(n => n.type))]
   ok(types.length >= 6, `read ${types.length} node types`)
   for (const t of types.filter(t => t !== 'climb'))
     ok(new RegExp(`${t}:`).test(marks), `node type "${t}" has no mark on the map`)
