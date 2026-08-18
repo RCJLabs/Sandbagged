@@ -4084,6 +4084,65 @@ test('ROUTE-12: a signature does something, and the grind lines get one too', ()
     skirmish: E.circuitRoute(9, new E.RNG(9)) }, new E.RNG(7)).holds.find(h => h.sig)
   eq(again.sig, tags[0].sig, 'the same line named a different feature on a replay')
 })
+test('ROPE-2: the rack ROPE-1 built can actually be got', () => {
+  /* THREE CARDS CARRY `clip: true` AND NONE OF THEM WAS OBTAINABLE. Quickdraw, Wired Nut and
+     Bomber Cam are what ROPE-1's whole decision rests on — "carrying protection costs deck
+     slots and speed and insures against catastrophe". They were in no reward pool and no
+     starting loadout, default or archetype. Measured: 4,000 act-3 shop stockings offered a
+     piece 0.0% of the time. The single exception proves it — the `moraine` event's "Work it
+     free" hands over a Wired Nut, which needs a trail node, that event, and that branch.
+
+     Meanwhile the map card tells you "Nothing on your rack. You can lead it, but you will be
+     climbing scared", and `coach()` warns you about running it out. The game described a rack
+     you could not have.
+
+     SOLD, NOT GIVEN, and that is the measured part. Putting the three into REWARDS moved the
+     band 44.3% → 48.0% at n=3000 with act 3 deaths FALLING 33% → 29% — adding a catastrophic
+     risk made the campaign easier. The clip is narrow, but `shed 1, draw 1` at cost 0 is free
+     value on all thirty-seven lines (compare `Breathe`: cost 0, common, sheds 2, draws
+     nothing). So the shelf sells one and cash is the price. */
+  const rack = Object.values(E.CARDS).filter(c => c.clip)
+  ok(rack.length >= 3, `only ${rack.length} pieces of protection exist`)
+  // not free: none of them may sit in a reward pool
+  const pools = [...E.REWARDS.common, ...E.REWARDS.uncommon, ...E.REWARDS.rare]
+  for (const c of rack)
+    ok(!pools.includes(c.name),
+      `${c.name} is handed out free again — measured at +3.7 points of completion, because shed-and-draw is not narrow`)
+  ok(E.CLIP_STOCK.length >= 2, 'the shelf rotation has collapsed to one piece')
+  for (const n of E.CLIP_STOCK)
+    ok(E.CARDS[n]?.clip, `${n} is on the protection shelf and is not a piece of protection`)
+
+  /* OBTAINABLE, in the act that needs it and nowhere else — derived from the map, so adding a
+     roped line to another act provisions it without anybody remembering to. */
+  const ropedActs = E.ACTS.map((a, i) =>
+    a.flat().some(n => n.routeIdx >= 0 && E.ROUTES[n.routeIdx]?.roped) ? i : -1).filter(i => i >= 0)
+  ok(ropedActs.length >= 1, 'no act has a roped line on it, so this guard is asserting nothing')
+  /* DETERMINISM BEFORE ROTATION, because an RNG-drawn piece looks like a shelf that never
+     varies when every stocking is handed the same seed — so the rotation assertion fired
+     first and named the wrong defect. Picked from the STAGE, not the run RNG: the same rule
+     the kit shelf states two lines above it, because drawing from the shared stream shifts
+     every downstream roll and moves the balance guards for nothing. Two stockings of one
+     stage with DIFFERENT rngs must offer the same piece. */
+  const at = seed => E.stockShop({ ...E.freshRun(0, 0, 7), inRun: true, act: ropedActs[0], tier: 1,
+    gear: [], boons: [] }, new E.RNG(seed)).shopCards.filter(c => c.clip).map(c => c.name).join()
+  eq(at(11), at(9999), 'the piece on the shelf is drawn from the run RNG, which perturbs every roll after it')
+
+  for (const act of [0, 1, 2]) {
+    const seen = new Set()
+    for (let tier = 0; tier < 4; tier++) {
+      const st = E.stockShop({ ...E.freshRun(0, 0, 7), inRun: true, act, tier, gear: [], boons: [] },
+        new E.RNG(11))
+      const clips = st.shopCards.filter(c => c.clip)
+      eq(clips.length, ropedActs.includes(act) ? 1 : 0,
+        `act ${act + 1} shop offers ${clips.length} pieces and ${ropedActs.includes(act) ? 'should offer one' : 'has no ropes on it'}`)
+      clips.forEach(c => seen.add(c.name))
+    }
+    // and which piece rotates with the stage, so it is not always the same one
+    if (ropedActs.includes(act)) ok(seen.size >= 2,
+      `the roped act always sells the same piece (${[...seen].join(', ')}), so the shelf never varies`)
+  }
+
+})
 test('ROUTE-16: no line is another line wearing a different name', () => {
   /* THE CORNICE AND THE HANGING SLAB WERE THE SAME ROUTE. Identical grade, style, clear,
      crux, feet, roped and pitches — and signatures with identical stats as well
@@ -5719,7 +5778,14 @@ test('the shop stocks something you could actually buy', () => {
   for (let i = 0; i < 60; i++) {
     const s = E.stockShop({ ...E.freshRun(0, 0, i), act: i % 3, gear: [], boons: [] }, rng)
     eq(s.phase, 'shop', 'stocking did not open the shop')
-    eq(s.shopCards.length, 3, 'the shelf is the wrong size')
+    /* ROPE-2: three finds, plus a piece of protection in any act that has ropes. Asserted
+       as a rule rather than a number, so the shelf cannot quietly grow a fourth find. */
+    const ropedAct = E.ACTS[s.act].flat().some(n => n.routeIdx >= 0 && E.ROUTES[n.routeIdx]?.roped)
+    const clips = s.shopCards.filter(c => c.clip)
+    eq(s.shopCards.length - clips.length, 3, 'the shelf is the wrong size')
+    eq(clips.length, ropedAct ? 1 : 0, ropedAct
+      ? 'the post in a roped act has no rack on the shelf, so protection is unobtainable again'
+      : 'a post is selling protection in an act with no ropes on it')
     for (const c of s.shopCards) ok(E.priceOf(c) > 0, `${c.name} is free`)
     eq(s.bought.length, 0, 'the shop opened with something already sold')
   }

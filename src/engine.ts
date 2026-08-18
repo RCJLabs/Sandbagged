@@ -2161,7 +2161,24 @@ export function stockShop(s: GameState, rng: RNG): GameState {
   // here would shift every downstream roll and move the balance guards for no
   // real reason (the harness never buys kit). Deterministic, zero perturbation.
   const kitId = CONSUMABLES[(s.act * 3 + s.tier) % CONSUMABLES.length].id
-  return { ...s, shopCards: cards, shopGear: stock, shopKit: [kitId], bought: [], phase: 'shop' }
+  /* ROPE-2. The post in a roped act has a rack on the shelf.
+     Three cards in this game carry `clip: true` and ROPE-1's whole decision rests on them —
+     and they were in NO reward pool and NO starting loadout, so they could not be had.
+     Measured: 4,000 act-3 shop stockings offered a piece 0.0% of the time. The one exception
+     was the `moraine` event's "Work it free", which needs a trail node, that event, and that
+     branch. Which is very probably why `startBurn` had made the belay your first piece:
+     roped routes are unwinnable without protection (49–86% ground falls with none), so the
+     symptom was patched rather than the cause.
+     SOLD, NOT GIVEN. Putting them in the reward pools measured 44.3% → 48.0% — `shed 1,
+     draw 1` at cost 0 is free value on every line, roped or not. Cash is the price, which is
+     what ROPE-1 meant by protection costing you something.
+     Picked from the STAGE, not the run RNG, for the same reason the kit above is — drawing
+     from the shared stream would shift every downstream roll and move the balance guards for
+     nothing. And offered only where ropes exist, DERIVED from the act's own map, so adding a
+     roped line to another act provisions it without anybody remembering to. */
+  const roped = ACTS[s.act]?.flat().some(n => n.routeIdx >= 0 && ROUTES[n.routeIdx]?.roped)
+  const rack = roped ? [spawn(CLIP_STOCK[s.tier % CLIP_STOCK.length])] : []
+  return { ...s, shopCards: [...cards, ...rack], shopGear: stock, shopKit: [kitId], bought: [], phase: 'shop' }
 }
 export const priceOf = (c: Card) =>
   c.rarity === 'rare' ? PRICE.rare : c.rarity === 'uncommon' ? PRICE.uncommon : PRICE.common
@@ -2763,6 +2780,36 @@ export function applyOutcome(s: GameState, o: EventOutcome, rng: RNG): GameState
    rare-only keywords (echo/settle2/weight/momentum/guard) and snap, each of which
    pushed a fuller refresh to 58%; chip/sequences/protection/skin-cost as their
    own sub-systems; and extra feet cards (the pool already covers that lever). */
+/* ROPE-2. THE THREE PIECES OF PROTECTION WERE NOT IN HERE, AND SO WERE NOT IN THE GAME.
+   `Quickdraw`, `Wired Nut` and `Bomber Cam` exist in CARDS, carry `clip: true`, and are
+   what ROPE-1's whole decision rests on — "carrying protection costs deck slots and speed
+   and insures against catastrophe". Shops and rewards both draw from these pools, and none
+   of the three was in any of them. Measured: **4,000 act-3 shop stockings offered a piece
+   of protection 0.0% of the time.** No starting loadout carries one either — not the
+   default and not any of the five archetypes.
+
+   The single exception is the one that proves it: the `moraine` event's "Work it free"
+   hands over a Wired Nut. So a rack was obtainable by taking a trail node in act 2, rolling
+   that one event out of the pool, and picking that branch.
+
+   This is almost certainly why `startBurn` made the belay your first piece. Roped routes
+   are unwinnable without protection — measured 49–86% ground falls with none — so the
+   symptom got patched (`lastPiece: 0`, no ground falls ever) instead of the cause
+   (protection was unobtainable). Both are fixed together, because either alone is worse
+   than neither: teeth without a rack is a wall, and a rack without teeth is a dead card.
+
+   NOT SOLVED HERE, and the first attempt is worth recording because it was wrong. I put the
+   three into these pools at their own rarities, reasoning that a clip is NARROW — it does
+   nothing on the thirty-three lines that are not roped — so it would be a real draft
+   decision rather than free power. **Measured: the band went 44.3% → 48.0% at n=3000, and
+   act 3 deaths FELL from 33% to 29%** — adding a catastrophic risk made the campaign
+   easier. The reasoning was wrong about the card rather than about the rope: the CLIP is
+   narrow, but `shed 1, draw 1` at cost 0 is not, and free cycling is worth more than its
+   face value in a deck game. Compare `Breathe`, a cost-0 common that sheds 2 and draws
+   nothing. Three of those in the free reward pools is a power increase, not provisioning.
+
+   So protection is sold, not given — see `stockShop`. Cash is the price, which is what
+   ROPE-1 meant by a cost. */
 export const REWARDS = {
   common: ['Gaston', 'Sloper Slap', 'Undercling', 'Mantle', 'Pinch Grip', 'Deadpoint',
     'Heel Hook', 'Drop Knee', 'Flag', 'High Step', 'Breathe', 'Brush',
@@ -2771,6 +2818,11 @@ export const REWARDS = {
     'Crimp Specialist', 'Pocket Poacher'],
   rare: ['Iron Fingers', 'Static Lock', 'Perfect Beta', 'Send Train'],
 }
+/** ROPE-2: what the post in a roped act keeps on the shelf. Deliberately not in REWARDS —
+    these are bought, never handed over. Two commons and the rare, so which one is on the
+    shelf still varies by where you are without varying by luck. */
+export const CLIP_STOCK = ['Quickdraw', 'Wired Nut', 'Bomber Cam']
+
 /** Reward quality scales with the act — later ranges hand out better gear,
     which is what lets the deck keep pace with the grade ramp. */
 const ACT_ODDS: [number, number][] = [[0.70, 0.95], [0.50, 0.88], [0.35, 0.80]]
@@ -3873,7 +3925,22 @@ export function startBurn(s: GameState, rng: RNG): GameState {
     pump: s.windBurn ? Math.floor(PUMP_MAX * WIND_PUMP) : 0,
     windBurn: false,
     flow: 0, cleared: 0, worked: [], turn: 1, phaseSeen: '',
-    // the belay is your first piece: on a rope you are never on nothing
+    /* ROPE-2 TRIED TO CHANGE THIS AND WAS WRONG. I read `spec.roped ? 0 : -1` as a symptom
+       patch — it makes the ground-fall branch in `resolve` unreachable, and I measured 1,600
+       sessions across every roped route with the clip cards stripped out and got zero ground
+       falls. So I proposed `-1`, "a ground fall only below your first piece on the first
+       pitch", on the grounds that above a belay the anchor really does catch you.
+
+       Then the suite said no, by name: `a roped route never starts you on nothing`, whose
+       comment reads "69% of roped attempts used to end as ground falls because the rope was
+       treated as beginning from no protection at all. You are tied to the belay." It was
+       DELIBERATE, MEASURED AND GUARDED — and the 49–86% ground-fall rate I measured for a
+       rackless climber is that same 69% problem, re-derived, which I then recommended
+       reintroducing. The rope's tension is not a ground fall. It is "fall with nothing in but
+       the belay and the WHOLE PITCH is gone", which is live and reachable and plenty.
+
+       Left exactly as it was. What did need fixing was next door: the three clip cards were
+       unobtainable, which is why a rackless climber existed to measure at all. */
     runout: 0, lastPiece: spec.roped ? 0 : -1, pitch: 0, savedBlow: false, peakPump: 0,
     // DAILY-2: per-burn, like peakPump above it — a fresh go asks the objective again
     rests: 0, cruxFree: 0,
@@ -5683,8 +5750,14 @@ export function coach(s: GameState): string | null {
   const handHolds = [0, 1].filter(i => holds[i])
   if (s.turn === 1 && !mine.some(Boolean))
     return 'Tap a card, then tap a lane. COMMIT resolves all three lanes at once.'
-  if (specOf(s).roped && s.lastPiece < 0 && s.cleared >= 2)
-    return 'You have nothing in. Come off now and it is a ground fall — clip something.'
+  /* ROPE-2: this used to read "come off now and it is a ground fall", and no player could
+     ever see it — you are tied to the belay from the first move, so `lastPiece < 0` is
+     unreachable on a rope and has been ever since that was fixed. The state it was reaching
+     for is real, though, and worse than it sounds: with only the belay in, a fall costs you
+     the ENTIRE pitch, not the ground above your last piece. Pointed at the consequence that
+     exists rather than the one that does not. */
+  if (specOf(s).roped && s.lastPiece === 0 && s.cleared >= 2)
+    return 'Nothing in but the belay. Come off now and you lose the whole pitch — get a piece in.'
   if (specOf(s).roped && s.runout >= 4 && s.pump >= PUMP_MAX - 4)
     return `${s.runout} holds above the gear. Fall now and you lose all of it — get a piece in.`
   if (s.inRun && s.psyche <= DOUBT_AT)

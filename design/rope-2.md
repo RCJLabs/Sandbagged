@@ -24,6 +24,36 @@ On disk now:
 You can finish the campaign having roped up three times. The game's most distinctive
 mechanic is a speciality of its last act.
 
+## 2a. CORRECTION (v10.47) — section 2 below was wrong
+
+**Everything in section 2 about "giving the rope its teeth back" should not be acted on, and
+the recommendation I made from it was wrong.** The reasoning was that `lastPiece: spec.roped ?
+0 : -1` made ground falls unreachable, that this looked like a symptom patch, and that
+restoring `-1` would be the smallest honest fix. Evan chose that option on my recommendation.
+
+It is a bug this project already found, measured, fixed and guarded. `sim/test.mjs` carries
+**`a roped route never starts you on nothing`**, whose comment reads:
+
+> *69% of roped attempts used to end as "ground falls" because the rope was treated as
+> beginning from no protection at all. You are tied to the belay.*
+
+I never found that guard when writing this spec. And the 49–86% ground-fall rate I measured
+for a rackless climber is **that same 69% problem, re-derived** — so the change would have
+reintroduced it. The suite refused it by name, and it is now a kept injection so anybody who
+tries again meets the guard immediately.
+
+**What was actually broken was next door**, and it is why a rackless climber existed to
+measure at all: the three clip cards were **unobtainable**. Fixed in v10.47 — the post in any
+act that has ropes sells one. Sold rather than given, because putting them in the reward pools
+measured **44.3% → 48.0%** completion: the clip is narrow, but `shed 1, draw 1` at cost 0 is
+free value on all thirty-seven lines.
+
+**So the rope's tension is option (b), and it was already there:** fall with nothing in but
+the belay and you lose the **entire pitch**. The `coach()` line that used to promise a ground
+fall now says that instead, which turns a sentence no player could see into a true one.
+
+Section 3 onward — the roped finale as a second way up — is unaffected and still stands.
+
 ## 2. The blocker — read this before designing anything
 
 **Ground falls are unreachable.** `startBurn` sets
