@@ -2,8 +2,9 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.55 — PUMP-1: the daylight clock had never once run out. The day closes now —
-//   past DUSK_AT the hand shrinks every turn, so a grind ends instead of going forever.
+// SANDBAGGED v10.56 — COND-2: every weather window was a one-way switch on 2 of 37 routes.
+//   Windows PASS now, and say so, and three more lines carry one — 1.94% → 4.91% of turns
+//   spent inside live conditions.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1543,7 +1544,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.55 · RCJ Labs</div>
+          <div className="sfoot">v10.56 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1772,7 +1773,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.55 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.56 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

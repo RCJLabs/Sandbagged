@@ -286,7 +286,14 @@ export const ROUTES: RouteSpec[] = [
     note: 'Sandstone that eats skin and gives nothing back.' },
   { name: 'Varnish', signature: 'blackglass', grade: 5, style: 'crimp ladder', clear: 10, crux: 1, feet: 'normal',
     note: 'Black desert varnish, holds like glass until it is not.' },
-  { name: 'Sun Dagger', grade: 6, style: 'power', clear: 10, crux: 1, feet: 'easy',
+  /* COND-2: the dagger of sun crosses the wall and moves off it. `dSupport` only — BAL-13
+     proved added Bite on the critical path is dangerous, and ENG-20's rule is that a condition
+     may move Bite and Support and never Power. */
+  { name: 'Sun Dagger', grade: 6, style: 'power', clear: 10,
+    window: { at: 0.3, until: 0.7, dSupport: -1,
+      warn: 'The line of sun is coming across the face towards you.',
+      text: 'You are in the dagger. Hot rock, wet hands, nothing staying on.',
+      clear: 'The sun moves off the wall. Cold stone, and your feet bite again.' }, crux: 1, feet: 'easy',
     signature: 'twofinger',
     note: 'Shade for forty minutes a day. Miss it and you cook.' },
   { name: 'The Chimney', grade: 6, style: 'compression', clear: 11, crux: 1, feet: 'normal',
@@ -319,7 +326,12 @@ export const ROUTES: RouteSpec[] = [
   { name: 'Icebox Corner', grade: 8, style: 'compression', clear: 12, crux: 3, feet: 'normal',
     signature: 'wetjug',
     note: 'North facing. Never dries. Perfect friction, no feeling.' },
+  // COND-2: a squall crosses and goes. Slab is a Support problem, so that is what it takes.
   { name: 'Whiteout Slab', signature: 'thewhiteout', grade: 8, style: 'slab', clear: 12, crux: 3, feet: 'hard',
+    window: { at: 0.4, until: 0.75, dSupport: -1,
+      warn: 'The cloud below you is coming up the face.',
+      text: 'Whiteout. You cannot see your feet, and you are trusting them anyway.',
+      clear: 'It blows through. The slab comes back and you can see what you are standing on.' },
     note: 'Nothing to hold. Nothing to see. Stand up on it anyway.' },
   { name: 'The Nose Direct', signature: 'thenose', grade: 7, style: 'mixed', clear: 12, crux: 3, feet: 'normal',
     roped: true, pitches: 3,
@@ -375,7 +387,12 @@ export const ROUTES: RouteSpec[] = [
   // after it — which silently pointed the campaign finale at this boulder.
   /* NARR-10, appended out of place on purpose: inserting into the act 2 block
      above would shift every index in acts 2 and 3. Desert towers, indices 31-33. */
-  { name: 'The Blowhole', grade: 6, style: 'compression', clear: 11, crux: 2, feet: 'normal',
+  // COND-2: it is called the Blowhole. The gust comes up the slot and then it stops.
+  { name: 'The Blowhole', grade: 6, style: 'compression', clear: 11,
+    window: { at: 0.45, until: 0.8, dSupport: -1,
+      warn: 'The slot below you starts to moan.',
+      text: 'The gust comes up through the hole and takes your feet off the wall.',
+      clear: 'The wind drops as suddenly as it came. Quiet, and you can stand up again.' }, crux: 2, feet: 'normal',
     signature: 'bellows',
     note: 'The wind comes up through it about four. You want to be off by then.' },
   { name: 'Squeeze Chimney', signature: 'squeezechim', grade: 5, style: 'mixed', clear: 12, crux: 1, feet: 'hard',
@@ -413,9 +430,15 @@ export const ROUTES: RouteSpec[] = [
      slab is a Support problem. Never Power — the absolute rule from ENG-20. */
   { name: 'The Hanging Slab', signature: 'thehang', grade: 8, style: 'slab', clear: 14, crux: 3, feet: 'hard',
     roped: true, pitches: 2,
-    window: { at: 0.5, dSupport: -2,
+    /* COND-2: the ice band PASSES. It is an afternoon thaw, not a permanent state — its own
+       note says "a band of ice that lets go in the afternoon" — so climbing through it and out
+       the other side is what the route was always describing. This is also the offset for the
+       three windows COND-2 adds elsewhere: making the harshest window in the game temporary
+       pays for putting mild ones on three more routes. */
+    window: { at: 0.5, until: 0.85, dSupport: -2,
       warn: 'Something lets go above you and skitters off down the slab.',
-      text: 'The ice band is going. Meltwater everywhere and nothing under your feet.' },
+      text: 'The ice band is going. Meltwater everywhere and nothing under your feet.',
+      clear: 'Above the ice band. Dry rock, and your feet mean something again.' },
     note: 'Two pitches of slab under a band of ice that lets go in the afternoon.' },
 ]
 

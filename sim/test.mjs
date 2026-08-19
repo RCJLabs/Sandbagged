@@ -338,6 +338,91 @@ test('the preview stays exact on the turn a window shuts', () => {
     eq(bad, 0, `${spec.name}: the preview mismatched resolve on ${bad} of ${seen} turns`)
   }
 })
+test('COND-2: the sky moves twice — a window can pass, and says so', () => {
+  /* Every window in this game used to be a one-way switch: it shut at `at` and stayed shut to
+     the top of the route, on 2 of 37 lines. Measured on the full journal before this ticket,
+     1.94% of climb turns sat inside a live condition and 6.82% of burns ever reached one — so
+     "the conditions change" was true of almost no turn anybody played. This holds the three
+     things that fixed it: a window can pass, passing is announced, and passing genuinely takes
+     its numbers back off. (Why the window and not `s.weather`: WEATHER[...].dContact is baked
+     into every card's contact at startBurn, so moving the weather mid-burn leaves every card in
+     hand carrying the old number — the ENG-26 divergence. A window only ever touches the
+     modifiers that are read live, which is why it is the mechanism that can move.) */
+  const TEMP = WINDOWED.filter(([r]) => r.window.until !== undefined)
+  ok(TEMP.length >= 3, `only ${TEMP.length} route(s) in the game carry a window that can pass`)
+  /* A window that shuts for good is a set-piece you are meant to fight to the top through, so
+     the finale keeps one. Any ordinary line whose sky shuts forever is the old bug back. */
+  for (const [spec] of WINDOWED)
+    ok(spec.window.until !== undefined || spec.finale,
+      `${spec.name}: an ordinary route's window shuts and never re-opens`)
+
+  const card = E.spawn('Crimp Grip')
+  const hold = { name: 'crimp', grip: 5, bite: 3 }
+  for (const [spec, idx] of TEMP) {
+    const w = spec.window
+    ok(w.until > w.at && w.until <= 1, `${spec.name}: until=${w.until} is not above at=${w.at}`)
+    // it may not quietly stop doing something to you: `clear` is required wherever `until` is
+    ok(w.clear && w.clear !== w.text && w.clear !== w.warn,
+      `${spec.name}: nothing of its own is said when the window passes`)
+
+    const feet = { ...E.spawn('Flag'), set: true }
+    const base = { ...E.freshRun(idx, 0, 5), inRun: true, skirmish: null, turn: 4,
+      weather: 1, rock: 0, boardH: [null, null, null], boardP: [null, null, feet] }
+    const shutAt = Math.ceil(w.at * spec.clear), passAt = Math.ceil(w.until * spec.clear)
+    ok(passAt > shutAt, `${spec.name}: the window passes on the same hold it lands on`)
+    const below = { ...base, cleared: 0 }
+    const inside = { ...base, cleared: passAt - 1 }
+    const past = { ...base, cleared: passAt }
+    ok(E.windowOf(inside), `${spec.name}: the window is not live on the hold before it passes`)
+    ok(!E.windowOf(past), `${spec.name}: the window is still live ${w.until} of the way up`)
+    ok(!E.windowNear(past), `${spec.name}: a window that has passed telegraphs itself all over again`)
+
+    // and the numbers come back off — past it the wall reads exactly as it did below it
+    const belowSup = E.supportNow(below), insideSup = E.supportNow(inside), pastSup = E.supportNow(past)
+    ok(belowSup > 0, `${spec.name}: the fixture has no Support to lose, so this proves nothing`)
+    ok(insideSup < belowSup, `${spec.name}: the window took nothing off the feet while it was shut`)
+    eq(pastSup, belowSup, `${spec.name}: Support did not come back when the window passed`)
+    eq(E.biteAgainst(past, card, hold, 0), E.biteAgainst(below, card, hold, 0),
+      `${spec.name}: Bite stayed sharpened after the window passed`)
+  }
+
+  /* And it is SAID. A condition lifting silently is worse than one that never lifts: the
+     numbers change under a player who was given no reason. Driven through real turns rather
+     than asserted off the state, because the announcement lives in resolve. */
+  const rng = new E.RNG(4404)
+  /* The board is handed easy holds and no pump on purpose. Left to the starter deck on the
+     real wall at that height, Sun Dagger cleared nothing on 40 of 40 attempts and this whole
+     block passed on an empty sample — which is the fixture-never-fires class of bug three
+     guards in this suite have already shipped with. The turn under test is the one where a
+     hold clears at `until`, so the fixture's job is to make that happen every time. */
+  const easyBoard = () => [{ name: 'jug', grip: 1, bite: 0 }, { name: 'jug', grip: 1, bite: 0 },
+    { name: 'smear edge', grip: 1, bite: 0 }]
+  for (const [spec, idx] of TEMP) {
+    const w = spec.window
+    const passAt = Math.ceil(w.until * spec.clear)
+    let crossed = 0, said = 0
+    for (let t = 0; t < 40 && crossed < 3; t++) {
+      let st = startClimb(idx, rng, { seed: Math.floor(rng.next() * 2 ** 31) })
+      st = E.autoPlay({ ...st, cleared: passAt - 1, pump: 0, boardH: easyBoard() }, rng)
+      if (!E.windowOf(st)) continue
+      const next = E.resolve(st, rng)
+      if (next.cleared < passAt || next.burn !== st.burn) continue
+      crossed++
+      if (next.log.some(l => l.includes(w.clear))) said++
+    }
+    ok(crossed >= 1, `${spec.name}: never once climbed out of the window, so nothing was tested`)
+    eq(said, crossed, `${spec.name}: the window passed ${crossed} time(s) and was announced ${said}`)
+  }
+
+  /* One clock, read in one place, so resolve and the preview can never disagree about whether
+     the sky is still shut — the whole reason ROUTE-6 put the window behind a function. */
+  const body = region(CODE, 'export function windowOf', ['export function windowNear'],
+    { min: 120, what: 'windowOf' })
+  ok(/w\.until !== undefined && f >= w\.until/.test(body), 'windowOf does not close the window at `until`')
+  const inFn = (body.match(/\.until\b/g) ?? []).length
+  const all = (CODE.match(/\.until\b/g) ?? []).length
+  eq(all, inFn, `the window's clock is read in ${all - inFn} place(s) outside windowOf`)
+})
 test('ROUTE-7: the bosses are not all the same trick', () => {
   /* The audit's finding: bosses reused a compact phase set and only lockLane
      was dramatic. Every boss must be readable as one named thing, and across

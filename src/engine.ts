@@ -1067,9 +1067,16 @@ export type BossPhase = {
    and Support but NEVER Power (the absolute rule from ENG-20). `dBite` sharpens
    the whole route; `dSupport` is the feet going, which every deck feels. */
 export type WeatherWindow = {
-  at: number; dBite?: number; dSupport?: number
+  at: number
+  /** COND-2: the share of the route by which it has PASSED. Without this a window is a switch
+      that throws once and stays thrown, which is what all of them were. */
+  until?: number
+  dBite?: number; dSupport?: number
   /** Shown a hold before it lands. */ warn: string
   /** Shown when it arrives. */ text: string
+  /** COND-2: shown when it passes. Required wherever `until` is, or the sky would quietly stop
+      doing something to you and the numbers would change with nothing said. */
+  clear?: string
 }
 export type RouteSpec = {
   name: string; grade: number; style: StyleKey
@@ -1127,11 +1134,24 @@ export function phaseOf(s: GameState): BossPhase | null {
    hold clears this turn. Its Bite lands in biteAgainst and its Support in
    powerAgainst, which the preview already routes through, so it is exact for
    free. */
+/* COND-2. A window can now PASS. Before this, every one of them was a one-way switch: the sky
+   shut at `at` and stayed shut for the rest of the route, on 2 of 37 routes — measured, 1.94% of
+   climb turns sat inside a live condition and 6.82% of burns ever reached one. So conditions were
+   set before you tied in and never moved, which is exactly what the row said.
+
+   WHY THE WINDOW AND NOT THE WEATHER. `s.weather` is chosen once and `WEATHER[...].dContact` is
+   BAKED INTO EVERY CARD'S CONTACT at `startBurn` — so shifting the weather mid-burn would leave
+   every card in hand carrying the old number, which is the ENG-26 divergence with a different
+   hat on. ROUTE-6 already solved this correctly by restricting a window to the modifiers that
+   are read LIVE (`dBite` in `biteAgainst`, `dSupport` in `powerAgainst`), which the preview
+   already routes through — "exact for free", as its note says. So this extends that mechanism
+   rather than inventing a second one. */
 export function windowOf(s: GameState): WeatherWindow | null {
   const spec = specOf(s)
   const w = spec.window
   if (!w) return null
   const f = spec.clear ? s.cleared / spec.clear : 0
+  if (w.until !== undefined && f >= w.until) return null
   return f >= w.at ? w : null
 }
 /** What the sky is about to do, and how many holds away — so it is a decision. */
@@ -5058,6 +5078,10 @@ export function resolve(s: GameState, rng: RNG): GameState {
   // last turn and does this one), and telegraphed a hold before, like a phase.
   if (windowOf(out) && !windowOf(s))
     out = { ...out, log: [...out.log, `— THE WINDOW — ${windowOf(out)!.text}`] }
+  /* COND-2: and the sky letting go of you is said too. Same shape as the arrival above, because
+     the numbers move back and a change nobody announces reads as the game being inconsistent. */
+  else if (!windowOf(out) && windowOf(s))
+    out = { ...out, log: [...out.log, `— IT PASSES — ${specOf(s).window?.clear ?? 'The weather moves off. You can feel the wall again.'}`] }
   else {
     const near = windowNear(out)
     if (near && near.away === 1) out = { ...out, log: [...out.log, `▸ ${near.w.warn}`] }
