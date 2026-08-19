@@ -372,11 +372,96 @@ test('Sight the Line reveals the next holds without touching the deck', () => {
   const st = startClimb(4, rng, { seed: 55 })
   const before = st.holdDeck.length
   const st2 = E.playBonusStep(st, E.spawn('Sight the Line'), -1, rng)
-  eq(st2.readAhead, Math.min(2, before), 'reading did not reveal what the card says it reads')
+  /* INFO-1: the card's own `read`, not a hardcoded 2. The depth changed when reading stopped
+     being free (a read is beta on the holds it covers now), and a guard that names a content
+     number fails on the content change rather than on the property it is about. */
+  eq(st2.readAhead, Math.min(E.spawn('Sight the Line').read, before),
+    'reading did not reveal what the card says it reads')
   eq(st2.holdDeck.length, before, 'reading popped the deck — it must only look, not draw')
   const shown = st2.holdDeck.slice(-st2.readAhead)
   ok(shown.length === st2.readAhead && shown.length > 0, 'nothing was actually revealed')
 })
+test('INFO-1: a hold you read arrives known, and that is all it arrives with', () => {
+  /* INFO-1. `readAhead` was consulted by NOTHING but the display — the source said so in four
+     separate places, each time as the reason a read is "band-safe" — so the wall paid in
+     information and the information did nothing. Measured before the change: a player holds a read
+     on 5.4% of climb turns, mean 1.25, never more than 2. `Take It All In`, the deepest read in
+     the game, valued at −3.0: the worst card in the pool, because what it bought had no effect.
+
+     WHAT SHIPPED is the information half: a hold you read arrives KNOWN, so the preview reads it
+     exactly instead of as a WOBBLE-wide span. That is a real use — a whole grip of uncertainty is
+     the difference between a card that clears and one that might — and it is band-safe by
+     construction, because `holdKnown` is read by `gripShown` and by nothing else.
+
+     WHAT WAS RETRACTED is the mechanical half, and the guard for it is the assertion that a read
+     hold is NOT cheaper. Treating a read as beta took the band 44.3% to 46.6% and four dials could
+     not move it, because a read covers whatever arrives next: it is a flat discount on the wall
+     rather than a bonus with a size. engine.ts's note on `effGrip` carries the numbers. */
+  const rng = new E.RNG(9)
+  const st = startClimb(4, rng, { seed: 71 })
+  const deep = Object.keys(E.CARDS).map(n => E.spawn(n))
+    .filter(c => c.read).sort((a, b) => b.read - a.read)[0]
+  ok(deep, 'no card grants a read at all any more')
+
+  const after = E.playBonusStep({ ...st, pump: 4 }, deep, -1, rng)
+  ok(after.readAhead > 0, 'the fixture bought no read, so nothing below proves anything')
+  /* the hand lanes are emptied so `refillAndDraw` actually brings holds up — with a full board
+     nothing arrives and every assertion below would pass for free. */
+  const empty = b => ({ ...b, boardH: [null, null, b.boardH[2]], boardP: [null, null, null] })
+  const out = E.resolve({ ...empty(after), phase: 'climb' }, new E.RNG(3))
+  const flagged = out.boardH.filter(h => h && h.read)
+  ok(flagged.length > 0, 'no hold arrived under the read, so the fixture proves nothing')
+
+  /* KNOWN: the preview reads a read hold exactly. Compared against the same hold in a run that
+     never read it, so the only difference is the reading. */
+  const blind = E.resolve({ ...empty({ ...st, readAhead: 0 }), phase: 'climb' }, new E.RNG(3))
+  let compared = 0
+  for (const i of [0, 1]) {
+    const a = out.boardH[i], b = blind.boardH[i]
+    if (!a || !b || a.uid !== b.uid || !a.read || out.beta.includes(a.name)) continue
+    compared++
+    ok(E.gripShown(out, a).sure, 'a hold you read still reads as a range — the preview learned nothing')
+    ok(!E.gripShown(blind, b).sure, 'the unread control reads exactly, so this proves nothing')
+    /* NOT CHEAPER. This is the retraction, guarded: knowing what is coming must not make the
+       hold easier, only legible. */
+    eq(E.gripFor(out, a), E.gripFor(blind, b),
+      'a hold you read is cheaper than the same hold unread — that measured 44.3% to 46.6%')
+    eq(a.grip, b.grip, 'reading changed the hold itself')
+  }
+  ok(compared > 0, 'no arriving hold could be compared, so neither claim was tested')
+
+  /* AND IT IS STILL INFORMATION EVERYWHERE ELSE. `holdKnown` is the one consumer of the flag,
+     and `gripShown` is the one consumer of `holdKnown` — two readers is how the preview and the
+     resolution come to disagree (ENG-26). Comments stripped: the notes explaining the retraction
+     name `effGrip` and `beta` while explaining what must NOT read them. */
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const grip = region(eng, 'const effGrip = ', ['export const gripFor'],
+    { min: 40, what: 'effGrip' })
+  ok(!/h\.read/.test(grip), 'grip is discounted for a hold you read again — that is the retracted half')
+  const known = region(eng, 'export const holdKnown', ['export function gripShown'],
+    { min: 40, what: 'holdKnown' })
+  ok(/h\.read/.test(known), 'a hold you read no longer reads as known, so reading does nothing at all')
+  /* and the valuation must not price a read while reading buys information: a term there with no
+     mechanical effect behind it is the ENG-25 failure inverted — the policy told a card is worth
+     something it cannot spend. This is what the retracted half added, so it is what a
+     re-addition would put back first. */
+  const bv = region(eng, 'function bonusValue', ['function seqValue'], { min: 200, what: 'bonusValue' })
+  ok(!/c\.read/.test(bv),
+    'the valuation prices a read again, though a read buys information a greedy policy cannot spend')
+
+  /* the board says it, because the pips silently stopping being a span is otherwise the game
+     looking inconsistent (A11Y-8: the same fact in the accessibility tree). */
+  const app = stripComments(readFileSync('src/App.tsx', 'utf8'))
+  /* the two are asserted on their own STRINGS, not on the shared `h.read && !h.clean` condition:
+     both the drawn line and the spoken label are guarded by it, so a condition match could not
+     tell which of the two had gone. Found by an injection that removed the drawn line and tripped
+     the spoken assertion instead. */
+  ok(/h\.read && !h\.clean && <div[\s\S]{0,240}you read this one/.test(app),
+    'the board never says which holds you had read')
+  ok(/You read this one before it came up/.test(app),
+    'the spoken label does not say you read the hold')
+})
+
 test('a read counts down as holds come onto the board and stays in range', () => {
   const rng = new E.RNG(654)
   let st = E.playBonusStep(startClimb(4, rng, { seed: 77 }), E.spawn('Sight the Line'), -1, rng)
@@ -1477,8 +1562,9 @@ test('the pool does not fill up with cards nobody would take', () => {
      CARD-18 adds `read` to that set, and it is the same property rather than a
      softer bar: the value of reading the wall is planning, and the greedy policy
      does not plan — it never consults `readAhead` at all, which is asserted just
-     below so this classification stays a derived fact. When the policy can read
-     ahead (SIM-7), `read` earns a real term and comes back out of this set. */
+     below so this classification stays a derived fact. INFO-1 tried to remove this excuse by
+     giving a read a mechanical effect and retracted it (engine.ts, `effGrip`), so the excuse
+     stands and it stands for the original reason. */
   /* SEQ-2 replaced the RATIO, not the excusing. The old second half said 40% of whatever is
      down here must be structurally unpriceable — a bar that gets HARDER to clear the better
      those cards are priced, which is backwards: pricing a plan properly moved three of the
@@ -1493,13 +1579,21 @@ test('the pool does not fill up with cards nobody would take', () => {
      asserted there, in the SEQ-2 guard, against such a deck. */
   ok(dead.length / vals.length < 0.05,
     `${dead.length} of ${vals.length} cards would never be taken`)
+  /* INFO-1 TOOK `read` OUT OF THE EXCUSED SET AND PUT IT BACK. Making a read grant beta on the
+     holds it covered did lift both cards out of the dead set — `Sight the Line` 5.2 to 12.9 and
+     `Take It All In` −3.0 to 12.4 — and it also put the pinned band up 1.8 points in a way four
+     separate dials could not touch, because a read covers whatever arrives next and so amounts to
+     a flat discount on the whole wall. That half is retracted; see `effGrip` in engine.ts for the
+     numbers. `read` is situational again, and for exactly CARD-18's reason. */
   const filler = dead.filter(([n]) => !E.CARDS[n].read && !E.CARDS[n].seq && !E.CARDS[n].clip)
   ok(filler.length <= 6,
     `${filler.length} dead cards the valuation CAN price and still would not take: ${filler.map(([n]) => n).join(', ')}`)
   // the derivation behind counting `read` as situational: the policy cannot spend it
   const eng = readFileSync('src/engine.ts', 'utf8')
-  const auto = region(eng, 'export function autoPlay', ['export function coach',
-    '\nexport function ', '\nexport const '], { min: 600, what: 'autoPlay' })
+  /* comments stripped: INFO-1's note inside `autoPlay` explains why the policy does NOT spend a
+     read, and the un-stripped window matched the word in that explanation — ART-4's class. */
+  const auto = stripComments(region(eng, 'export function autoPlay', ['export function coach',
+    '\nexport function ', '\nexport const '], { min: 600, what: 'autoPlay' }))
   ok(!/readAhead/.test(auto),
     'the policy reads ahead now, so `read` is priceable and must not be excused as situational')
   ok(E.CARDS['Sight the Line'].read > 0 && E.CARDS['Take It All In'].read > 0,

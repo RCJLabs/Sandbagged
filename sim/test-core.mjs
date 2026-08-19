@@ -5751,21 +5751,33 @@ test('CARD-18: the four mechanics nobody could meet twice', () => {
     eq(out.readAhead, Math.min(s0.holdDeck.length, card.read), `${name} read a different depth`)
     eq(out.pump, 8 + card.cost, `${name} did not cost what it says`)
   }
-  /* and reading is INFORMATION (RUN-9/ENG-24), which is what makes it band-safe and
-     what makes `read` situational in the dead-card guard. Asserted behaviourally, not
-     by grepping resolve for `readAhead`: resolve legitimately WRITES it — a signature
-     hold can grant a read (ROUTE-12) and being dialed in grants one (ENG-24) — so the
-     property is that no outcome depends on it. Two states differing only in how far
-     you have read must resolve identically. */
+  /* AND READING IS STILL INFORMATION (RUN-9/ENG-24), which is what makes it band-safe and what
+     makes `read` situational in the dead-card guard. INFO-1 tried making a read hold worth full
+     beta and retracted it — engine.ts's note on `effGrip` has the four measurements — so the
+     claim is the original one, now with a flag in play that must not disturb it: a hold you read
+     is MARKED, the preview reads it exactly, and the resolution comes out identical either way.
+
+     Asserted behaviourally, not by grepping resolve for `readAhead`: resolve legitimately WRITES
+     it — a signature hold can grant a read (ROUTE-12) and being dialed in grants one (ENG-24) —
+     so the property is that no outcome depends on it. */
   const seen = { ...s0, pump: 9, boardH: [H(1, 5), H(2, 4), F(3, 3, 4)],
     boardP: [E.spawn('Lock Off'), E.spawn('Crimp Grip'), E.spawn('Flag')] }
+  const bare = h => (h ? (({ read, ...rest }) => rest)(h) : h)
   const outcome = st => {
     const r = E.resolve(st, new E.RNG(21))
     return JSON.stringify({ pump: r.pump, cleared: r.cleared, skin: r.skin, psyche: r.psyche,
-      flow: r.flow, boardH: r.boardH, boardP: r.boardP, piles: r.piles, turn: r.turn })
+      flow: r.flow, boardH: r.boardH.map(bare), boardP: r.boardP, piles: r.piles, turn: r.turn })
   }
   eq(outcome({ ...seen, readAhead: 4 }), outcome({ ...seen, readAhead: 0 }),
     'a turn resolves differently depending on how far you have read — reading is a power now')
+  /* and the flag is the ONLY difference, so the assertion above is not passing because nothing
+     happened: strip it and the states match, keep it and they do not. */
+  const withRead = E.resolve({ ...seen, readAhead: 4 }, new E.RNG(21))
+  const noRead = E.resolve({ ...seen, readAhead: 0 }, new E.RNG(21))
+  ok(withRead.boardH.some(h => h && h.read), 'no hold arrived marked as read, so the strip proves nothing')
+  ok(!noRead.boardH.some(h => h && h.read), 'a hold arrived marked read with no read to cover it')
+  ok(JSON.stringify(withRead.boardH) !== JSON.stringify(noRead.boardH),
+    'the boards are identical even unstripped, so this fixture never exercised a read')
 
   // skinCost: it takes the skin and pays out
   for (const name of MECH.skinCost) {

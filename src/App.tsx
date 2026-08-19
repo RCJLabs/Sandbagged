@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.52 — RUN-14: the map was the same table in every run ever played. What a
-//   stage offers is a property of the run now, and one function says what that is.
+// SANDBAGGED v10.53 — INFO-1: a hold you read arrives KNOWN — the preview reads it exactly
+//   instead of as a span. Making it cheaper as well was built, measured and retracted.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1542,7 +1542,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.52 · RCJ Labs</div>
+          <div className="sfoot">v10.53 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1771,7 +1771,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.52 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.53 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -3889,6 +3889,7 @@ export default function App() {
               {...tap(() => tapLane(i), `${LANE_NAMES[i]} hold: ${h.crux ? 'crux, ' : ''}`
                 + `${holdLabel(h)}, ${(g => g.sure ? `${g.lo} grip` : `${g.lo} to ${g.hi} grip, not worked yet`)(gripShown(st, h))}`
                 + `, ${biteAgainst(st, st.boardP[i], h, i)} bite`
+                + (h.read && !h.clean ? '. You read this one before it came up, so you have its beta' : '')
                 + (creepOf(h) > 0 ? ((h.worn ?? 0) >= CREEP_MAX
                     ? `. Soaked, ${h.worn} grip worse than it started and no worse`
                     : `. Sweating up, ${creepOf(h)} grip a turn you leave it`
@@ -3919,6 +3920,12 @@ export default function App() {
                     already on it, which is what tells you whether the choice is still live.
                     Words, not colour (VIS-7): the red is on top of a sentence that stands
                     without it. */}
+                {/* INFO-1: a hold you read arrives with its beta, so it is worth a grip less and
+                    reads exactly rather than as a range. That has to be ON the hold: the number
+                    beside it has quietly changed and the pips have stopped being a span, and a
+                    player who is not told why will read it as the game being inconsistent. */}
+                {h.read && !h.clean && <div className="tx" style={{ marginTop: 1, color: 'var(--green)' }}>
+                  you read this one · beta</div>}
                 {creepOf(h) > 0 && <div className="tx" style={{ marginTop: 1, color: 'var(--red)' }}>
                   {(h.worn ?? 0) >= CREEP_MAX ? `soaked +${h.worn}`
                     : `sweating +${creepOf(h)}/turn${h.worn ? ` · +${h.worn} so far` : ''}`}

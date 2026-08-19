@@ -45,6 +45,12 @@ export type Hold = {
       crux reads as its style's own feature (the razor, the blank, the throw)
       while still resolving as a Committing crux. */
   label?: string
+  /** INFO-1: you had read this hold before it arrived, so you have its beta. Set by
+      `refillAndDraw` — the one place a read is spent — and read by `effGrip` and
+      `holdKnown`, which are the two things beta already means. Per-HOLD and not per-name:
+      working a crimp teaches you crimps for the trip, and reading one should only ever be
+      worth the hold you read. */
+  read?: boolean
   /** HOLD-1: how much this hold has sharpened up while you left it hanging. The wear is
       written into `grip` as well, so `effGrip` — and therefore `gripFor`, `gripShown`, the
       preview and resolve — all pick it up with no second code path to keep in step. This

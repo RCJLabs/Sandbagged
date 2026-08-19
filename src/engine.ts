@@ -1173,6 +1173,19 @@ for (const c of [
   bn('Brush', 0, 'common', { gripCut: 2, cleans: true, targeted: true, text: '−2 Grip, strip its ability.' }),
   bn('Tick Marks', 0, 'common', { gripCut: 2, targeted: true, text: '−2 Grip to one hold.' }),
   bn('Read the Sequence', 0, 'common', { draw: 2, text: 'Draw 2.' }),
+  /* INFO-1: both read cards cost a pump more than they did, and the reason is that they were
+     costed for an effect they did not have. `Sight the Line` was a cost-0 cantrip because a read
+     did nothing at all; a read is beta on the holds it covers now, so a free one is replayable
+     every time it runs out — measured, the policy played one about every four turns and the
+     pinned band went 44.3% to 46.6% (n=3000). This is the ROPE-2 lesson about free value,
+     arriving as a cost rather than as a pool: what the card buys is no longer nothing, so it no
+     longer costs nothing. Their relationship is unchanged — the deeper read still reads deeper,
+     still hands nothing back, and still costs more.
+
+     RETRACTED WITH THE HALF THEY WERE COMPENSATING FOR. Both were repriced twice and one had
+     its depth halved while INFO-1 was trying to hold the band against a read granting beta — see
+     the note on `effGrip` for the four measurements and why none of them moved it. With that half
+     out, a read is information again and these are costed for it as they always were. */
   bn('Sight the Line', 0, 'common', { read: 2, draw: 1, text: 'Read the next 2 holds. Draw 1.' }),
   bn('Warm Up', 0, 'common', { shed: 1, draw: 1, text: 'Shed 1. Draw 1.' }),
   bn('Trust the Feet', 1, 'common', { power: 2, targeted: true, text: '+2 Power to one lane.' }),
@@ -4108,8 +4121,14 @@ function refillAndDraw(s: GameState, rng: RNG): GameState {
     if (ph?.lockLane === i) { boardH[i] = null; continue }   // nothing out there
     if (!boardH[i] && holdDeck.length) {
       const h = holdDeck.pop()!
+      /* INFO-1: the holds a read covered are exactly the ones arriving now — RUN-9's own
+         semantics, which is why the line below spends `readAhead` by however many came up.
+         `drawn` is that count, so this hold was read if the read reached this far. */
+      const known = drawn < s.readAhead
       drawn++
-      boardH[i] = ph?.allCrux && !h.crux ? { ...h, crux: true, grip: h.grip + 2 } : h
+      const arrived = known ? { ...h, read: true } : h
+      boardH[i] = ph?.allCrux && !arrived.crux
+        ? { ...arrived, crux: true, grip: arrived.grip + 2 } : arrived
     }
   }
   // RUN-9: a hold you had read is on the board now, so it is no longer "ahead".
@@ -4183,6 +4202,36 @@ export function startBurn(s: GameState, rng: RNG): GameState {
   }, rng)
 }
 
+/* INFO-1. WHAT SHIPPED IS THE INFORMATION HALF. A hold you read before it arrived reads
+   EXACTLY — see `holdKnown` — instead of as a WOBBLE-wide span. What was built, measured and
+   retracted was the other half: making a read hold worth full beta, grip cut included.
+
+   THE FINDING FIRST. `readAhead` was consulted by nothing but the display, and the source said
+   so in four separate places, each time as the reason a read is "band-safe". So the wall paid in
+   information and the information did nothing. Measured before the change: a player holds a read
+   on 5.4% of climb turns, mean 1.25, never more than 2. Only two cards grant one and neither is
+   in any reward pool; `Take It All In` — read 4, the deepest source in the game — valued at
+   −3.0, the worst card in the game, precisely because what it buys had no effect.
+
+   THE RETRACTED HALF, and every number, because they say something about this game. Treating a
+   read hold as beta'd took the pinned band 44.3% to 46.6% (n=3000). Then four dials, in order:
+   costing both read cards a pump more → 45.7%; halving `Sight the Line`'s depth → 45.7%, no
+   change at all; restoring that and raising both prices again → 45.6%; capping the passive
+   sources (FLOW_READ and every signature's read) at one hold → 45.6%. Nothing moved it.
+
+   THE REASON IS STRUCTURAL, and it is why this is not a tuning problem. `refillAndDraw` brings
+   at most two holds up a turn, and a read is a MAXIMUM that the player tops up the moment it
+   empties — so if you hold any read source at all, very nearly every hold arrives read whatever
+   the depth or the price. The effect is therefore not a bonus with a size; it is a flat one-to-two
+   grip discount on the entire wall. An isolation run confirmed where it came from: with the read
+   cards never played it still read 45.1% (n=2000), so the free passive sources carry most of it.
+
+   So the grip half is out. Reading tells you what is coming, exactly, and that is a real use —
+   `WOBBLE` is a whole grip of uncertainty, which is the difference between a card that clears and
+   one that might — but it is still information, so it is still band-safe by construction and
+   `read` is still a thing no greedy valuation can price. That last part is CARD-18's note, and it
+   stands: pricing foreknowledge needs a policy that plans, which is SIM-7's ground and not this
+   ticket's. */
 const effGrip = (h: Hold, beta: string[], betaGrip = BETA_GRIP) =>
   Math.max(0, h.grip - (beta.includes(h.name) ? betaGrip : 0))
 /** Beta is worth what your archetype says it is worth. */
@@ -4532,7 +4581,8 @@ export function afterMove(s: GameState): { s: GameState; noRestLane: number } {
 }
 /** Only beta makes a hold readable. Anything else would let you tell the
     wobbled holds from the flat ones by whether they showed a span at all. */
-export const holdKnown = (s: GameState, h: Hold) => s.beta.includes(h.name)
+// INFO-1: `|| h.read` — a hold you read arrives known, so the preview is exact on it
+export const holdKnown = (s: GameState, h: Hold) => s.beta.includes(h.name) || !!h.read
 /** What the player may read off a hold: a number once worked, a span before.
     The span is always WOBBLE wide, so it gives away nothing about which side
     of it this particular hold sits on. */
@@ -5200,6 +5250,10 @@ export function autoPlay(s: GameState, rng: RNG): GameState {
       || (c.shed > 0 && st.pump >= Math.min(c.shed, 2))
       || (c.clip === true && specOf(st).roped)
       || (!!c.seq && !st.seq)
+      /* INFO-1 taught the policy to spend a read here and then took it back out: with the grip
+         half retracted a read buys information the greedy policy cannot use, so playing one for
+         it would spend a pump on nothing. `Take It All In` is therefore still unplayable by the
+         policy, which is the honest state of a card whose whole effect is knowledge. */
       || (c.powerAll > 0 && st.boardP.some(Boolean))
       || ((c.power > 0 || c.gripCut > 0) && lane >= 0)
       /* CARD-17: writing a curse off buys HAND QUALITY, not progress, so it wants more
@@ -5433,6 +5487,10 @@ export function previewPump(s0: GameState, lanes?: LanePreview[]): number {
 const BONUS_WEIGHT = 3.2
 function bonusValue(c: Card, deck: Card[]): number {
   // only the benefits scale — a pump cost is a pump cost, not a scaled benefit
+  /* INFO-1 gave `read` a term here and took it back out with it. The term was justified by a
+     read granting beta on the holds it covered; that half was retracted (see `effGrip`), so
+     there is nothing for a valuation to price again and `read` stays situational in the
+     dead-card guard for the reason CARD-18 gave. */
   const good = c.shed * 1.4 + c.draw * 2.2 + c.gripCut * 1.6 + c.powerAll * 4.5
     + c.power * 1.8 + c.restore * 1.8 + (c.cleans ? 1.6 : 0)
   const share = deck.length ? deck.filter(x => x.kind === 'bonus').length / deck.length : 0

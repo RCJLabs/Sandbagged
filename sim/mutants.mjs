@@ -1469,7 +1469,38 @@ export const MUTANTS = [
     why: "the harness reads the static table again, so it would measure this ticket as band-neutral while the shipping game deals something else — SIM-1's rule, and the mistake this ticket actually made before catching it",
     catches: 'the harness is back on the static map',
     patch: [['sim/run.mjs', '        const tier = E.tierNodes(s)', '        const tier = E.ACTS[s.act][s.tier]']] },
+
+  // ---- INFO-1: a hold you read arrives known, and nothing more ----
+  { id: 'INFO-1/read-is-not-known', suite: 'kept',
+    why: 'a hold you read no longer reads as known, so the preview shows a WOBBLE-wide span on a hold you were told about — reading goes back to being a number on a banner that nothing consults',
+    catches: 'still reads as a range',
+    patch: [['src/engine.ts', 'export const holdKnown = (s: GameState, h: Hold) => s.beta.includes(h.name) || !!h.read', 'export const holdKnown = (s: GameState, h: Hold) => s.beta.includes(h.name)']] },
+  { id: 'INFO-1/flag-never-lands', suite: 'kept',
+    why: "the holds that arrive under a read are never marked, so nothing downstream can tell which ones you had read and the whole effect is dead in play — CARD-11 and CARD-13's failure mode",
+    catches: 'no hold arrived under the read',
+    patch: [['src/engine.ts', '      const known = drawn < s.readAhead', '      const known = false']] },
+  { id: 'INFO-1/flag-lands-everywhere', suite: 'kept',
+    why: 'every arriving hold is marked read whether a read covered it or not, so a run with no foreknowledge at all gets exact previews on the whole route',
+    catches: 'the unread control reads exactly',
+    patch: [['src/engine.ts', '      const known = drawn < s.readAhead', '      const known = true']] },
+  { id: 'INFO-1/read-hold-is-cheaper', suite: 'kept',
+    why: 'THE RETRACTED HALF: a hold you read is discounted like beta. Measured 44.3% to 46.6% (n=3000) and four separate dials could not move it — costing both read cards, halving a depth, raising both prices again, capping the passive sources — because a read covers whatever arrives next, so it is a flat discount on the whole wall rather than a bonus with a size',
+    catches: 'cheaper than the same hold unread',
+    patch: [['src/engine.ts', '  Math.max(0, h.grip - (beta.includes(h.name) ? betaGrip : 0))', '  Math.max(0, h.grip - (beta.includes(h.name) || h.read ? betaGrip : 0))']] },
+  { id: 'INFO-1/valuation-prices-a-read', suite: 'kept',
+    why: 'the valuation prices `read` again with no mechanical effect behind it, so the builder and the drafter are told a card is worth something the game never pays — ENG-25 inverted, and the first thing a re-addition of the retracted half would put back',
+    catches: 'prices a read again',
+    patch: [['src/engine.ts', '    + c.power * 1.8 + c.restore * 1.8 + (c.cleans ? 1.6 : 0)', '    + c.power * 1.8 + c.restore * 1.8 + (c.cleans ? 1.6 : 0) + c.read * 1.2']] },
+  { id: 'INFO-1/policy-spends-a-read', suite: 'kept',
+    why: 'the policy plays a read card for information it cannot use, so it spends a pump on nothing and the band is measured by a player making a mistake on purpose',
+    catches: 'the policy reads ahead now',
+    patch: [['src/engine.ts', '      || (c.powerAll > 0 && st.boardP.some(Boolean))', '      || (c.read > 0 && st.readAhead <= 0)\n      || (c.powerAll > 0 && st.boardP.some(Boolean))']] },
+  { id: 'INFO-1/board-says-nothing', suite: 'kept',
+    why: 'the board never says which holds you had read, so the pips quietly stop being a span and the game reads as inconsistent rather than as informative',
+    catches: 'the board never says which holds',
+    patch: [['src/App.tsx', '                {h.read && !h.clean && <div className="tx"', '                {false && <div className="tx"']] },
 ]
+
 
 
 
