@@ -1499,7 +1499,34 @@ export const MUTANTS = [
     why: 'the board never says which holds you had read, so the pips quietly stop being a span and the game reads as inconsistent rather than as informative',
     catches: 'the board never says which holds',
     patch: [['src/App.tsx', '                {h.read && !h.clean && <div className="tx"', '                {false && <div className="tx"']] },
+
+  // ---- CARD-19: a card cannot combine with cards it cannot name ----
+  { id: 'CARD-19/specialist-forgets-itself', suite: 'core',
+    why: 'a specialist stops counting itself, which is how four of the ten shipped — Air Time said "+1 Power per 3 dynamic cards" and was not a dynamic card, so it was one short of its own count for ever',
+    catches: 'does not count itself',
+    patch: [['src/engine.ts', '  if (c.synergy) return c.synergy as Tag\n', '']] },
+  { id: 'CARD-19/opposition-unnameable', suite: 'core',
+    why: 'the opposition family loses its name again — seven cards carrying the one mechanic that pairs two cards in a turn, and nothing that can count them, build for them or print them',
+    catches: 'has no tag at all',
+    patch: [['src/engine.ts', "  return c.opposes ? 'oppose' : ''", "  return ''"]] },
+  { id: 'CARD-19/oppose-overwrites-the-styles', suite: 'core',
+    why: 'the opposition fallback is taken BEFORE the word scan, so every opposition card collapses into one bucket and the crack and compression cards among them silently lose the hold style they had',
+    catches: 'the hold styles they had were overwritten',
+    patch: [['src/engine.ts', "  if (c.shed > 0) return 'rest'\n  if (c.lane === 'feet') return 'feet'\n  if (c.kind === 'bonus') return 'mental'", "  if (c.shed > 0) return 'rest'\n  if (c.lane === 'feet') return 'feet'\n  if (c.kind === 'bonus') return 'mental'\n  if (c.opposes) return 'oppose'"]] },
+  { id: 'CARD-19/no-plan-to-build', suite: 'core',
+    why: 'the opposition specialist goes, so the family is a label rather than something a deck can commit to — every other style has one and this is the difference between a combination and a plan',
+    catches: 'has no specialist',
+    patch: [['src/engine.ts', "  mv('Body Tension', 1, 8, 'uncommon', { opposes: true, synergy: 'oppose',", "  mv('Body Tension', 1, 8, 'uncommon', { opposes: true,"]] },
+  { id: 'CARD-19/specialist-is-not-one-of-them', suite: 'core',
+    why: 'the opposition specialist counts opposition cards without being one, so it cannot pair with the family it is built for — and under the synergy override it would name a tag it does not play',
+    catches: 'counts opposition cards and is not one',
+    patch: [['src/engine.ts', "  mv('Body Tension', 1, 8, 'uncommon', { opposes: true, synergy: 'oppose',", "  mv('Body Tension', 1, 8, 'uncommon', { synergy: 'oppose',"]] },
+  { id: 'CARD-19/tag-with-no-name', suite: 'core',
+    why: 'a tag the game plays has no display name, so the hints and the deck screen cannot say what family a card belongs to — the hole `oppose` sat in',
+    catches: 'has no display name',
+    patch: [['src/engine.ts', "  oppose: 'opposition',   // CARD-19: the one family the game plays and could not name", '  // oppose has no name']] },
 ]
+
 
 
 

@@ -6557,6 +6557,85 @@ test('an empty save slot reports empty rather than throwing', () => {
   E.wipeSlot(2)
   eq(E.slotSummary(2), null, 'wiping an empty slot broke it')
 })
+test('CARD-19: a card cannot combine with cards it cannot name', () => {
+  /* CARD-19. The row said "248 cards, and synergy is one tag-count term". Half right, and the
+     wrong half matters: OPPOSITION is a real card-to-card mechanic — a hand card is worth
+     OPPOSE_PAIR more beside another opposition card and OPPOSE_ALONE less on its own — and it
+     fires on 19.1% of turns, so cards do talk. What was broken was the LANGUAGE they talk in.
+
+     `tagOf` is the only vocabulary the game has for "cards of a kind": synergy counts them, the
+     builder nudges on them, the hints name them. It derived a tag from a SUBSTRING OF THE CARD'S
+     NAME, and measured, that had two holes — four of the ten specialists did not count
+     themselves, and `(none)` was the largest tag in the game at 58 of 248 cards, 47.5% of every
+     hand move. */
+  const all = Object.keys(E.CARDS).map(n => E.spawn(n))
+
+  /* A SPECIALIST IS OF THE STYLE IT EXISTS FOR. `Air Time` said "+1 Power per 3 dynamic cards"
+     and was not a dynamic card; nor was `Crack Rat` a crack card, `Old Hands` a rest card, or
+     `The Specialist` a crimp card — none of their names contain a keyword, so each was one short
+     of its own count for ever. Asserted over every synergy card so a new one cannot land broken
+     the same way, which is how all four of these did. */
+  const specialists = all.filter(c => c.synergy)
+  ok(specialists.length >= 8, `only ${specialists.length} cards carry synergy`)
+  for (const c of specialists)
+    eq(E.tagOf(c), c.synergy,
+      `${c.name} exists for '${c.synergy}' and does not count itself — its tag is '${E.tagOf(c) || 'none'}'`)
+
+  /* EVERY FAMILY THE GAME PLAYS HAS A NAME. `oppose` was the hole: the one mechanic that pairs
+     two cards in one turn, on seven cards, and no entry in the tag table — so nothing could
+     count it, build for it, or print it. Derived from the flag rather than authored, and taken
+     only AFTER the word scan so no card that already had a hold style lost one. */
+  for (const c of all) {
+    const t = E.tagOf(c)
+    if (t) ok(E.TAG_NAMES[t], `the tag '${t}' has no display name, so the hints cannot say it`)
+  }
+  const opp = all.filter(c => c.opposes)
+  ok(opp.length >= 7, `only ${opp.length} cards carry opposition`)
+  ok(opp.every(c => E.tagOf(c)), 'an opposition card still has no tag at all')
+  ok(opp.some(c => E.tagOf(c) === 'oppose'), 'nothing reads as opposition, so the family is unnameable again')
+  /* ...and the word scan still wins where a card has a real style, or this would have quietly
+     renamed a third of the crack and compression cards into one bucket. */
+  /* checked per card by asking what the tag would be WITHOUT the flag: if the name carries a
+     hold style then the flag must not change the answer. The loose form — "at least one card kept
+     a style" — passed the injection that moves the fallback ahead of the word scan, because the
+     synergy override guarantees one survivor on its own. */
+  let kept = 0
+  for (const c of opp) {
+    if (c.synergy) continue
+    const without = E.tagOf({ ...c, opposes: false })
+    if (!without) continue
+    kept++
+    eq(E.tagOf(c), without,
+      `${c.name} lost its '${without}' style to the opposition fallback — the hold styles they had were overwritten`)
+  }
+  ok(kept > 0, 'no opposition card carries a hold style, so the ordering claim was never tested')
+
+  /* AND THE FAMILY CAN BE BUILT FOR. Every other style has a specialist that counts its kind;
+     opposition had a mechanic and nothing to commit a deck to, which is the difference between a
+     combination and a plan. */
+  const oppSpec = specialists.filter(c => c.synergy === 'oppose')
+  eq(oppSpec.length, 1, 'opposition has no specialist, so the tag is a label rather than a plan')
+  ok(oppSpec[0].opposes, `${oppSpec[0].name} counts opposition cards and is not one`)
+
+  /* THE COUNT IS STILL A COUNT. `tagCounts` is what synergy reads, so a card must be counted
+     once under exactly the tag `tagOf` gives it — this is the arithmetic the whole term rests on
+     and it now has a fallback and an override either side of it. */
+  const deck = [...specialists, ...opp, ...all.filter(c => c.shed > 0).slice(0, 3)]
+  const counts = E.tagCounts(deck)
+  eq(Object.values(counts).reduce((a, b) => a + b, 0), deck.filter(c => E.tagOf(c)).length,
+    'the tally does not match the cards that have a tag')
+  for (const [t, n] of Object.entries(counts))
+    eq(n, deck.filter(c => E.tagOf(c) === t).length, `the ${t} count is not the number of ${t} cards`)
+
+  /* WHAT IS DELIBERATELY STILL UNTAGGED, so this does not quietly become "every card is a style".
+     A Mantle is not a crimp move and a Jug Haul is not a compression move; inventing a style for
+     them would be lying to make a number bigger, which is the opposite of the fix. */
+  const untagged = all.filter(c => !E.tagOf(c))
+  ok(untagged.length > 0, 'every card has a style now, which means one was invented for cards that have none')
+  ok(untagged.every(c => !c.synergy && !c.opposes),
+    `a card with a cross-card term is still unnameable: ${untagged.filter(c => c.synergy || c.opposes).map(c => c.name).join(', ')}`)
+})
+
 test('tag counts add up to the tagged cards', () => {
   const deck = E.DEFAULT_LOADOUT.map(E.spawn)
   const counts = E.tagCounts(deck)

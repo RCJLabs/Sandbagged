@@ -29,6 +29,10 @@ export type Fx = '' | 'precise' | 'friction' | 'static' | 'snap' | 'commit' | 'b
 export type Rarity = 'starter' | 'common' | 'uncommon' | 'rare' | 'curse' | 'gear' | 'beta'
 export type Tag = '' | 'crimp' | 'sloper' | 'pinch' | 'pocket' | 'dyno' | 'crack'
   | 'feet' | 'rest' | 'mental'
+  /** CARD-19: opposition. The one card-to-card mechanic the game actually plays, and the only
+      family that had no name in the tag table — so nothing could count it, build for it, or
+      say it out loud. Derived from `opposes`, never authored. */
+  | 'oppose'
 
 export type Hold = {
   uid: number; name: string; bite: number; grip: number; crux: boolean; clean: boolean

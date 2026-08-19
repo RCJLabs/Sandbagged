@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.53 — INFO-1: a hold you read arrives KNOWN — the preview reads it exactly
-//   instead of as a span. Making it cheaper as well was built, measured and retracted.
+// SANDBAGGED v10.54 — CARD-19: the only language cards had for each other was a substring of
+//   their own name, and it could not name half of them. Opposition is a family you can build.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1542,7 +1542,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.53 · RCJ Labs</div>
+          <div className="sfoot">v10.54 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1771,7 +1771,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.53 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.54 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

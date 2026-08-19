@@ -308,7 +308,21 @@ export const FALL_PUMP = 0.5      // pump you keep after being caught
    because both ends are coin flips: 0.55 measured a lift of −1.3 (fails the floor) and
    0.4 measured 3.8 against a ceiling of 4 (passes by 0.2 inside a ~2.3 standard error).
    The value is chosen for MARGIN, which is the whole point of GUARD-1. */
-export const WIND_PUMP = 0.22   // share of the meter you carry into a wind burn
+/* CARD-19 had to move this, and the reason is worth writing down because the change that
+   tripped it was not the cause. CARD-9's ceiling says an extra burn is a leg-up and not a skip,
+   and it is asserted as a LIFT with a bar of 4 points at n=900. At v10.53 that lift measured
+   3.9 — one tenth of a point of headroom. CARD-19 moved it to 4.1, which is well inside a
+   single standard error for a difference of proportions at that sample size, and the guard
+   failed. The measurements are deterministic at a fixed seed set, so this is drift rather than
+   flakiness: the item crept from the ~2.4 the bar was calibrated against up to 3.9 across
+   v10.49-v10.53, because GUARD-1's note is right that this margin is structurally coupled to
+   the base band and five tickets moved things around it.
+
+   So the bar is untouched and the ITEM is repriced, which is the dial this contract has always
+   used (BAL-15 set it, ENG-21, ENG-32 and SIM-6 each moved it: 0.4, 0.55, 0.45, 0.22). At 0.45
+   the lift measures 2.4 at n=900 — exactly the reference figure in the guard's own note — and
+   the default arm is unmoved at 41.9%, because the drafter never buys kit. */
+export const WIND_PUMP = 0.45   // share of the meter you carry into a wind burn
 export type MapNode = { type: NodeType; routeIdx: number }
 
 export type GameState = {
@@ -1200,6 +1214,13 @@ for (const c of [
   // hold turns out to be a touch too stiff. The crux-clear identity, one step up.
   mv('Pounce', 4, 5, 'uncommon', { fx: 'snap', text: 'Snap · clears Grip 3 or less outright.' }),
   mv('Cross-Through', 3, 7, 'uncommon', { opposes: true, text: 'Wrong hand, right hold. Opposition.' }),
+  /* CARD-19: the opposition family had a mechanic, seven cards and no way to build for it — every
+     other style has a specialist that counts its kind, and the one family the game actually plays
+     across two lanes had none. So `oppose` is a tag you can now commit a deck to. Its own line is
+     low Power and high Contact on purpose: it is not a stronger Sidepull or a cheaper
+     Cross-Through, it is the card that holds on while the pair does the work. */
+  mv('Body Tension', 1, 8, 'uncommon', { opposes: true, synergy: 'oppose',
+    text: 'Opposition · +1 Power per 3 opposition cards.' }),
   mv('Lock & Bump', 4, 5, 'uncommon', { text: 'Two moves in one breath.' }),
   mv('Iron Cross', 4, 6, 'uncommon', { opposes: true, text: 'Both arms, nothing spare. Opposition.' }),
   mv('Two-Finger Pocket', 4, 5, 'uncommon', { fx: 'precise', text: 'Precise · +2 vs crimps.' }),
@@ -1497,17 +1518,39 @@ const TAG_WORDS: [Tag, string[]][] = [
   ['dyno', ['Dyno', 'Lunge', 'Throw', 'Deadpoint', 'Pop', 'Snatch', 'Campus', 'Paddle', 'Bump', 'Send']],
   ['crack', ['Jam', 'Lock', 'Arm Bar', 'Chicken Wing', 'Grovel', 'Ring']],
 ]
-export function tagOf(c: { name: string; kind: string; lane: LaneTag; shed: number }): Tag {
+/* CARD-19. A card's TAG is the only language cards have for talking to each other — synergy
+   counts them, the builder nudges on them, the hints name them — and it is derived from a
+   substring of the card's NAME. Measured, that language had two holes.
+
+   ONE: FOUR OF THE TEN SPECIALISTS DID NOT COUNT THEMSELVES. `Air Time` says "+1 Power per 3
+   dynamic cards" and was not a dynamic card; nor was `Crack Rat` a crack card, `Old Hands` a
+   rest card, or `The Specialist` a crimp card — none of their names contain a keyword. A card
+   whose entire reason to exist is a style is a card of that style, so `synergy` is read first
+   and the heuristic is the fallback rather than the whole answer.
+
+   TWO: `(none)` WAS THE BIGGEST TAG IN THE GAME — 58 of 248 cards, and 47.5% of every hand
+   move: Sidepull, Undercling, Gaston, Layback, Cross-Through, Iron Cross, Mantle, Match,
+   Static Reach and fifty more were invisible to the one term that makes cards talk. Most of
+   that is honest — a Mantle is not a crimp move and inventing a hold style for it would be
+   lying to make a number bigger — but the OPPOSITION moves are a real family the game already
+   knows about: `opposes` is the one genuine card-to-card mechanic in play (it fires on 19.1%
+   of turns) and it was the only family with no name in this table. It has one now, derived
+   from the flag already on the card, and taken only AFTER the word scan so no card that
+   already had a hold style loses it. */
+export function tagOf(c: { name: string; kind: string; lane: LaneTag; shed: number
+    synergy?: string; opposes?: boolean }): Tag {
+  if (c.synergy) return c.synergy as Tag
   if (c.shed > 0) return 'rest'
   if (c.lane === 'feet') return 'feet'
   if (c.kind === 'bonus') return 'mental'
   for (const [tag, words] of TAG_WORDS)
     if (words.some(w => c.name.includes(w))) return tag
-  return ''
+  return c.opposes ? 'oppose' : ''
 }
 export const TAG_NAMES: Record<string, string> = {
   crimp: 'crimp', sloper: 'sloper', pinch: 'compression', pocket: 'pocket',
   dyno: 'dynamic', crack: 'crack', feet: 'footwork', rest: 'rest', mental: 'headgame',
+  oppose: 'opposition',   // CARD-19: the one family the game plays and could not name
 }
 export function tagCounts(cards: { name: string; kind: string; lane: LaneTag; shed: number }[]) {
   const out: Record<string, number> = {}
