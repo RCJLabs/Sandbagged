@@ -377,13 +377,25 @@ test('COND-2: the sky moves twice — a window can pass, and says so', () => {
     ok(!E.windowOf(past), `${spec.name}: the window is still live ${w.until} of the way up`)
     ok(!E.windowNear(past), `${spec.name}: a window that has passed telegraphs itself all over again`)
 
-    // and the numbers come back off — past it the wall reads exactly as it did below it
-    const belowSup = E.supportNow(below), insideSup = E.supportNow(inside), pastSup = E.supportNow(past)
-    ok(belowSup > 0, `${spec.name}: the fixture has no Support to lose, so this proves nothing`)
-    ok(insideSup < belowSup, `${spec.name}: the window took nothing off the feet while it was shut`)
-    eq(pastSup, belowSup, `${spec.name}: Support did not come back when the window passed`)
-    eq(E.biteAgainst(past, card, hold, 0), E.biteAgainst(below, card, hold, 0),
-      `${spec.name}: Bite stayed sharpened after the window passed`)
+    /* And the numbers come back off — past it the wall reads exactly as it did below it.
+       Driven off the terms the window DECLARES rather than a fixed one: COND-3 gave a window
+       `dContact` and this block, written when every window was `dSupport`, went from proving
+       the mechanism to proving one route's flavour. */
+    const reads = {
+      dSupport: st => E.supportNow(st),
+      dBite: st => E.biteAgainst(st, card, hold, 0),
+      dContact: st => E.contactOf(st, card),
+    }
+    const terms = Object.keys(reads).filter(k => w[k])
+    ok(terms.length > 0, `${spec.name}: the window is declared but does nothing at all`)
+    for (const k of Object.keys(reads)) {
+      const [b, i2, p2] = [below, inside, past].map(reads[k])
+      if (w[k]) {
+        ok(b > 0, `${spec.name}: the fixture has no ${k} to move, so this proves nothing`)
+        ok(k === 'dBite' ? i2 > b : i2 < b, `${spec.name}: the window moved no ${k} while it was shut`)
+      }
+      eq(p2, b, `${spec.name}: ${k} did not come back when the window passed`)
+    }
   }
 
   /* And it is SAID. A condition lifting silently is worse than one that never lifts: the
@@ -448,6 +460,128 @@ test('ROUTE-7: the bosses are not all the same trick', () => {
   ok(kinds.has('lock'), 'no boss takes a limb — lockLane went unused')
   ok(kinds.has('window'), 'no boss turns the weather — ROUTE-6 unused on a boss')
   ok(kinds.size >= 4, `the bosses only muster ${kinds.size} distinct threats — too samey`)
+})
+
+group('the weather can move (COND-3)')
+test('COND-3: Contact is read live, so the weather can turn under you', () => {
+  /* Contact used to be worked out ONCE, in startBurn, and written onto every card as it was
+     dealt. That is the whole reason COND-2 could not move the weather and had to go through
+     the route window: `s.weather` changing mid-burn would have left every card in hand
+     carrying the number it was dealt with — the screen and resolve disagreeing about the same
+     card, which is the ENG-26 divergence.
+
+     Measured before touching it: zeroing the weather's Contact term takes the campaign from
+     43.5% to 49.8%, so this is a six-point lever and the reason the window's share of it is
+     one point on one stretch of one line. */
+  const HUMID = E.WEATHER.findIndex(w => w.dContact === -1)
+  const HARD = E.WEATHER.findIndex(w => w.dContact <= -2)
+  ok(HUMID > 0 && HARD > 0, 'no weather in the game moves Contact, so nothing here is tested')
+  const rng = new E.RNG(3131)
+
+  // 1. the deal does not bake it: a dealt card still carries its own stat
+  const dealt = startClimb(4, rng, { weather: HUMID, pump: 0 })
+  const moves = [...dealt.piles.draw, ...dealt.piles.hand].filter(c => c.kind === 'move')
+  ok(moves.length > 4, `only ${moves.length} moves dealt — the fixture proves nothing`)
+  let moved = 0
+  for (const c of moves) {
+    eq(c.contact, E.CARDS[c.name].contact,
+      `${c.name} was dealt with its Contact rewritten — the bake is back`)
+    if (E.contactOf(dealt, c) !== c.contact) moved++
+  }
+  ok(moved === moves.length,
+    `${moves.length - moved} of ${moves.length} moves ignore the weather when read live`)
+
+  // 2. and the weather can now turn mid-burn, which is the ticket
+  const card = E.spawn('Open Hand')
+  const lib = card.contact
+  const still = { ...dealt, weather: E.WEATHER.findIndex(w => w.dContact === 0) }
+  const damp = { ...dealt, weather: HUMID }
+  const bad = { ...dealt, weather: HARD }
+  eq(E.contactOf(still, card), lib, 'fair conditions changed a card that nothing should touch')
+  eq(E.contactOf(damp, card), lib + E.WEATHER[HUMID].dContact,
+    'the weather does not reach Contact — it is still baked somewhere')
+  ok(E.contactOf(bad, card) < E.contactOf(damp, card),
+    'a worse sky than damp costs no more Contact')
+
+  // 3. wear and the stat are two things, and the weather is charged once, not once a turn
+  const H = (uid, bite, grip) => ({ uid, name: 'crimp', bite, grip, crux: false, clean: false })
+  let st = { ...dealt, pump: 0, turn: 2, boardH: [H(1, 1, 99), null, null],
+    boardP: [card, null, null] }
+  const start = E.contactOf(st, card)
+  eq(start, lib + E.WEATHER[HUMID].dContact, 'the fixture does not start where it should')
+  let left = start, turns = 0
+  for (let t = 0; t < 3; t++) {
+    const before = E.contactOf(st, st.boardP[0])
+    const bite = E.biteAgainst(st, st.boardP[0], st.boardH[0], 0)
+    st = E.resolve(st, rng)
+    const on = st.boardP[0]
+    if (!on) break
+    turns++
+    eq(on.contact, lib, 'resolve wrote the remaining Contact into the card\'s stat')
+    eq(E.contactOf(st, on), before - bite,
+      `a card that stood the turn did not lose exactly the ${bite} Bite it took`)
+    left = E.contactOf(st, on)
+    st = { ...st, boardH: [H(1, 1, 99), null, null] }
+  }
+  ok(turns >= 2, `the card only survived ${turns} turn(s) — the wear was never compounded`)
+  ok(left < start, 'the card ended the fixture with everything it started with')
+
+  // 4. a card already on the wall feels the sky changing — the point of reading it live
+  const worn = st.boardP[0]
+  ok(worn && (worn.spent ?? 0) > 0, 'the fixture has no worn card to test')
+  eq(E.contactOf({ ...st, weather: HARD }, worn) - E.contactOf(st, worn),
+    E.WEATHER[HARD].dContact - E.WEATHER[HUMID].dContact,
+    'the weather turning left the card already on the wall reading the old number')
+
+  // 5. nothing in your hand ever reads below the floor every move is meant to keep
+  const frozen = startClimb(4, rng, { weather: HARD, pump: 0 })
+  for (const c of frozen.piles.hand.filter(c => c.kind === 'move'))
+    ok(E.contactOf(frozen, c) >= 1, `${c.name} reads ${E.contactOf(frozen, c)} Contact in hand`)
+  /* And the clamp is exercised rather than assumed: the real deck's cheapest move still
+     clears the floor unaided in the hardest weather, so the loop above never reaches it.
+     A one-Contact card in a sky that costs three does. */
+  const thin = E.synth(1, 1)
+  eq(E.contactOf(frozen, thin), 1,
+    `a ${thin.contact}-Contact move reads ${E.contactOf(frozen, thin)} in the worst weather in the game`)
+
+  /* 6. And the reason the bake could go at all: the stat and the wear are separate fields, so
+     resolve never writes Contact. If it does, the number it writes is a number with the
+     weather already inside it, and the next live read charges the weather twice — which is
+     exactly what the first cut of this ticket did, measured as 40.8% against 43.5%. */
+  const body = region(CODE, 'export function resolve(s: GameState, rng: RNG)',
+    ['export function autoPlay'], { min: 4000, what: 'resolve' })
+  ok(!/\bcontact:/.test(body),
+    'resolve writes a card\'s Contact stat — the stat and the wear must stay two fields')
+  ok(/spent: \(card\.spent \?\? 0\) \+ bite/.test(body),
+    'a card that stands a turn no longer records the Bite it took as wear')
+})
+test('COND-3: a window can take the rock itself, and the board feels it', () => {
+  /* The payoff. Before this there was no way for a condition to reach Contact at all, so a
+     window could only ever be about your feet or the holds' teeth. */
+  const wet = E.ROUTES.map((r, i) => [r, i]).filter(([r]) => r.window?.dContact)
+  ok(wet.length >= 2, `only ${wet.length} route(s) carry a window that touches the rock`)
+  const rng = new E.RNG(7712)
+  for (const [spec, idx] of wet) {
+    const w = spec.window
+    const card = E.spawn('Open Hand')
+    const H = (uid, bite, grip) => ({ uid, name: 'crimp', bite, grip, crux: false, clean: false })
+    const base = { ...startClimb(idx, rng, { weather: 1, pump: 0 }), turn: 2,
+      boardH: [H(1, 1, 99), null, null], boardP: [card, null, null] }
+    const shutAt = Math.ceil(w.at * spec.clear)
+    const below = { ...base, cleared: shutAt - 1 }
+    const inside = { ...base, cleared: shutAt }
+    eq(E.contactOf(inside, card) - E.contactOf(below, card), w.dContact,
+      `${spec.name}: the window does not move Contact by the amount it states`)
+    // and it reaches a card that is ALREADY on the wall, worn, mid-sequence
+    const stood = E.resolve(below, rng)
+    const on = stood.boardP[0]
+    ok(on && (on.spent ?? 0) > 0, `${spec.name}: the fixture never got a worn card onto the wall`)
+    eq(E.contactOf({ ...stood, cleared: shutAt }, on) - E.contactOf({ ...stood, cleared: shutAt - 1 }, on),
+      w.dContact, `${spec.name}: a card already on the wall did not feel the rock go`)
+    // ENG-20's rule is untouched: a condition may take Contact, never Power
+    ok(!('dPower' in w) && !('powerAll' in w),
+      `${spec.name}: a window carries a Power term`)
+  }
 })
 
 group('read the sequence (RUN-9)')
@@ -1990,14 +2124,17 @@ test('a wild boon is a trade, not a gift', () => {
 test('GUARD-4: Deadpointing pays for its doubled Power with halved Contact', () => {
   /* The doubling was tested; the halving — the entire cost of the strongest wild
      boon, and a global lever — was asserted nowhere in either suite. Delete the
-     `* 0.5` in startBurn's deck build and every guard stayed green. This pins it
-     on the real path: the deck the burn actually deals. */
+     `* 0.5` and every guard stayed green. This pins it on the real path: the deck
+     the burn actually deals, read the way the game reads it.
+     COND-3 moved that read. It used to be the `contact` written onto each dealt
+     card in startBurn; Contact is computed live now, so the halving is asserted
+     through `contactOf` — the number the board, the hand and resolve all use. */
   const mk = boons => {
     const rng = new E.RNG(11)
     const s = E.startBurn({ ...E.freshRun(4, 0, 7), inRun: true, skirmish: null,
       weather: 1, rock: 0, boons, runDeck: E.DEFAULT_LOADOUT.map(E.spawn) }, rng)
     const moves = [...s.piles.draw, ...s.piles.hand].filter(c => c.kind === 'move')
-    return moves.reduce((a, c) => a + c.contact, 0) / moves.length
+    return moves.reduce((a, c) => a + E.contactOf(s, c), 0) / moves.length
   }
   const plain = mk([]), dyno = mk(['deadpointing'])
   ok(dyno < plain, `Deadpointing did not halve Contact: ${plain.toFixed(2)} → ${dyno.toFixed(2)}`)
@@ -2027,10 +2164,12 @@ test('CARD-10: Redpoint and Static are wild trades that reach the rules', () => 
   // Static: +2 Contact on the deck's moves, and a costlier fall
   eq(E.boonMods(['static']).dContactAll, 2, 'Static gives no Contact')
   eq(E.boonMods(['static']).dFallSkin, 1, 'Static costs nothing on a fall')
+  // COND-3: read through contactOf, which is where the boon's Contact now lands
   const move = p => p.piles.draw.concat(p.piles.hand).find(c => c.kind === 'move')
-  const plain = move(E.startBurn(base, new E.RNG(3)))
-  const stat = move(E.startBurn({ ...base, boons: ['static'] }, new E.RNG(3)))
-  ok(stat.contact > plain.contact, `Static did not stick the moves: ${plain.contact} vs ${stat.contact}`)
+  const ps = E.startBurn(base, new E.RNG(3))
+  const ss = E.startBurn({ ...base, boons: ['static'] }, new E.RNG(3))
+  const plain = E.contactOf(ps, move(ps)), stat = E.contactOf(ss, move(ss))
+  ok(stat > plain, `Static did not stick the moves: ${plain} vs ${stat}`)
 })
 test('carrying no boons leaves the rules exactly as they were', () => {
   // the Big Hands mistake: a boon was implemented by weakening the default

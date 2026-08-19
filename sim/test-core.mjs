@@ -5816,7 +5816,9 @@ test('CARD-18: the four mechanics nobody could meet twice', () => {
     boardP: [E.spawn('Lock Off'), null, card] }, new E.RNG(7))
   const latched = play(foot), blew = play(plain)
   ok(latched.boardP[2], 'the latching foot came off on its first blow')
-  eq(latched.boardP[2].contact, 1, 'a latch holds on at something other than 1 Contact')
+  // COND-3: read through contactOf. `contact` is the card's stat now and `spent` is the
+  // wear, so "holding on at 1" is a statement about what the card has LEFT.
+  eq(E.contactOf(latched, latched.boardP[2]), 1, 'a latch holds on at something other than 1 Contact')
   ok(latched.boardP[2].latched, 'the latch is not marked, so it can save the same card for ever')
   ok(!blew.boardP[2], 'the control foot survived, so this proves nothing about latch')
   ok(E.supportNow(latched) > E.supportNow(blew),

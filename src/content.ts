@@ -298,6 +298,17 @@ export const ROUTES: RouteSpec[] = [
     note: 'Shade for forty minutes a day. Miss it and you cook.' },
   { name: 'The Chimney', grade: 6, style: 'compression', clear: 11, crux: 1, feet: 'normal',
     signature: 'organpipe',
+    /* COND-3: the first place in the game where the ROCK goes off rather than your feet.
+       The back of a chimney is where the water runs, and you are in the back of it — so it
+       costs CONTACT, which nothing could do to you mid-burn before this ticket. It passes:
+       you fight up out of the wet section and the walls dry out. One point, on one stretch
+       of one act-2 line, because a point of Contact is worth ~6 points of completion when
+       it is always on (measured: zeroing the weather's contact term takes the campaign from
+       43.5% to 49.8%). */
+    window: { at: 0.35, until: 0.7, dContact: -1,
+      warn: 'There is water coming down the back of it above you.',
+      text: 'The back of the chimney is running wet. Nothing you press on stays pressed.',
+      clear: 'Out of the wet. The walls go dry and rough again and you can push.' },
     note: 'You do not climb it so much as fight your way up the inside.' },
   { name: 'Rattlesnake Arete', signature: 'therattle', grade: 6, style: 'slab', clear: 10, crux: 1, feet: 'hard',
     note: 'Check the base before you drop the pads. Every time.' },
@@ -369,12 +380,29 @@ export const ROUTES: RouteSpec[] = [
   { name: 'The Lost Line', grade: 10, style: 'compression', clear: 15, crux: 6, feet: 'hard',
     finale: true,
     note: 'No chalk. No tick marks. No trail. Exactly as he left it.',
-    // ROUTE-6: the nine-day window the journal keeps circling. It holds while
-    // you climb the lower wall and shuts on the headwall — cloud over, the wind
-    // gets under everything, feet off. Bite and Support only; never Power.
-    window: { at: 0.65, dBite: 1, dSupport: -1,
+    /* ROUTE-6: the nine-day window the journal keeps circling. It holds while you climb the
+       lower wall and shuts on the headwall — cloud over, the wind gets under everything, feet
+       off. Never Power (ENG-20's absolute rule).
+
+       COND-3: and the rock itself goes. Journal page 3 has said it from the start — "the rest
+       of the time it seeps and the crux is a waterfall" — and until Contact could move during
+       a burn, the one condition this whole route is ABOUT was the one thing its window could
+       not do. It does not pass: this is the headwall, and BAL-13 is why it is the only place
+       on the act-3 critical path that gets a Contact term at all (any added difficulty up
+       there charges the Comp Kid and the Alpinist twice; the finale is the exception it
+       carved out, because few runs reach it).
+
+       THE `dBite: 1` IT USED TO CARRY IS GONE, AND THAT IS THE PRICE OF THIS. Measured on the
+       full journal: adding the Contact term on top of the Bite cost 1.1 points (43.5% → 42.4%,
+       against a 44.3% pin and a 0.9pt SE — a real move, not noise). Trading the Bite away for
+       it lands at 45.0%. So a point of Bite up here is worth ~2.6 points of completion and a
+       point of Contact ~1.1, and the swap is the version of this that holds the band. It also
+       reads better: `dSupport` is already the wind getting under you, so the Bite was a second
+       term doing the first one's job, and what the journal keeps saying is that the crux runs
+       with water. */
+    window: { at: 0.65, dSupport: -1, dContact: -1,
       warn: 'The light is going flat. Weather is coming in.',
-      text: 'The window shuts. Wind on the wall and nothing under your feet.' },
+      text: 'The window shuts. Wind on the wall, nothing under your feet, and the crux is running.' },
     phases: [
       { at: 0.35, name: 'The Traverse', dTax: 1,
         text: 'Forty feet sideways with nothing under you. The clock runs faster here.' },

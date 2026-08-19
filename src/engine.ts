@@ -1071,6 +1071,10 @@ export type WeatherWindow = {
   /** COND-2: the share of the route by which it has PASSED. Without this a window is a switch
       that throws once and stays thrown, which is what all of them were. */
   until?: number
+  /** COND-3: the rock itself goes off. Only reachable because Contact is read live now —
+      see `contactOf`. ENG-20's rule still stands: Bite, Support and Contact are what a
+      condition may move, and Power is never one of them. */
+  dContact?: number
   dBite?: number; dSupport?: number
   /** Shown a hold before it lands. */ warn: string
   /** Shown when it arrives. */ text: string
@@ -4250,17 +4254,19 @@ function refillAndDraw(s: GameState, rng: RNG): GameState {
 export function startBurn(s: GameState, rng: RNG): GameState {
   const spec = specOf(s)
   const { holds, feet } = buildRoute(s, rng)
-  const dc = (s.inRun && archOf(s).ignoreWeather) ? 0 : WEATHER[s.weather].dContact
   const gm = gearMods(s.gear)
   const base = s.customDeck ?? (s.runDeck.length ? s.runDeck : makeDeck(s.deckTier))
   // the finale hands you a beta card for every journal page you carry
   const withBeta: Card[] = spec.finale ? [...base, ...betaDeck(s.journal)] : base
   const tags = tagCounts(withBeta)
+  /* COND-3: Contact is NO LONGER BAKED HERE. It was, and that is precisely why the weather
+     could not move during a burn — every card in hand carried the number it was dealt with.
+     Power still is: gear and the synergy count are fixed for the burn by construction (you
+     cannot change your shoes or your deck on the wall), so baking them is honest. `contactOf`
+     is the live read; see its note. */
   const deck = rng.shuffle(withBeta.map((c): Card => c.kind !== 'move' ? c : {
     ...c,
-    contact: Math.max(1, Math.round((c.contact + dc + gm.dContact
-      + (s.inRun ? (archOf(s).dContact ?? 0) + mutMods(s.mutators).dContact + boonMods(s.boons).dContactAll : 0))
-      * (boonMods(s.boons).dyno ? 0.5 : 1))),
+    spent: 0,
     power: Math.max(0, c.power + (c.lane === 'feet' ? gm.dPowerFeet : gm.dPowerHand)
       + (c.synergy ? Math.floor((tags[c.synergy] ?? 0) / SYNERGY_PER) : 0)),
   }))
@@ -4744,6 +4750,33 @@ export function supportNow(s: GameState): number {
     + (WEATHER[s.weather]?.dSupport ?? 0)
     + (windowOf(s)?.dSupport ?? 0))           // ROUTE-6: the feet stop trusting it
 }
+/* COND-3. What a card's Contact actually is, right now.
+   Until this ticket the whole expression below ran ONCE, in `startBurn`, and was written into
+   every card as it was dealt. That is why COND-2 could not move the weather and had to work
+   through the route window instead: `s.weather` changing mid-burn would leave every card in
+   hand carrying the number it was dealt with, which is the ENG-26 divergence — the screen and
+   resolve disagreeing about the same card.
+
+   So Contact joins Power, Bite and Support as something read live off the state (`powerAgainst`,
+   `biteAgainst`, `supportNow`), and there is ONE copy of the formula, which is the rule
+   `laneBlows` and `windowOf` were both written to enforce. Power keeps its bake on purpose:
+   gear and the deck's synergy count cannot change while you are on the wall.
+
+   Everything in here is read at use, so a window may now carry `dContact` and the rock can go
+   wet under you mid-route. Measured before doing it: zeroing the weather's contact term moves
+   the campaign from 43.5% to 49.8%, so a point of Contact is worth ~6 points of completion
+   across the third of burns that see one — which is why the window's share of it is one point,
+   on a route and a stretch, and not a general dial. */
+export function contactOf(s: GameState, c: Card): number {
+  if (c.kind !== 'move') return c.contact
+  const dc = (s.inRun && archOf(s).ignoreWeather) ? 0 : WEATHER[s.weather].dContact
+  const bm = boonMods(s.boons)
+  return Math.max(1, Math.round((c.contact + dc + gearMods(s.gear).dContact
+    + (windowOf(s)?.dContact ?? 0)          // ROUTE-6's window, now able to wet the rock
+    + (s.inRun ? (archOf(s).dContact ?? 0) + mutMods(s.mutators).dContact + bm.dContactAll : 0))
+    * (bm.dyno ? 0.5 : 1)))
+    - (c.spent ?? 0)   // what it has already given up on the wall
+}
 export function powerAgainst(s: GameState, card: Card, hold: Hold, lane: number,
   live?: (Card | null)[]): number {
   const wb = boonMods(s.boons)
@@ -4915,7 +4948,7 @@ export function resolve(s: GameState, rng: RNG): GameState {
     const committed = isDyno && stuck
     if (isDyno && !stuck) log.push(`${card.name} — off it. Did not stick.`)
     const g = snapped || committed ? 0 : target - power
-    const c = card.contact - bite
+    const c = contactOf(s, card) - bite
 
     if (card.chip) {
       for (let k = 0; k < 3; k++) if (k !== i && boardH[k])
@@ -4965,12 +4998,12 @@ export function resolve(s: GameState, rng: RNG): GameState {
     if (c <= 0 || committed) {
       if (bm.saveBlow && !savedBlow && !committed) {
         savedBlow = true
-        boardP[i] = { ...card, contact: 1 }
+        boardP[i] = { ...card, spent: (card.spent ?? 0) + contactOf(s, card) - 1 }
         log.push(`${card.name} should have gone. It holds on.`)
         continue
       }
       if (card.latch && !card.latched && !committed) {
-        boardP[i] = { ...card, contact: 1, latched: true }
+        boardP[i] = { ...card, spent: (card.spent ?? 0) + contactOf(s, card) - 1, latched: true }
         log.push(`${card.name} latches. Barely.`)
       } else {
         boardP[i] = null; fxLane[i] = 'blow'
@@ -4986,7 +5019,7 @@ export function resolve(s: GameState, rng: RNG): GameState {
           } else log.push(`${card.name} blows.`)
         } else log.push(`${card.name} — all of it, all at once.`)
       }
-    } else boardP[i] = { ...card, contact: c, set: true,   // ENG-32: it stood the turn
+    } else boardP[i] = { ...card, spent: (card.spent ?? 0) + bite, set: true,   // ENG-32: it stood the turn
       settled: Math.min((card.settled ?? 0) + (card.fx === 'settle2' ? 2 : 1) + bm.settle,
         s.inRun ? (archOf(s).settleMax ?? SETTLE_MAX) : SETTLE_MAX) }
   }
@@ -5051,7 +5084,7 @@ export function resolve(s: GameState, rng: RNG): GameState {
         if (q.onDone.dumpPump) pump2 = 0
         if (q.onDone.contact || q.onDone.settle) for (let i = 0; i < 3; i++) {
           const c = board2[i]
-          if (c) board2[i] = { ...c, contact: c.contact + (q.onDone.contact ?? 0),
+          if (c) board2[i] = { ...c, spent: (c.spent ?? 0) - (q.onDone.contact ?? 0),
             settled: (c.settled ?? 0) + (q.onDone.settle ?? 0) }
         }
         out = { ...out, seq: null, piles: piles2, cleared: cleared2, pump: pump2, boardP: board2,
@@ -5468,7 +5501,7 @@ export function laneBlows(s: GameState, i: number): boolean {
   const c = s.boardP[i], h = s.boardH[i]
   if (!c || !h) return false
   if (c.fx === 'commit') return true
-  return c.contact - biteAgainst(s, c, h, i) <= 0 && !(c.latch && !c.latched)
+  return contactOf(s, c) - biteAgainst(s, c, h, i) <= 0 && !(c.latch && !c.latched)
 }
 
 export function previewLane(s0: GameState, i: number): LanePreview {
@@ -5511,7 +5544,7 @@ export function previewLane(s0: GameState, i: number): LanePreview {
   const snapped = card.fx === 'snap' && target <= 3
   const isDyno = card.fx === 'commit'
   const gripLeft = snapped ? 0 : target - power
-  const contactLeft = card.contact - bite
+  const contactLeft = contactOf(s, card) - bite
   const blows = laneBlows(s, i)
   // ENG-15: a dyno is a check now, so the preview reports the odds rather than
   // claiming a certainty it cannot have
@@ -6274,7 +6307,7 @@ export function coach(s: GameState): string | null {
       return 'Slopers are Greasy: −1 Power unless your feet are on. Friction cards ignore it.'
     if (ab === 'Two-finger')
       return 'Pockets ignore Support. Your feet will not help on that one.'
-    if (c.contact <= biteAgainst(s, c, h, i) && !c.latch)
+    if (contactOf(s, c) <= biteAgainst(s, c, h, i) && !c.latch)
       return `${c.name} will not survive that Bite. It burns out for the rest of the burn.`
   }
   const open = [0, 1].find(i => holds[i] && !mine[i])

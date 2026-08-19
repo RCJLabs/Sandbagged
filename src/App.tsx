@@ -2,9 +2,9 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.56 — COND-2: every weather window was a one-way switch on 2 of 37 routes.
-//   Windows PASS now, and say so, and three more lines carry one — 1.94% → 4.91% of turns
-//   spent inside live conditions.
+// SANDBAGGED v10.57 — COND-3: Contact was baked into every card at deal time, so the weather
+//   could not move during a burn. It is read live now (`contactOf`), the stat and the wear are
+//   two fields, and a window can wet the rock under you.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -38,6 +38,7 @@ import {
   previewLane, previewPump, priceOf, recordRun, rerollCost, rerollStep, resolve,
   rollEvent, roughPath, saveGame, seedCode, seqById, seqNeedText, SEQ_GRACE, sigById,
   slotSummary, slotsUsed, spawn, specFromEstablished, specOf, startBurn, stockShop, windowNear, windowOf,
+  contactOf,
   styleMods, tagCounts, tagOf, takeOfferStep, takeTwoStep, vanOpen, walkAwayStep, weekKey,
   wipeSlot, xpForSend, xpMult, xpToNext,
   nextStreakReward,
@@ -1544,7 +1545,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.56 · RCJ Labs</div>
+          <div className="sfoot">v10.57 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1773,7 +1774,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.56 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.57 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -3963,7 +3964,7 @@ export default function App() {
             <div key={`${i}-${st.motion ? st.fxTick : 0}`}
               className={`slot you${st.fxLane[i] === 'bite' ? ' fx-bite' : ''}`}
               {...tap(() => tapLane(i), `${LANE_NAMES[i]}: your ${c.name}, `
-                + `${h ? powerAgainst(st, c, h, i) : c.power} power, ${c.contact} contact`
+                + `${h ? powerAgainst(st, c, h, i) : c.power} power, ${contactOf(st, c)} contact`
                 + (lanes && lanes[i].card ? `. ${lanes[i].blows ? 'This burns out' : 'This holds on'}` : ''))}>
               <Ink w={117} h={120} seed={c.uid} />
               <Fam c={c} size={17} />
@@ -4012,7 +4013,7 @@ export default function App() {
                     </div>)
                 })() : null}
                 <div className="tx" style={{ marginTop: 2 }}>{c.text}</div></div>
-              <Pips o={h ? powerAgainst(st, c, h, i) : c.power} d={c.contact} />
+              <Pips o={h ? powerAgainst(st, c, h, i) : c.power} d={contactOf(st, c)} />
               {(() => {
                 const pv = lanes![i]
                 if (!pv.card || !pv.hold) return null
@@ -4088,7 +4089,7 @@ export default function App() {
         {st.piles.hand.map(c => (
           <div key={c.uid} className={`card${st.selected === c.uid ? ' sel' : ''}${c.kind === 'bonus' ? ' bonus' : ''}`}
             {...tap(() => tapHandCard(c),
-              `${c.name}. ${c.kind === 'move' ? `${c.power} power, ${c.contact} contact`
+              `${c.name}. ${c.kind === 'move' ? `${c.power} power, ${contactOf(st, c)} contact`
                 : writeOff(c) ? `a curse. Tap to write it off for ${c.cost + CURSE_TAX} pump`
                 : `costs ${c.cost} pump`}`
               + `. ${c.text}${st.selected === c.uid ? '. Selected' : ''}`)}>
@@ -4108,7 +4109,7 @@ export default function App() {
                   offer the way out, or the mechanic is invisible where it is used. */}
               {writeOff(c) ? (
                 <div className="tx" style={{ color: 'var(--red)' }}>Tap: gone for this burn.</div>) : null}
-              {c.kind === 'move' ? <Pips o={c.power} d={c.contact} /> : null}</div>
+              {c.kind === 'move' ? <Pips o={c.power} d={contactOf(st, c)} /> : null}</div>
           </div>
         ))}
       </div>
@@ -4202,7 +4203,7 @@ export default function App() {
                       <span className="cnt" style={{ color: 'var(--red)' }}>
                         {c.kind === 'move' ? c.power : c.cost}</span>
                       <span className="cnt" style={{ color: 'var(--green)' }}>
-                        {c.kind === 'move' ? c.contact : ''}</span>
+                        {c.kind === 'move' ? contactOf(st, c) : ''}</span>
                     </div>)) : <div className="sub">nothing</div>}
                 </div>)
             })}

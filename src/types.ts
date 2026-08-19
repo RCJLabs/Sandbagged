@@ -93,6 +93,13 @@ export type Card = {
      every turn for ever, as a side effect of its own identity (measured: 6.2%). Two
      different questions, so now two fields. */
   set?: boolean
+  /* COND-3: how much Contact this card has already spent on the wall. `contact` is the
+     card's STAT and `spent` is the wear, because until this ticket they were one field —
+     resolve wrote the remaining Contact back into `contact` — and that is the reason the
+     number had to be baked at deal time. Two questions, so two fields (the same split
+     ENG-32 made between `settled` and `set`). Wear survives a return to hand, a discard
+     and a reshuffle, exactly as the written-back number did. */
+  spent?: number
   upgraded?: boolean
 }
 export type Piles = { draw: Card[]; discard: Card[]; exhaust: Card[]; hand: Card[] }
