@@ -154,7 +154,11 @@ function runOnce(seed, carry) {
         lastAct = s.act; lowSkin = s.skin; lowPsyche = s.psyche; camps = 0
       }
       if (s.phase === 'map') {
-        const tier = E.ACTS[s.act][s.tier]
+        /* RUN-14: `tierNodes`, not `ACTS[act][tier]`. The harness was reading the STATIC
+           table, so it would have played the unthinned map and reported the change as
+           band-neutral while the shipping game played something else — SIM-1's rule and
+           ENG-25's failure class in one line. */
+        const tier = E.tierNodes(s)
         const camp = tier.find(n => n.type === 'camp')
         const evt = tier.find(n => n.type === 'event')
         const proj = tier.find(n => n.type === 'project')

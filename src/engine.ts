@@ -2179,8 +2179,79 @@ const ACT_ROCK: number[][] = [
   [1, 1, 2, 4],                   // desert: sandstone, limestone, basalt
   [0, 3, 4],                      // alpine: granite, gneiss, basalt
 ]
+/* RUN-14. What a stage offers is now a property of the RUN, not only of the act.
+
+   THE FINDING, and the row I wrote was wrong about it twice. It said "act maps branch, but the
+   branches rarely differ in kind": they differ in kind at 18 of the 26 tiers, and at the 4
+   climb-only tiers the routes differ in grade, style, clear count and how hard the feet are.
+   What is actually true is simpler and worse — `ACTS` is a static table, so the map is
+   BYTE-IDENTICAL in every run anybody ever plays. The same 26 stages, the same order, the same
+   options, forever. The conditions at each node were already per-run (`forecastFor`, right
+   below, hashes the seed with the act, the tier and the node); the SHAPE was not. So a second
+   campaign presents the same menu as the first and there is nothing to adapt to.
+
+   THE RULE, arrived at by measuring two wrong versions first, and both numbers are kept here
+   because they say something about this game that is worth knowing. A stage of three or more
+   nodes has one of its NON-CLIMBING nodes replaced by a camp, an event or a shop it does not
+   already offer, chosen by the seed. The width never changes and the number of things you can
+   get on never changes; what varies is the support around them — whether this stage offers the
+   camp or the shop, and therefore what the whole act's resources look like.
+
+   VERSION ONE DROPPED A NODE (`length - 1`, floored at two). Same variety, and it cost 3.1
+   points: 44.3% to 41.2% (n=3000), mean rests 0.7 to 0.4, act 2 deaths 19% to 25%. Variety
+   bought by taking agency away.
+
+   VERSION TWO SWAPPED ANY NODE, keeping the width. WORSE — 39.2%, with talks up from 5.8 to
+   7.0 and act 3 deaths up to 36%. The reason is the useful finding: sends are what grow a deck,
+   so trading a CLIMB for a camp is a loss even though a camp hands you skin back. Both versions
+   failed for one underlying reason — anything that reduces how much you can climb costs several
+   points — and that is why the swap is confined to the non-climbing nodes.
+
+   WHAT THIS DELIBERATELY DOES NOT DO. The climbs themselves are the same every run. Varying
+   those needs a pool of interchangeable routes per act, which does not exist — 36 routes cover
+   26 stages, nearly all used once — so it is authoring rather than a rule, and version two
+   measured what happens if you fake it by substituting other node kinds. That is its own ticket.
+
+   TWO THINGS ARE NEVER TOUCHED. A boss tier holds one node, so it is never in range. And no
+   climb, project or boss is ever the node swapped out.
+
+   DERIVED, NOT ROLLED. Hashed off `runSeed` — the seed that is saved, restored and fixed for
+   the whole run — for two reasons. It takes nothing from the run RNG stream, so it perturbs no
+   downstream roll and moves no balance guard (the same reason `forecastFor`, the kit shelf and
+   the rack are all hashed rather than rolled). And it must not use the LIVE `s.seed`, which
+   advances as you play: a tier's composition has to be the same every time you look at the map
+   screen, not re-drawn under you.
+
+   AND IT IS ONE FUNCTION ON PURPOSE. `forecastFor` addresses a tier BY INDEX — the map screen
+   already carries a comment warning that anything inserted mid-list shifts every forecast and
+   handler — so a second place that decides which nodes exist is the ENG-26 divergence arriving
+   by the front door. Everything that asks what a stage offers comes through here. */
+export const MAP_FLOOR = 2
+/** RUN-14: the kinds a stage can gain. All three are self-contained (`routeIdx -1`), which is
+    why the swap can only ever reach for one of these — a climb would need a route, and choosing
+    one per stage is authoring a second map rather than varying this one. */
+export const MAP_SWAP_IN: NodeType[] = ['camp', 'event', 'shop']
+/** RUN-14: what a stage must always keep at least one of. */
+const CLIMBABLE: NodeType[] = ['climb', 'project', 'boss']
+
+export function tierNodes(s: GameState, tier = s.tier): MapNode[] {
+  const all = ACTS[s.act]?.[tier] ?? []
+  if (all.length <= MAP_FLOOR) return all
+  // only the support around the climbing is in range — see the note above for what it cost to
+  // let this touch a climb
+  const open = all.map((n, i) => (CLIMBABLE.includes(n.type) ? -1 : i)).filter(i => i >= 0)
+  if (!open.length) return all
+  const rng = new RNG((s.runSeed ^ (s.act * 31337) ^ (tier * 15485863)) >>> 0)
+  const drop = open[rng.int(open.length)]
+  const kept = all.filter((_, i) => i !== drop)
+  const fresh = MAP_SWAP_IN.filter(k => !kept.some(n => n.type === k))
+  // nothing new to offer, so this stage keeps what it had — the width never falls
+  if (!fresh.length) return all
+  return [...kept, { type: fresh[rng.int(fresh.length)], routeIdx: -1 }]
+}
+
 export function forecastFor(s: GameState): { weather: number; rock: number }[] {
-  const nodes = ACTS[s.act]?.[s.tier] ?? []
+  const nodes = tierNodes(s)
   const wp = ACT_WEATHER[s.act], rp = ACT_ROCK[s.act]
   return nodes.map((_, i) => {
     const h = ((s.seed ^ (s.act * 7919) ^ (s.tier * 104729)
@@ -4165,7 +4236,8 @@ export function stickChance(s: GameState): number {
    a line you can plan two moves of. */
 export function tierAhead(s: GameState): MapNode[] {
   const map = ACTS[s.act]
-  return map && s.tier + 1 < map.length ? map[s.tier + 1] : []
+  // RUN-14: what you are shown one stage ahead has to be what is there when you arrive
+  return map && s.tier + 1 < map.length ? tierNodes(s, s.tier + 1) : []
 }
 /** What is coming, in the words the map uses. */
 export function aheadSummary(s: GameState): string {
@@ -4189,16 +4261,22 @@ export const bossNext = (s: GameState) => tierAhead(s).some(n => n.type === 'bos
 /** Is there still a boss between here and the end of the range? */
 export function bossAhead(s: GameState): boolean {
   const map = ACTS[s.act] ?? []
+  // RUN-14: a boss tier holds one node, so it is never thinned — but this reads the run's
+  // own tiers anyway, so there is one answer to "what is at stage t" and not two.
   for (let t = s.tier + 1; t < map.length; t++)
-    if (map[t].some(n => n.type === 'boss')) return true
+    if (tierNodes(s, t).some(n => n.type === 'boss')) return true
   return false
 }
 /** Is there a camp coming before the boss? The question people actually ask. */
 export function campBeforeBoss(s: GameState): boolean {
   const map = ACTS[s.act] ?? []
+  /* RUN-14: THE ONE THAT WOULD HAVE BECOME A LIE. The map screen prints "No camp between here
+     and the boss" off this, and a run that thinned its only camp out of a stage would have been
+     told the opposite of the truth on the screen where it matters most. */
   for (let t = s.tier + 1; t < map.length; t++) {
-    if (map[t].some(n => n.type === 'boss')) return false
-    if (map[t].some(n => n.type === 'camp')) return true
+    const at = tierNodes(s, t)
+    if (at.some(n => n.type === 'boss')) return false
+    if (at.some(n => n.type === 'camp')) return true
   }
   return false
 }

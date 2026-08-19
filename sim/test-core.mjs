@@ -564,6 +564,96 @@ test('the act map fits on the page', () => {
     'the map moves between renders')
 })
 
+test('RUN-14: the map is a property of the run, and one function says so', () => {
+  /* RUN-14. The row said "act maps branch, but the branches rarely differ in kind", and that is
+     wrong twice: they differ in kind at 18 of the 26 stages, and at the 4 climb-only stages the
+     routes differ in grade, style, clear count and how hard the feet are. What is true is worse
+     and simpler — `ACTS` is a static table, so the map was BYTE-IDENTICAL in every run anybody
+     ever played. The conditions at each node were already per-run; the shape was not. */
+  const CAN = ['climb', 'project', 'boss']
+  const run = (seed, act) => ({ ...E.freshRun(0, 0, seed), runSeed: seed, inRun: true, act })
+
+  /* NOTHING THAT MATTERS MOVES, and this comes first because it is the half that two measured
+     versions of this ticket got wrong. Both of the versions this ticket measured and threw away
+     broke one of these: dropping a node cost 3.1 points of completion, and swapping a CLIMB for
+     a camp cost 5.1, because sends are what grow a deck. */
+  for (let a = 0; a < E.ACTS.length; a++) for (let t = 0; t < E.ACTS[a].length; t++) {
+    const all = E.ACTS[a][t]
+    for (let r = 1; r <= 40; r++) {
+      const at = E.tierNodes(run(r, a), t)
+      eq(at.length, all.length, `act ${a + 1} stage ${t + 1} changed width on seed ${r}`)
+      eq(at.filter(n => CAN.includes(n.type)).length, all.filter(n => CAN.includes(n.type)).length,
+        `act ${a + 1} stage ${t + 1} changed how much you can climb on seed ${r}`)
+      eq(at.some(n => n.type === 'boss'), all.some(n => n.type === 'boss'),
+        `act ${a + 1} stage ${t + 1} gained or lost its boss on seed ${r}`)
+      for (const k of E.MAP_SWAP_IN) ok(at.filter(n => n.type === k).length <= 1,
+        `act ${a + 1} stage ${t + 1} offers two ${k} nodes on seed ${r}`)
+      ok(at.every(n => n.routeIdx >= 0 || !CAN.includes(n.type)),
+        `act ${a + 1} stage ${t + 1} invented a climb with no route on seed ${r}`)
+    }
+  }
+
+  /* IT VARIES. Counted rather than asserted loosely: 16 of the 26 stages produce more than one
+     shape across seeds. The 10 that do not are all explained — 4 boss stages hold one node, 4
+     are two-node climb pairs at the floor with no support node to vary, and 2 already offer all
+     of camp, event and shop, so there is nothing new they could be given. */
+  let vary = 0
+  for (let a = 0; a < E.ACTS.length; a++) for (let t = 0; t < E.ACTS[a].length; t++) {
+    const seen = new Set()
+    for (let r = 1; r <= 60; r++) seen.add(E.tierNodes(run(r, a), t).map(n => n.type).sort().join('+'))
+    if (seen.size > 1) vary++
+  }
+  ok(vary >= 12, `only ${vary} of 26 stages differ between runs — the map is a corridor again`)
+
+  /* DERIVED FROM `runSeed`, NOT THE LIVE SEED. `s.seed` advances as you play, so keying off it
+     would re-draw a stage under the player between two looks at the same map screen. */
+  const a1 = E.tierNodes({ ...run(7, 1), seed: 999 }, 2).map(n => n.type).join(',')
+  const a2 = E.tierNodes({ ...run(7, 1), seed: 4242 }, 2).map(n => n.type).join(',')
+  eq(a1, a2, 'the stage changed when the live seed advanced — the map is being re-drawn under the player')
+  eq(E.tierNodes(run(7, 1), 2).join(), E.tierNodes(run(7, 1), 2).join(), 'the same run gives two different maps')
+  const other = E.tierNodes(run(8, 1), 2).map(n => n.type).sort().join(',')
+  ok(other !== a1.split(',').sort().join(',') || vary > 0, 'this fixture proves nothing')
+
+  /* THE ONE THAT WOULD HAVE BECOME A LIE. The map screen prints "No camp between here and the
+     boss" off `campBeforeBoss`, so it has to read the run's own stages. Checked against the
+     stages this run actually has, which is the only thing that makes the sentence true. */
+  for (let r = 1; r <= 30; r++) for (let a = 0; a < E.ACTS.length; a++) {
+    for (let t = 0; t < E.ACTS[a].length - 1; t++) {
+      const s = { ...run(r, a), tier: t }
+      let expected = false
+      for (let k = t + 1; k < E.ACTS[a].length; k++) {
+        const at = E.tierNodes(s, k)
+        if (at.some(n => n.type === 'boss')) break
+        if (at.some(n => n.type === 'camp')) { expected = true; break }
+      }
+      eq(E.campBeforeBoss(s), expected,
+        `act ${a + 1} stage ${t + 1} seed ${r}: the camp warning does not match this run's stages`)
+    }
+  }
+
+  /* ONE FUNCTION, and this half is what stops the screen and the engine disagreeing. The map
+     screen already carries a note that the forecast and every handler address a tier BY INDEX,
+     so a second reading of "which nodes are here" shifts every one of them — ENG-26 arriving by
+     the front door. Comments stripped: the notes below quote `ACTS[s.act]` while explaining why
+     nothing should read it. */
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const fc = region(eng, 'export function forecastFor', ['export function forecastScore'],
+    { min: 200, what: 'forecastFor' })
+  ok(/tierNodes\(s\)/.test(fc), 'the forecast is built off the static table, so it labels the wrong nodes')
+  for (const [fn, end] of [['export function tierAhead', 'export function aheadSummary'],
+                           ['export function campBeforeBoss', '\nexport ']]) {
+    const body = region(eng, fn, [end], { min: 80, what: fn })
+    ok(/tierNodes\(/.test(body), `${fn} reads the static table, so it can disagree with the map screen`)
+  }
+  const app = stripComments(readFileSync('src/App.tsx', 'utf8'))
+  ok(!/ACTS\[st\.act\]\[st\.tier\]/.test(app),
+    'the map screen reads the static tier again, so what it offers can differ from the forecast beside it')
+  /* and the harness plays the map the game deals — it read the static table, which would have
+     measured this ticket as band-neutral while the shipping game played something else (SIM-1). */
+  const sim = stripComments(readFileSync('sim/run.mjs', 'utf8'))
+  ok(/E\.tierNodes\(s\)/.test(sim), 'the harness is back on the static map, so the band no longer measures the real one')
+})
+
 test('the map can always tell you what is coming', () => {
   // RUN-7. The map showed one tier at a time, so every choice was made blind
   // to what it was choosing between.
@@ -573,9 +663,13 @@ test('the map can always tell you what is coming', () => {
       const said = E.aheadSummary(s)
       ok(said.length > 3, `act ${a + 1} stage ${t + 1} says nothing about what is next`)
       ok(!said.includes('undefined'), `act ${a + 1} stage ${t + 1}: "${said}"`)
-      // the last stage of a range has no tier after it and must say so
+      /* the last stage of a range has no tier after it and must say so */
       if (t + 1 >= E.ACTS[a].length) eq(E.tierAhead(s).length, 0, 'a stage past the end of the act')
-      else eq(E.tierAhead(s).length, E.ACTS[a][t + 1].length, 'the wrong stage was read ahead')
+      /* RUN-14 made a stage's contents a property of the run, so what is read ahead is
+         `tierNodes` of the next stage rather than the static row. Asserted against
+         `tierNodes` — the same function the map screen and the forecast use — so this still
+         fails if the read-ahead ever points at a different stage, which is what it is for. */
+      else eq(E.tierAhead(s).length, E.tierNodes(s, t + 1).length, 'the wrong stage was read ahead')
     }
   }
 })

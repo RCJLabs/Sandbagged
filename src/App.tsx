@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.51 — FEET-1: the rock can make your feet matter. A solid foothold pays
-//   a settled foot, and every foothold now says what it does — in both marks keys.
+// SANDBAGGED v10.52 — RUN-14: the map was the same table in every run ever played. What a
+//   stage offers is a property of the run now, and one function says what that is.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -16,7 +16,7 @@ import {
   MapNode, OPPOSE_ALONE, OPPOSE_PAIR, PRICE, PROJECT_SKIN, PSYCHE_BAIL, psycheMax,
   PUMP_MAX, Phase, RARE_SLOTS, RNG, ROCK, ROUTES, RUN_SKIN, Rarity, SKIN_MAX,
   SLOTS, SYNERGY_PER, TAG_NAMES, TALKS, TOPROPE_SKIN, TUTORIAL_DECK, TWEAK_GRIP,
-  UNCOMMON_SLOTS, WEATHER, abilityOf, activeSlot, aheadSummary, applyOutcome, CREEP_MAX, creepOf,
+  UNCOMMON_SLOTS, WEATHER, abilityOf, activeSlot, aheadSummary, applyOutcome, CREEP_MAX, creepOf, tierNodes,
   archUnlocked, attemptsFor, availableTalk, talkById, biteAgainst, boonById, boonMods,
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
   campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitShare, circuitZone, claimStep, claimVerdict, shareCard,
@@ -1542,7 +1542,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.51 · RCJ Labs</div>
+          <div className="sfoot">v10.52 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1771,7 +1771,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.51 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.52 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2081,10 +2081,14 @@ export default function App() {
     const own = establishedIn(st, st.act)
     // appended, never inserted: the forecast and every handler address a tier
     // by index, so anything added in the middle would shift them all
-    const tier: MapNode[] = ACTS[st.act][st.tier].some(n => n.type === 'fa') && own.length
-      ? [...ACTS[st.act][st.tier], ...own.slice(0, 2).map((_, k): MapNode =>
+    /* RUN-14: `tierNodes` and not `ACTS[act][tier]` — what a stage offers is a property of
+       this RUN now, and the forecast beside it is indexed off the same list. Two readings of
+       "which nodes are here" is the divergence the note above is already about. */
+    const here = tierNodes(st)
+    const tier: MapNode[] = here.some(n => n.type === 'fa') && own.length
+      ? [...here, ...own.slice(0, 2).map((_, k): MapNode =>
           ({ type: 'established', routeIdx: k }))]
-      : ACTS[st.act][st.tier]
+      : here
     const fc = forecastFor(st)
     return (
       <div className={skin}>
@@ -2111,9 +2115,12 @@ export default function App() {
         {/* RUN-8: the act as a page of the guidebook, not a list of buttons */}
         <ActMap act={st.act} tier={st.tier} total={ACTS[st.act].length}
           trail={st.trail} seed={st.runSeed || 1} label={ACT_NAMES[st.act]}
-          kinds={ACTS[st.act].map(t => {
+          kinds={ACTS[st.act].map((_, t) => {
             // a tier can offer more than one thing; name it by what it leads with
-            const n = t.find(x => x.type === 'boss') ?? t.find(x => x.type !== 'climb') ?? t[0]
+            // RUN-14: drawn from this run's tiers, so the page does not show a camp at a
+            // stage that will not have one when you get there
+            const at = tierNodes(st, t)
+            const n = at.find(x => x.type === 'boss') ?? at.find(x => x.type !== 'climb') ?? at[0]
             return n?.type ?? ''
           })} />
         <div className="sub">seed {seedCode(st.runSeed)}</div>
