@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.54 — CARD-19: the only language cards had for each other was a substring of
-//   their own name, and it could not name half of them. Opposition is a family you can build.
+// SANDBAGGED v10.55 — PUMP-1: the daylight clock had never once run out. The day closes now —
+//   past DUSK_AT the hand shrinks every turn, so a grind ends instead of going forever.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -17,6 +17,7 @@ import {
   PUMP_MAX, Phase, RARE_SLOTS, RNG, ROCK, ROUTES, RUN_SKIN, Rarity, SKIN_MAX,
   SLOTS, SYNERGY_PER, TAG_NAMES, TALKS, TOPROPE_SKIN, TUTORIAL_DECK, TWEAK_GRIP,
   UNCOMMON_SLOTS, WEATHER, abilityOf, activeSlot, aheadSummary, applyOutcome, CREEP_MAX, creepOf, tierNodes,
+  DUSK_AT, DUSK_DRAW,
   archUnlocked, attemptsFor, availableTalk, talkById, biteAgainst, boonById, boonMods,
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
   campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitShare, circuitZone, claimStep, claimVerdict, shareCard,
@@ -1542,7 +1543,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.54 · RCJ Labs</div>
+          <div className="sfoot">v10.55 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1771,7 +1772,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.54 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.55 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -4234,6 +4235,18 @@ export default function App() {
             <b style={{ color: 'var(--blue)' }}>
               WEATHER · {wn.away} HOLD{wn.away === 1 ? '' : 'S'} OFF</b>{wn.w.warn}</div>)
       })()) : null}
+      {/* PUMP-1: the light going has to be SEEN, and seen coming — the same rule ROUTE-6's
+          weather windows and the boss phases set. It says the turn before it starts and every
+          turn after, with the number of cards it is costing you, because a hand that quietly
+          comes up short reads as the deck being broken rather than as the day ending. */}
+      {st.phase === 'climb' && st.turn >= DUSK_AT - 1 ? (
+        <div className="spot" role="status" aria-live="polite"
+          style={{ borderLeftColor: 'var(--red)' }}>
+          <b style={{ color: 'var(--red)' }}>
+            {st.turn < DUSK_AT ? 'THE LIGHT IS GOING' : 'THE LIGHT HAS GONE'}</b>
+          {st.turn < DUSK_AT
+            ? 'Next turn you start losing the hand. Whatever is left up there, this is the time.'
+            : `You are drawing ${Math.max(0, st.turn - DUSK_AT) * DUSK_DRAW} card${Math.max(0, st.turn - DUSK_AT) * DUSK_DRAW === 1 ? '' : 's'} fewer. It only gets darker.`}</div>) : null}
       {/* A11Y-9: appears mid-climb on a screen you are already on, so it announces —
           the same rule the window and route-move banners beside it already follow. */}
       {/* SEQ-2: the slip is on the banner, because a margin you cannot see is not a margin

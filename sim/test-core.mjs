@@ -54,6 +54,85 @@ test('the resource pools are ordered as the design says', () => {
   ok(E.ATTEMPTS >= 2, 'projecting needs more than one go')
   eq(E.PROJECT_SKIN, 0, 'a project is priced in nodes, not skin — see v2.7')
 })
+test('PUMP-1: the day closes, and it closes on the grind rather than on a climb', () => {
+  /* PUMP-1. The row asked whether the clock has a second dimension worth having. Measured over
+     10,749 burns, the game already had one and it did not tick: the mean burn is 5.7 turns, the
+     median 6, the 99th percentile 11, the longest that has ever happened 19 — against `TURN_CAP`
+     30. No burn has ever ended on daylight. The guard beside this one asserts the constant's
+     RANGE, so it passed for versions while the mechanic did nothing at all.
+
+     The same run settled two more of the row's words. Pump is NOT one-directional — it falls on
+     23.5% of turns and is flat on 18.3%. And running out of pump is the only failure that ever
+     fires: sends 66.9%, pump out 32.2%, roped falls 1.0%, daylight 0.0%.
+
+     And the answer to the row is no: there is no room for a second PRESSURE, only for a working
+     backstop. A flat one-card cut from turn 8 costs three points of completion, because a smaller
+     hand compounds into the pump clock rather than opposing it. So the day now CLOSES from
+     `DUSK_AT` instead of stopping dead at 30, and it starts past the 99th percentile of every
+     burn ever measured. */
+  ok(E.DUSK_AT > 0 && E.DUSK_DRAW > 0, 'the light never goes, so the day has no second half')
+  ok(E.DUSK_AT < E.TURN_CAP,
+    'dusk starts at or after the hard wall, so the gradient can never be reached')
+
+  /* A GRIND: rests in both hand lanes every turn, against holds nothing can work. This is the
+     shape the daylight cap was written for — the note on TURN_CAP records the Alpinist averaging
+     457 turns — and it is the shape that never once reached the wall. The holds are jugs and not
+     cruxes on purpose: a crux carries the Committing tax and its bite converts to pump, which
+     ended the first cut of this fixture on turn 2 and would have proved nothing about daylight. */
+  const H = uid => ({ uid, name: 'jug', bite: 1, grip: 99, crux: false, clean: false })
+  let st = { ...E.freshRun(6, 0, 5), inRun: true, skirmish: null, phase: 'climb',
+    weather: 1, rock: 0, turn: 1, flow: 0, pump: 0, gear: [], boons: [], mutators: [],
+    boardH: [H(1), H(2), null], boardP: [null, null, null],
+    holdDeck: [], feetDeck: [], worked: [], order: [], fxLane: ['', '', ''], routeMove: null,
+    piles: { draw: Array.from({ length: 60 }, () => E.spawn('Shake Out')), discard: [], exhaust: [], hand: [] } }
+  const seen = []
+  for (let i = 0; i < E.TURN_CAP + 6 && st.phase === 'climb'; i++) {
+    const rests = st.piles.hand.filter(c => c.shed > 0).slice(0, 2)
+    const bp = st.boardP.slice()
+    rests.forEach((c, k) => { if (!bp[k]) bp[k] = c })
+    st = { ...st, boardP: bp, piles: { ...st.piles, hand: st.piles.hand.filter(c => !rests.includes(c)) } }
+    st = E.resolve(st, new E.RNG(5 + i))
+    seen.push({ turn: st.turn, hand: st.piles.hand.length, pump: st.pump, phase: st.phase })
+  }
+
+  /* THE HAND CLOSES, and keeps closing — every turn past dusk takes another card. */
+  const past = seen.filter(x => x.turn > E.DUSK_AT)
+  ok(past.length > 0,
+    `the stall never reached dusk (longest turn ${Math.max(...seen.map(x => x.turn))}), so this proves nothing`)
+  const first = past[0], last = past[past.length - 1]
+  ok(last.hand < first.hand,
+    `the hand did not close as the light went: ${first.hand} at turn ${first.turn}, ${last.hand} at turn ${last.turn}`)
+  eq(last.hand, 0, `a grind still holds ${last.hand} cards at turn ${last.turn} — the day never closes`)
+
+  /* AND THE STALL ENDS. Note HOW, because it is the design: dusk does not add a third way to
+     fail, it takes your hand away so the PUMP clock — the one this grind was beating by resting
+     every turn — finally does its job. Measured on this fixture: hand 5 at dusk, empty by turn
+     17, pump 1 to 13 over the next five, over at 22 against a wall at 30. */
+  ok(st.phase !== 'climb', 'a rest-every-turn grind is still going, which is what TURN_CAP was for')
+  ok(st.turn < E.TURN_CAP,
+    `the grind ran to turn ${st.turn} and only the hard wall at ${E.TURN_CAP} stopped it`)
+  ok(/Forearms gone|That is the day/.test(st.log.slice(-2).join(' ')),
+    'the grind ended on something other than the clock it was beating')
+  ok(st.pump >= E.PUMP_MAX - 2, `it ended at ${st.pump} pump, so the pump clock is not what closed it`)
+
+  /* AND IT DOES NOT TOUCH A CLIMB. Dusk must sit past every burn a player legitimately has: the
+     99th percentile measured 11 and the longest send 18, so a threshold inside normal play is the
+     three-point mistake this ticket measured and backed out of. */
+  ok(E.DUSK_AT >= 11,
+    `dusk at ${E.DUSK_AT} lands inside normal play — the 99th percentile burn is 11 turns, and a cut from turn 8 measured -3.0 points`)
+
+  /* IT IS SAID, AND SAID A TURN AHEAD — ROUTE-6's rule for anything the wall does to you, and a
+     hand that quietly comes up short otherwise reads as the deck being broken. */
+  const app = stripComments(readFileSync('src/App.tsx', 'utf8'))
+  ok(/st\.turn >= DUSK_AT - 1/.test(app), 'the light going is never announced before it starts')
+  ok(/THE LIGHT IS GOING/.test(app) && /THE LIGHT HAS GONE/.test(app),
+    'the banner does not distinguish the warning from the thing happening')
+  /* the COUNT in the sentence, not the identifier anywhere in the file: `DUSK_DRAW` is also in
+     the import line, so the loose form passed while the number was taken out of the banner. */
+  ok(/\* DUSK_DRAW\} card/.test(app),
+    'the screen never says how many cards the dark is costing')
+})
+
 test('the daylight cap is longer than a climb but shorter than a grind', () => {
   // added because a rest-heavy deck could hang on a boulder for 457 turns
   ok(E.TURN_CAP >= 20, 'a legitimate long boulder needs room')

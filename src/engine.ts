@@ -104,9 +104,43 @@ export const PSYCHE_BAIL = 2
 export const PSYCHE_SEND = 1
 export const PSYCHE_CAMP = 2
 export const DOUBT_AT = 2         // at or below this, the clock runs faster
-// Daylight. A deck with enough rests in it could shed faster than the clock
-// ticked and hang on a boulder forever — the Alpinist averaged 457 turns.
+/* Daylight. A deck with enough rests in it could shed faster than the clock ticked and hang on
+   a boulder forever — the Alpinist averaged 457 turns. `TURN_CAP` is the wall that stopped that,
+   and it is kept as the backstop it is.
+
+   PUMP-1. The row asked whether the clock has a second dimension worth having, and measuring
+   said the game already HAS one and it does not tick. Over 10,749 burns: the mean burn is 5.7
+   turns, the median 6, the 99th percentile 11, and the longest that has ever happened is 19 —
+   against a cap of 30. Eleven turns of headroom past the worst case ever recorded, so no burn
+   has ever ended on daylight, not once. The guard on it asserted the constant's RANGE and
+   therefore passed while the mechanic did nothing.
+
+   Two other things the same measurement settled. Pump is NOT one-directional — it falls on
+   23.5% of turns and is flat on 18.3%, so it is a two-way meter already. And the only failure
+   that ever fires is running out of pump (32.2% of burns; sends are 66.9%, roped falls 1.0%,
+   daylight 0.0%).
+
+   AND THE MEASURED ANSWER TO THE ROW IS NO — there is no room for a second PRESSURE, only for a
+   working backstop. Four attempts, all at n=3000 against a 44.1% base:
+
+       flat -1 card from turn 8   (the 90th percentile)   41.1%   -3.0, far outside the error
+       flat -1 card from turn 10                          43.6%   band-neutral, reaches 1.14% of burns
+       compounding from turn 10                           43.1%   -1.0, marginal
+       compounding from turn 12                           43.9%   band-neutral  <- shipped
+
+   The first is the lesson: a smaller hand COMPOUNDS — fewer plays, fewer clears, more hang tax,
+   more pump — so it is a death-spiral accelerant rather than a second axis, and the difficulty of
+   this game is already concentrated in the long burn. There is no headroom there. Anything that
+   bites often enough to be a dimension costs three points.
+
+   So what shipped is the backstop doing its job. Past `DUSK_AT` you draw one card fewer for every
+   turn the light has been going, so a hand closes to nothing by about turn 15. Turn 12 is past the
+   99th percentile of every burn ever measured (11) and past the longest SEND (18 is the longest
+   sent burn, but a send that long is already over on its own terms) — so it does not touch a
+   legitimate climb and it genuinely ends a stall, which the wall at 30 has never once done. */
 export const TURN_CAP = 30
+export const DUSK_AT = 12
+export const DUSK_DRAW = 1
 // You toprope before you lead. Explicit, switchable, and it does not unlock
 // styles — a beginner setting you can see rather than difficulty done behind
 // your back.
@@ -4181,6 +4215,12 @@ function refillAndDraw(s: GameState, rng: RNG): GameState {
   const want = HAND_SIZE + gm.handSize + boonMods(s.boons).dDraw
     + (s.inRun ? (archOf(s).dHand ?? 0) : 0) + (s.turn === 1 ? gm.drawFirst : 0)
     - (mutMods(s.mutators).retain ? SUSTAINED_CUT : 0)   // RUN-11: a smaller working hand
+    // PUMP-1: past DUSK_AT the light is going, and it keeps going — one card fewer for every
+    // turn since. The same lever RUN-11 uses, for the same reason: it changes the TEXTURE of a
+    // long burn rather than its arithmetic, and it is the one pressure that does not feed the
+    // pump clock. `pileDraw` is asked for `max(0, ...)` below, so a hand can close to nothing
+    // without anything here needing to clamp.
+    - Math.max(0, s.turn - DUSK_AT) * DUSK_DRAW
   const piles = pileDraw(s.piles, Math.max(0, want - s.piles.hand.length), rng)
   if (gm.brushFirst && s.turn === 1) for (const i of [0, 1])
     if (boardH[i]) { boardH[i] = clearDirt({ ...boardH[i]!, clean: true }); break }

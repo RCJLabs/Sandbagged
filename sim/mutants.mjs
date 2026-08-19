@@ -1525,7 +1525,34 @@ export const MUTANTS = [
     why: 'a tag the game plays has no display name, so the hints and the deck screen cannot say what family a card belongs to — the hole `oppose` sat in',
     catches: 'has no display name',
     patch: [['src/engine.ts', "  oppose: 'opposition',   // CARD-19: the one family the game plays and could not name", '  // oppose has no name']] },
+
+  // ---- PUMP-1: the day closes on the grind ----
+  { id: 'PUMP-1/light-never-goes', suite: 'core',
+    why: 'the light never goes, so the daylight clock is back to a wall at 30 that no burn has ever reached — the mean burn is 5.7 turns and the longest ever recorded is 19',
+    catches: 'the light never goes',
+    patch: [['src/engine.ts', 'export const DUSK_DRAW = 1', 'export const DUSK_DRAW = 0']] },
+  { id: 'PUMP-1/dusk-past-the-wall', suite: 'core',
+    why: 'dusk starts at or after the hard wall, so the gradient is unreachable and the mechanic is dead in exactly the way it was before this ticket',
+    catches: 'the gradient can never be reached',
+    patch: [['src/engine.ts', 'export const DUSK_AT = 12', 'export const DUSK_AT = 30']] },
+  { id: 'PUMP-1/dusk-does-not-compound', suite: 'core',
+    why: 'the light stops going after the first turn, so a grind loses one card and then holds on for ever — a flat cut was measured and rejected for exactly this',
+    catches: 'the day never closes',
+    patch: [['src/engine.ts', '    - Math.max(0, s.turn - DUSK_AT) * DUSK_DRAW', '    - (s.turn > DUSK_AT ? DUSK_DRAW : 0)']] },
+  { id: 'PUMP-1/dusk-inside-normal-play', suite: 'core',
+    why: 'dusk moves inside normal play, where a one-card cut from turn 8 measured 41.1% against a 44.1% base — three points, because a smaller hand compounds into the pump clock rather than opposing it',
+    catches: 'lands inside normal play',
+    patch: [['src/engine.ts', 'export const DUSK_AT = 12', 'export const DUSK_AT = 8']] },
+  { id: 'PUMP-1/dusk-unannounced', suite: 'core',
+    why: 'the light going is never announced before it starts, so a hand that comes up short reads as the deck being broken rather than as the day ending — ROUTE-6s rule for anything the wall does to you',
+    catches: 'never announced before it starts',
+    patch: [['src/App.tsx', "{st.phase === 'climb' && st.turn >= DUSK_AT - 1 ? (", "{st.phase === 'climb' && st.turn >= DUSK_AT + 99 ? ("]] },
+  { id: 'PUMP-1/dusk-count-hidden', suite: 'core',
+    why: 'the screen stops saying how many cards the dark is costing, so the one number a player needs to decide whether to keep going is missing',
+    catches: 'never says how many cards',
+    patch: [['src/App.tsx', '`You are drawing ${Math.max(0, st.turn - DUSK_AT) * DUSK_DRAW} card', '`You are drawing fewer card']] },
 ]
+
 
 
 
