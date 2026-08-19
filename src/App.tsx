@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.50 — SEQ-2: a plan survives one slip, and two of the four cards that
-//   start one were named after other cards bar the case of "the".
+// SANDBAGGED v10.51 — FEET-1: the rock can make your feet matter. A solid foothold pays
+//   a settled foot, and every foothold now says what it does — in both marks keys.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1542,7 +1542,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.50 · RCJ Labs</div>
+          <div className="sfoot">v10.51 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1771,7 +1771,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.50 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.51 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2560,6 +2560,21 @@ export default function App() {
       <div style={{ maxHeight: 'min(640px * var(--fs), 70dvh)', overflowY: 'auto' }}>
         <div className="lbl">WHAT THE ROCK DOES</div>
         {Object.entries(HOLD_STATS).map(([name, d]) => (
+          <div key={name} className="deckrow">
+            <Glyph name={name} size={24} />
+            <div className="nmx">
+              <div className="t1">{name} — <span style={{ color: 'var(--red)' }}>{d.ability}</span></div>
+              <div className="t2">{d.text}</div>
+            </div>
+            <span className="cnt" style={{ color: 'var(--red)' }}>{d.bite}</span>
+            <span className="cnt" style={{ color: 'var(--green)' }}>{d.grip}</span>
+          </div>))}
+        {/* FEET-1: the footholds were in NEITHER key. `FEET_STATS` was read in exactly one
+            place in this file — the board — so a player who wanted to know what Featureless or
+            Slick meant had nowhere to look it up. Four foothold types, three with abilities
+            that change how a turn resolves, and no entry anywhere. */}
+        <div className="lbl" style={{ marginTop: 10 }}>WHAT IS UNDER YOUR FEET</div>
+        {Object.entries(FEET_STATS).map(([name, d]) => (
           <div key={name} className="deckrow">
             <Glyph name={name} size={24} />
             <div className="nmx">
@@ -4276,6 +4291,17 @@ export default function App() {
                 onClick={() => setLegend(false)}>CLOSE</button></div>
             <div className="lbl" style={{ marginTop: 6 }}>THE ROCK</div>
             {Object.entries(HOLD_STATS).map(([name, d]) => (
+              <div key={name} className="deckrow">
+                <Glyph name={name} size={24} />
+                <div className="nmx">
+                  <div className="t1">{name} — <span style={{ color: 'var(--red)' }}>{d.ability}</span></div>
+                  <div className="t2">{d.text}</div>
+                </div>
+                <span className="cnt" style={{ color: 'var(--red)' }}>{d.bite}</span>
+                <span className="cnt" style={{ color: 'var(--green)' }}>{d.grip}</span>
+              </div>))}
+            <div className="lbl" style={{ marginTop: 10 }}>WHAT IS UNDER YOUR FEET</div>
+            {Object.entries(FEET_STATS).map(([name, d]) => (
               <div key={name} className="deckrow">
                 <Glyph name={name} size={24} />
                 <div className="nmx">

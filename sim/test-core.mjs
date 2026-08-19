@@ -2876,7 +2876,14 @@ test('the tuning policy can see the feet lane (SIM-6)', () => {
      Recorded honestly, because I overstated this when I logged the ticket: the LANE is
      ~38% of the clears; the BLINDNESS was worth 1.9 points. Different claims. */
   const H = (uid, grip) => ({ uid, name: 'crimp', bite: 1, grip, crux: false, clean: false })
-  const F = (uid, grip) => ({ uid, name: 'foothold', bite: 1, grip, crux: false, clean: false })
+  /* FEET-1: a 'chip' rather than the plain 'foothold', for the reason spelled out on ENG-32's
+     fixture — the plain one now pays `Solid` once a foot settles, and `footValue` scores a
+     STAYING foot on exactly that ("what it will pay once it is bedded in"), so Solid tips this
+     deciding case by +1 and the policy correctly prefers Support. That is the feature working;
+     this guard is about whether the policy can see a foot WORK its hold, so it needs a
+     foothold that does not also reward staying. */
+  const F = (uid, grip) => ({ uid, name: 'chip', bite: 1, grip, crux: false, clean: false })
+  eq(E.creepOf(F(1, 1)), 0, 'the chip creeps, so this fixture is carrying a second rule again')
   const base = { ...E.freshRun(6, 0, 5), inRun: true, skirmish: null, phase: 'climb',
     weather: 1, rock: 0, turn: 2, flow: 0, pump: 3, gear: [], boons: [], mutators: [],
     boardH: [null, null, null], boardP: [null, null, null], holdDeck: [], feetDeck: [],
@@ -3298,6 +3305,110 @@ test('the game has a sense of place, and the finale has none on purpose (AUD-2)'
   eq(E.carryOver({ ...base, ambience: false }).ambience, false,
     'the ambience setting is thrown away by a new run — settings are the player-s')
 })
+test('FEET-1: the wall can make your feet matter, and every foothold says what it does', () => {
+  /* FEET-1. The row said the feet lane was "a single slot answering a single foothold", and
+     measuring corrected that twice before anything was designed.
+
+     THE CHOICE OF FOOT WAS ALREADY REAL: 38 foot cards, 25 distinct power/contact/support
+     profiles, and not one pair where either card beats the other on all three axes. The lane
+     is filled on 77.5% of climb turns and you hold two or more feet on 49.3% of them.
+
+     WHAT WAS MISSING WAS VARIETY IN THE QUESTION. Support only ever takes the values 1 and 2 —
+     every powerful foot is Support 1, every Support 2 foot is weak — so it was the same binary
+     trade every turn. And the wall could only push that axis DOWN: `Featureless` zeroes it
+     (28.9% of the footholds a campaign meets), one weather and two route windows subtract, and
+     the only positive dSupport in the game was a pair of shoes. `Solid` is the first upward
+     pressure from the rock itself. */
+  const feetTypes = Object.entries(E.FEET_STATS)
+  /* EVERY FOOTHOLD SAYS SOMETHING. The plain 'foothold' was `ability: '', text: ''` — the only
+     thing on the board with nothing to say, in a table where every hold and every other
+     foothold has both. Asserted over the table so a silent row cannot come back anywhere. */
+  for (const [name, d] of feetTypes) {
+    ok(d.ability, `the ${name} has no ability — it is a blank row on the board`)
+    ok(d.text, `the ${name} says nothing about what it does`)
+  }
+  ok(E.SOLID_SUPPORT > 0, 'a solid foothold adds nothing, so the wall still cannot raise Support')
+  const solidType = feetTypes.find(([, d]) => d.ability === 'Solid')
+  ok(solidType, 'no foothold raises Support any more — the axis only goes down again')
+
+  const H = (uid, grip) => ({ uid, name: 'crimp', bite: 1, grip, crux: false, clean: false })
+  const FT = (name, over = {}) => ({ uid: 9, name, bite: 2, grip: 2, crux: false, clean: false, ...over })
+  const base = { ...E.freshRun(6, 0, 5), inRun: true, skirmish: null, phase: 'climb',
+    weather: 1, rock: 0, turn: 2, flow: 0, pump: 4, gear: [], boons: [], mutators: [],
+    holdDeck: [], worked: [], order: [], fxLane: ['', '', ''], topRope: false,
+    piles: { draw: [], discard: [], exhaust: [], hand: [] } }
+  const allFeet = Object.keys(E.CARDS).map(n => E.spawn(n)).filter(c => c.lane === 'feet')
+  const big = allFeet.find(c => c.support >= 2)
+  const small = allFeet.find(c => c.support === 1)
+  ok(big && small, 'the feet pool no longer has both a Support 2 and a Support 1 foot')
+  const hand = E.spawn('Crimp Grip')
+  const sup = (fh, card, set, over = {}) => E.supportNow({ ...base,
+    boardH: [H(1, 9), null, FT(fh, over)], boardP: [hand, null, { ...card, set }] })
+
+  /* IT PAYS ONLY ONCE THE FOOT HAS SETTLED, and only on the solid foothold. Checked against
+     every other foothold type in the table rather than one of them, so this cannot quietly
+     become a bonus the whole wall grants. */
+  const solidName = solidType[0]
+  eq(sup(solidName, big, true) - sup(solidName, big, false), E.FOOT_FRESH + E.SOLID_SUPPORT,
+    'settling on a solid foothold is not worth the fresh cost plus what Solid says')
+  for (const [name] of feetTypes) {
+    if (name === solidName) continue
+    eq(sup(name, big, true) - sup(name, big, false), E.FOOT_FRESH,
+      `the ${name} pays a settling bonus it does not advertise`)
+    eq(sup(name, small, true), sup(name, small, false),
+      `the ${name} pays a Support 1 foot something for settling — that is ENG-32's floor, not Solid`)
+  }
+  /* AND IT REACHES THE FLOORED FEET TOO. ENG-32 exempts a Support 1 foot from the settling
+     cost, so without this Solid would have been invisible to exactly the cards that most want
+     a reason to stay put. */
+  eq(sup(solidName, small, true) - sup(solidName, small, false), E.SOLID_SUPPORT,
+    'a Support 1 foot gains nothing from settling on solid rock — the floor swallowed Solid')
+
+  // brushing a foothold strips Solid, exactly as `abilityOf` strips every other ability
+  eq(sup(solidName, big, true, { clean: true }), sup('chip', big, true),
+    'a brushed solid foothold still pays Solid, so brushing does not mean what it means elsewhere')
+  // and a gifted stance never settles, so it never qualifies — the same reason it pays no fresh cost
+  eq(E.supportNow({ ...base, stance: true, boardH: [H(1, 9), null, FT(solidName)],
+    boardP: [hand, null, null] }), E.STANCE_SUPPORT,
+    'a stance you never placed is collecting Solid')
+
+  /* THE POLICY PRICES IT, which is the mechanism that turns +1 Support into "keeping your feet
+     can beat working the foothold". Asserted at source: SIM-6 scores a staying foot on what it
+     will pay ONCE BEDDED IN, and that is the branch Solid lands in. Not asserted as a flipped
+     pick — `footValue`'s `reduce` keeps its accumulator on a tie, so a fixture built to show
+     the flip would be testing hand order, which is the trap SIM-6's own note records. */
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  const pick = stripComments(region(eng, 'export function autoPlay', ['const order = [0, 1]'],
+    { min: 300, what: 'the feet pick' }))
+  /* THE EXACT LINE, not the pattern. `supWith(c, true)` appears twice in this window — the
+     other is the nothing-under-you branch — so the loose form passed while the injection that
+     blanks the staying branch went straight through it. Found by that injection. */
+  ok(/clears \? now \+ FOOT_CLEAR_VALUE : now \+ supWith\(c, true\)/.test(pick),
+    'the policy no longer scores a staying foot on what it will pay once settled, so Solid is invisible to it')
+
+  /* SOLID IS A CHARACTERISTIC OF THE ROCK, NOT THE DEFAULT. It was 5 of the 10 weight on every
+     easy-feet route, which would have made half of act 1 a footwork route — and measured, Solid
+     at that frequency took the pinned band 44.3% to 45.9% (n=3000). Reweighted to 2, which reads
+     45.0%. Asserted as a share so the offset cannot be undone by editing one number. */
+  const pools = stripComments(region(eng, 'const FEET_POOLS', ['const STYLES'],
+    { min: 150, what: 'the feet pools' }))
+  const easy = region(pools, 'easy:', ['normal:'], { min: 40, what: 'the easy feet pool' })
+  const weights = [...easy.matchAll(/'([^']+)': (\d+)/g)].map(m => [m[1], Number(m[2])])
+  const total = weights.reduce((a, [, w]) => a + w, 0)
+  const solidW = (weights.find(([n]) => n === solidName) ?? [, 0])[1]
+  ok(total > 0 && weights.length === feetTypes.length, `the easy pool guard is reading ${weights.length} weights of ${feetTypes.length}`)
+  ok(solidW / total <= 0.35,
+    `the solid foothold is ${solidW}/${total} of the easy pool — a default, not a characteristic`)
+  ok(solidW > 0, 'the solid foothold cannot appear on an easy route at all, so Solid is unreachable early')
+
+  /* AND IT IS LOOKABLE-UP. `FEET_STATS` was read in exactly ONE place in App.tsx — the board —
+     so both marks keys listed the four hold types and none of the four footholds. A player who
+     wanted to know what Featureless meant had nowhere to go. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  eq((app.match(/Object\.entries\(FEET_STATS\)/g) ?? []).length, 2,
+    'the footholds are missing from one of the two marks keys')
+})
+
 test('the feet lane is a trade, and it says what it is doing (ENG-32)', () => {
   /* ENG-32. The ticket read "feet are a lane you fill, not a decision you make", and
      measuring first showed the premise was half wrong in the useful direction: the
@@ -3309,7 +3420,15 @@ test('the feet lane is a trade, and it says what it is doing (ENG-32)', () => {
      settled — and because a high-Power foot tends to WORK its hold and leave the wall,
      it never settles, so the pool's own Support-versus-Power shape finally bites. */
   const H = (uid, grip, over = {}) => ({ uid, name: 'crimp', bite: 1, grip, crux: false, clean: false, ...over })
-  const F = (uid, over = {}) => ({ uid, name: 'foothold', bite: 2, grip: 2, crux: false, clean: false, ...over })
+  /* FEET-1 moved this fixture off the plain 'foothold', which now carries `Solid` (+1 Support
+     once your foot has settled). That is a SECOND rule about the same turn, so measuring
+     ENG-32's settling trade on it stopped isolating ENG-32: the delta below read FOOT_FRESH +
+     SOLID_SUPPORT. A 'chip' is the right stand-in — Sharp is read only by `resolve`'s blow
+     branch, so it touches neither `supportNow` nor the Support term in `powerAgainst`, where
+     'smear edge' (Slick) would have changed the numbers this guard depends on. The combined
+     behaviour on a Solid foothold is asserted in the FEET-1 guard instead. */
+  const F = (uid, over = {}) => ({ uid, name: 'chip', bite: 2, grip: 2, crux: false, clean: false, ...over })
+  eq(E.FEET_STATS['chip'].ability, 'Sharp', 'the chip is no longer the neutral-for-Support foothold this fixture needs')
   const base = { ...E.freshRun(6, 0, 5), inRun: true, skirmish: null, phase: 'climb',
     weather: 1, rock: 0, turn: 2, flow: 0, pump: 4, gear: [], boons: [], mutators: [],
     holdDeck: [], worked: [], order: [], fxLane: ['', '', ''], topRope: false,

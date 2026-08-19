@@ -960,14 +960,35 @@ export const GEN_SIG_IDS = SIGNATURES.filter(s => !s.ability && !s.local).map(s 
 export const sigById = (id: string) => SIGNATURES.find(x => x.id === id)
 
 export const FEET_STATS: Record<string, HoldDef> = {
-  'foothold':   { bite: 2, grip: 2, ability: '',           text: '' },
+  /* FEET-1: this row was `ability: '', text: ''` — the ONLY thing on the board that said
+     nothing at all, in a table where every hold and every other foothold has an ability and
+     a sentence. It is 22.6% of the footholds a campaign meets.
+
+     And it is the answer to the lane's real problem. The choice of foot is genuinely a trade
+     already: 38 foot cards, 25 distinct power/contact/support profiles and not one pair where
+     either card dominates the other on all three. But SUPPORT ONLY EVER TAKES THE VALUES 1
+     AND 2 — every powerful foot is Support 1 and every Support 2 foot is weak — so it is the
+     same binary trade every turn. And the wall can only ever push that axis DOWN: `Featureless`
+     zeroes it on 28.9% of turns, one weather and two route windows subtract from it, and the
+     single positive `dSupport` in the game is a pair of shoes you can buy. Nothing the route
+     does ever makes your feet matter MORE, so the trade never inverts — it only gets cancelled.
+     `Solid` is the first upward pressure, so some routes are footwork routes and the choice
+     changes with the rock instead of being a constant. */
+  'foothold':   { bite: 2, grip: 2, ability: 'Solid',      text: 'A settled foot pays +1 Support.' },
   'smear edge': { bite: 2, grip: 3, ability: 'Slick',      text: '−1 Power against it.' },
   'chip':       { bite: 3, grip: 3, ability: 'Sharp',      text: 'Blows a card → +1 pump.' },
   'blank':      { bite: 2, grip: 4, ability: 'Featureless', text: 'This lane grants no Support.' },
 }
 
+/* FEET-1 reweighted `easy`, and it is an offset AND a correction to the same mistake.
+   `Solid` is meant to make SOME routes footwork routes — but the plain foothold was 5 of the
+   10 weight on every easy-feet route, so half of act 1 would have been one. Measured: Solid
+   alone took the pinned band 44.3% to 45.9% (n=3000); moving three of that five onto the
+   'smear edge' brings Solid down to a characteristic of the rock instead of the default.
+   `normal` and `hard` are untouched — the plain foothold is already 1 in 4 and 1 in 11 there,
+   and the total weight per pool is unchanged so no other foothold's share moves. */
 const FEET_POOLS: Record<FeetKey, Record<string, number>> = {
-  easy: { 'foothold': 5, 'smear edge': 3, 'chip': 1, 'blank': 1 },
+  easy: { 'foothold': 2, 'smear edge': 6, 'chip': 1, 'blank': 1 },
   normal: { 'foothold': 1, 'smear edge': 1, 'chip': 1, 'blank': 1 },
   hard: { 'foothold': 1, 'smear edge': 2, 'chip': 3, 'blank': 5 },
 }
@@ -4452,6 +4473,15 @@ export function gripShown(s: GameState, h: Hold): { lo: number; hi: number; sure
    copy of the sum: the screen has to print this number, and two copies of one formula
    drift. `powerAgainst` is the only consumer of the total; the per-hold parts
    (Featureless, Two-finger) stay where the hold is known. */
+/* FEET-1: what a solid foothold adds once your foot has SETTLED on it — not when you place
+   it. Deliberately paid a turn late, and that is the whole design rather than a delay:
+   ENG-32 made a rushed placement pay less, and its stated trade — "leaving a good card where
+   it is usually beats moving it" — had nothing on the other side of it for the FEET lane
+   specifically. This is that other side. It also costs something real: a foot left planted is
+   a foot lane you are not re-using, and with about four feet cards in a fifteen-card deck
+   that is a live opportunity cost rather than a gift. */
+export const SOLID_SUPPORT = 1
+
 export function supportNow(s: GameState): number {
   const feetCard = s.boardP[2]
   /* ENG-21: a gifted stance is the feet you did not place, so it pays in SUPPORT —
@@ -4471,7 +4501,14 @@ export function supportNow(s: GameState): number {
   const quick = s.inRun && archOf(s).quickFeet === true
   const fresh = feetCard && !feetCard.set && s.turn > 1 && !quick
     ? Math.max(0, Math.min(FOOT_FRESH, feetCard.support - 1)) : 0
-  return Math.max(0, (feetCard ? feetCard.support : stanceSup) - fresh
+  /* FEET-1: a SETTLED foot on a solid foothold. Gated on `set` — the same flag ENG-32's
+     `fresh` penalty above reads — so the two are mirrors of one rule rather than two rules
+     about the same turn. A gifted stance never qualifies: there was no placement to settle,
+     which is the same reason it pays no `fresh` cost. And `abilityOf` returns '' for a brushed
+     hold, so brushing a foothold strips Solid exactly as it strips every other ability. */
+  const solid = feetCard && feetCard.set
+    && s.boardH[2] && abilityOf(s.boardH[2]!) === 'Solid' ? SOLID_SUPPORT : 0
+  return Math.max(0, (feetCard ? feetCard.support : stanceSup) - fresh + solid
     + gearMods(s.boardP ? s.gear : []).dSupport
     + (WEATHER[s.weather]?.dSupport ?? 0)
     + (windowOf(s)?.dSupport ?? 0))           // ROUTE-6: the feet stop trusting it
