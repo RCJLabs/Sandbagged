@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.48 — ROPE-2 finished: The Lost Line is the one route whose shape you
-//   choose. Solo it as he did, or rope it — and the headwall is above the last belay.
+// SANDBAGGED v10.49 — HOLD-1: a hold you leave hanging gets worse. Greasy holds sweat
+//   up while you are elsewhere, capped, telegraphed, and brushing stops the clock.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -16,7 +16,7 @@ import {
   MapNode, OPPOSE_ALONE, OPPOSE_PAIR, PRICE, PROJECT_SKIN, PSYCHE_BAIL, psycheMax,
   PUMP_MAX, Phase, RARE_SLOTS, RNG, ROCK, ROUTES, RUN_SKIN, Rarity, SKIN_MAX,
   SLOTS, SYNERGY_PER, TAG_NAMES, TALKS, TOPROPE_SKIN, TUTORIAL_DECK, TWEAK_GRIP,
-  UNCOMMON_SLOTS, WEATHER, abilityOf, activeSlot, aheadSummary, applyOutcome,
+  UNCOMMON_SLOTS, WEATHER, abilityOf, activeSlot, aheadSummary, applyOutcome, CREEP_MAX, creepOf,
   archUnlocked, attemptsFor, availableTalk, talkById, biteAgainst, boonById, boonMods,
   bossAhead, bossNext, buildLoadout, buildable, campBeforeBoss, campSkinFor,
   campStep, cardHints, carryOver, cashForSend, circuitRoute, circuitShare, circuitZone, claimStep, claimVerdict, shareCard,
@@ -1542,7 +1542,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.48 · RCJ Labs</div>
+          <div className="sfoot">v10.49 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1771,7 +1771,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.48 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.49 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -3867,6 +3867,10 @@ export default function App() {
               {...tap(() => tapLane(i), `${LANE_NAMES[i]} hold: ${h.crux ? 'crux, ' : ''}`
                 + `${holdLabel(h)}, ${(g => g.sure ? `${g.lo} grip` : `${g.lo} to ${g.hi} grip, not worked yet`)(gripShown(st, h))}`
                 + `, ${biteAgainst(st, st.boardP[i], h, i)} bite`
+                + (creepOf(h) > 0 ? ((h.worn ?? 0) >= CREEP_MAX
+                    ? `. Soaked, ${h.worn} grip worse than it started and no worse`
+                    : `. Sweating up, ${creepOf(h)} grip a turn you leave it`
+                      + (h.worn ? `, ${h.worn} so far` : '')) : '')
                 + (lanes ? `. ${lanes[i].clears ? 'This works it' : `${lanes[i].gripLeft} grip would remain`}` : ''))}>
               <Ink w={117} h={120} seed={h.uid} color={h.crux ? 'var(--red)' : 'var(--ink)'}
                 sw={h.crux ? 2.2 : 1.5} />
@@ -3886,6 +3890,17 @@ export default function App() {
                 <div className="tx" style={{ marginTop: 2 }}>
                   {h.clean ? 'brushed clean' : (HOLD_STATS[h.name] ?? FEET_STATS[h.name])?.text}
                 </div>
+                {/* HOLD-1. A creeping hold has to READ as creeping or it is an ambush, which
+                    is the rule ROUTE-6's windows and the boss phases already set: telegraphed
+                    before it lands, so it is a decision rather than a surprise. It says both
+                    halves — the rate, which is what you are choosing against, and the wear
+                    already on it, which is what tells you whether the choice is still live.
+                    Words, not colour (VIS-7): the red is on top of a sentence that stands
+                    without it. */}
+                {creepOf(h) > 0 && <div className="tx" style={{ marginTop: 1, color: 'var(--red)' }}>
+                  {(h.worn ?? 0) >= CREEP_MAX ? `soaked +${h.worn}`
+                    : `sweating +${creepOf(h)}/turn${h.worn ? ` · +${h.worn} so far` : ''}`}
+                </div>}
               </div>
               {(() => { const g = gripShown(st, h)
                 return <Pips o={biteAgainst(st, st.boardP[i], h, i)} d={g.lo}

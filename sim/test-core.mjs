@@ -6334,6 +6334,100 @@ test('tag counts add up to the tagged cards', () => {
   eq(total, deck.filter(c => E.tagOf(c)).length, 'the tally does not match the deck')
 })
 
+test('HOLD-1: a hold you leave hanging gets worse, the ability says which, the cap says how far', () => {
+  /* HOLD-1. The wall had seven abilities and every one of them was a static modifier to the
+     same turn's arithmetic, so no turn's decision outlived the turn: leaving a hold cost
+     `HANG_TAX` per hold and nothing else, which means WHICH hold you left never mattered,
+     only how many. A creeping hold makes triage a real decision. What this guards is the
+     four things that have to be true for it to be a decision rather than an ambush or a
+     soft lock: it is keyed on what the board already PRINTS, only the lanes you LEFT pay,
+     it is CAPPED, and it is said out loud on the hold and in the accessibility tree. */
+  const S = (uid, o = {}) => ({ uid, name: 'sloper', bite: 1, grip: 6, crux: false, clean: false, ...o })
+  const C = (uid, o = {}) => ({ uid, name: 'crimp', bite: 1, grip: 5, crux: false, clean: false, ...o })
+  const base = { ...E.freshRun(6, 0, 5), inRun: true, skirmish: null, phase: 'climb',
+    weather: 1, rock: 0, turn: 2, flow: 0, pump: 0, gear: [], boons: [], mutators: [],
+    boardH: [null, null, null], boardP: [null, null, null], holdDeck: [], feetDeck: [],
+    piles: { draw: [], discard: [], exhaust: [], hand: [] },
+    worked: [], order: [], fxLane: ['', '', ''], topRope: false, routeMove: null }
+
+  const rate = E.CREEP['Greasy']
+  ok(rate > 0, 'nothing creeps at all, so the whole mechanic is switched off')
+  ok(E.CREEP_MAX >= rate * 2, 'the cap lands on the first tick, so leaving a hold is a one-off cost again')
+
+  // KEYED ON THE ABILITY, NOT THE TYPE — the easy cases first, the deciding one below.
+  eq(E.creepOf(S(1)), rate, 'the sloper — the common Greasy hold — does not creep')
+  // and a hold the board calls something else does not creep on the quiet
+  eq(E.creepOf(C(1)), 0, 'a crimp creeps, so this is not keyed on the ability at all')
+  /* BRUSHING STOPS THE CLOCK. `abilityOf` already reads a clean hold as having no ability,
+     so this is inherited rather than restated — and it is the reason the mechanic has an
+     ANSWER and not only a countdown. */
+  eq(E.creepOf(S(1, { clean: true })), 0, 'a brushed hold still creeps, so there is no way to stop it')
+  /* AND NOW THE DECIDING CASE, after the easy ones: a hold whose BASE is not a sloper and
+     which the board still prints GREASY on. Keyed on the type, the game says GREASY and then
+     quietly does not do the thing GREASY means. */
+  const wet = E.SIGNATURES.find(g => g.ability === 'Greasy' && g.base !== 'sloper')
+  ok(wet, 'no signature is Greasy over a non-sloper base any more, so this fixture proves nothing')
+  const wj = { uid: 5, name: wet.base, bite: 1, grip: 5, crux: false, clean: false, sig: wet.id }
+  eq(E.abilityOf(wj), 'Greasy', `${wet.name} is not Greasy, so the fixture proves nothing`)
+  eq(E.creepOf(wj), rate, `${wet.name} reads GREASY on the board and does not creep — this is keyed on the type`)
+
+  /* ONLY THE LANES YOU LEFT. Paired, because "nothing sweats" would pass the first half on
+     its own — the second resolve is the same hold, same seed, nothing on it. */
+  const big = S(1, { grip: 99 })                     // never worked, so it survives the turn
+  const held = E.resolve({ ...base, boardH: [big, null, null],
+    boardP: [E.spawn('Open Hand'), null, null] }, new E.RNG(7))
+  ok(held.boardP[0], 'the card blew, so lane 0 counts as unanswered and the fixture proves nothing')
+  eq(held.boardH[0].worn ?? 0, 0, 'a hold sweats while you are ON it, so there is nothing to triage')
+  const left = E.resolve({ ...base, boardH: [big, null, null] }, new E.RNG(7))
+  eq(left.boardH[0].worn, rate, 'the same hold left on its own does not sweat either')
+
+  /* IT IS REAL ARITHMETIC, not a badge: the wear goes into `grip`, which is what the
+     preview, `gripShown` and the resolution all already read. */
+  const one = E.resolve({ ...base, boardH: [S(1), C(2), null] }, new E.RNG(7))
+  eq(one.boardH[0].grip, 6 + rate, 'the sloper you left is no harder to work than it was')
+  eq(one.boardH[0].worn, rate, 'the wear is not written down, so the cap has nothing to count')
+  eq(one.boardH[1].grip, 5, 'the crimp you left in the next lane got worse too')
+  ok(one.log.some(l => /sweating up/.test(l)), 'it happened silently, which makes it an ambush')
+
+  /* CAPPED. Uncapped, a lane you cannot answer runs to unanswerable and takes the burn with
+     it. `grip` and `worn` must stop at the same place — they are two records of one fact. */
+  let st = { ...base, boardH: [S(1), null, null] }
+  for (let t = 0; t < 6; t++) st = { ...E.resolve(st, new E.RNG(7)), phase: 'climb', routeMove: null, pump: 0 }
+  eq(st.boardH[0].worn, E.CREEP_MAX, 'the wear does not stop at the cap')
+  eq(st.boardH[0].grip, 6 + E.CREEP_MAX, 'the grip ran past the cap that the wear stopped at')
+
+  /* ONE PREDICATE FOR TWO CONSEQUENCES. The hang tax and the wear are charged on the same
+     lanes, so `unanswered` is that list's length rather than a second walk of the board —
+     two walks of one rule is exactly how ENG-26 got a preview that disagreed with the
+     resolution, and it would arrive here in a new form. */
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  const res = stripComments(region(eng, 'export function resolve(s: GameState, rng: RNG)',
+    ['\nexport function '], { min: 8000, what: 'resolve' }))
+  eq((res.match(/\[0, 1, 2\]\.filter\(i => boardH\[i\] && !boardP\[i\]\)/g) ?? []).length, 1,
+    'resolve walks the board for unanswered lanes twice, so the tax and the wear can disagree')
+  ok(/const unanswered = hanging\.length/.test(res),
+    'the hang tax no longer counts the lanes the wear is charged on')
+  ok(/const worn = Math\.min\(CREEP_MAX,/.test(res), 'the wear is no longer clamped to the cap')
+
+  /* AND THE HOLD SAYS SO. ROUTE-6's windows and the boss phases both set the rule that the
+     wall telegraphs before it lands; a hold getting worse has to read that way too, on the
+     hold itself and in the accessibility tree (A11Y-8), and in words rather than colour
+     alone (VIS-7). */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const slot = stripComments(region(app, 'const ab = abilityOf(h)', ['<Pips'],
+    { min: 1500, what: 'the board hold' }))
+  ok(/creepOf\(h\) > 0 && <div/.test(slot), 'the board draws nothing at all on a sweating hold')
+  ok(/\+\$\{creepOf\(h\)\}\/turn/.test(slot),
+    'the hold says it is sweating without saying how fast, which is not enough to choose against')
+  ok(/>= CREEP_MAX/.test(slot),
+    'the board never says a hold has stopped getting worse, so the clock reads as endless')
+  ok(/\$\{h\.worn\} so far/.test(slot), 'the hold does not say how much wear is already on it')
+  /* the same sentence has to exist for a screen reader, which is not the same string and so
+     is not covered by any of the four above. */
+  const aria = region(slot, 'grip a turn you leave it', ['}>'], { min: 40, what: 'the hold label' })
+  ok(/h\.worn/.test(aria), 'the spoken label does not say how far it has already gone')
+})
+
 group('the suite')
 test('GUARD-9: the kept injections still injure something', () => {
   /* GUARD-9. `test.mjs` exists because fifteen one-off harnesses were each written, used

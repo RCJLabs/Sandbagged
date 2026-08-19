@@ -45,6 +45,12 @@ export type Hold = {
       crux reads as its style's own feature (the razor, the blank, the throw)
       while still resolving as a Committing crux. */
   label?: string
+  /** HOLD-1: how much this hold has sharpened up while you left it hanging. The wear is
+      written into `grip` as well, so `effGrip` — and therefore `gripFor`, `gripShown`, the
+      preview and resolve — all pick it up with no second code path to keep in step. This
+      field exists so the BOARD can say what is happening and so the cap has something to
+      count; the arithmetic never reads it. */
+  worn?: number
 }
 export type Card = {
   uid: number; name: string; kind: 'move' | 'bonus'

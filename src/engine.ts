@@ -811,7 +811,7 @@ export const HOLD_STATS: Record<string, HoldDef> = {
   'jug':         { bite: 2, grip: 3, ability: 'Rest',       text: 'Answer it and shed 1 pump.' },
   'crimp':       { bite: 3, grip: 5, ability: 'Sharp',      text: 'Blows a card → +1 pump.' },
   'sharp crimp': { bite: 4, grip: 5, ability: 'Razor',      text: 'Blows a card → burn 1 from hand.' },
-  'sloper':      { bite: 2, grip: 6, ability: 'Greasy',     text: '−1 Power unless your feet are on.' },
+  'sloper':      { bite: 2, grip: 6, ability: 'Greasy',     text: '−1 Power without feet. Sweats up if you leave it.' },
   'pinch':       { bite: 3, grip: 5, ability: 'Squeeze',    text: '+1 Bite while both hands are busy.' },
   'pocket':      { bite: 4, grip: 4, ability: 'Two-finger', text: 'Ignores Support.' },
   'crux':        { bite: 4, grip: 8, ability: 'Committing', text: 'Needs Power 2+. +1 hang tax.' },
@@ -1602,7 +1602,7 @@ export const TUTORIAL_STEPS: string[] = [
   'Your Power — the diamond — chips its Grip. Its Bite chips your Contact. Both at once, so you can work a hold and still come off it.',
   'The hold reads a range rather than a number. You have not been on it yet. Work it once and it reads true for the rest of the trip.',
   'That sloper is Greasy: you lose 1 Power on it unless your feet are on something. Put a card in the FEET lane — leaving it empty is campusing, and costs you Bite on both hands.',
-  'Every turn costs pump, plus one for each hold you have not answered. Clearing holds is how you outrun it. Max pump and you are off.',
+  'Every turn costs pump, plus one for each hold you have not answered — and a Greasy hold does worse than that. It sweats up while you are elsewhere, harder every turn, and the hold says so. Clearing holds is how you outrun all of it. Max pump and you are off.',
   'Watch the top of the screen. Every few turns the route does something — greases up, dries out, a gust — and it always says so a turn beforehand.',
   'A card that survives a turn settles in, gaining Power for every turn it stays. Leaving a good card where it is usually beats moving it.',
   'A gaston pulls sideways, and sideways needs something pulling back. On its own it is weak. Put the undercling in the other hand and both get stronger.',
@@ -3528,6 +3528,31 @@ export const abilityOf = (h: Hold) => {
 /** What a hold is called on the board — its own name if it has one. */
 export const holdLabel = (h: Hold) => h.label ?? (h.sig ? sigById(h.sig)?.name : null) ?? h.name
 
+/* HOLD-1: a hold that gets worse while you leave it hanging.
+
+   WHAT IT IS FOR. The deck has 248 cards and the wall had seven abilities — Rest, Sharp,
+   Razor, Greasy, Squeeze, Two-finger, Committing — every one of them a static modifier to
+   the same turn's arithmetic. Not one created a decision that outlived the turn. Leaving a
+   hold unanswered cost `HANG_TAX` per hold and nothing else, so WHICH hold you left never
+   mattered, only how many. A creeping hold makes triage a real decision: this one is
+   getting worse while you deal with that one, and there is an order you should have gone in.
+
+   KEYED ON THE ABILITY, NOT THE HOLD TYPE, and that is the whole reason it reads. The board
+   already prints GREASY on the hold, so "greasy holds grease up" is one rule learned once.
+   Keyed on the type it would have been true of the sloper and silently false of The Wet Jug
+   — a jug the game also calls Greasy — the same word on the board with a different rule
+   behind it. Keying on `abilityOf` also inherits two behaviours rather than restating them:
+   a signature hold's own ability wins, and a CLEAN hold has no ability at all, so working
+   or brushing a hold now STOPS the clock on it instead of only outrunning it. What it has
+   already cost you stays paid — the grease comes off, the skin does not grow back. */
+export const CREEP: Record<string, number> = { 'Greasy': 1 }
+/* And it is CAPPED. Uncapped, a lane you cannot answer runs away to unanswerable and takes
+   the burn with it, which is not tension but a soft lock with extra steps. Three is about a
+   grade of hold, and it is reachable in three turns, so the pressure lands inside the span
+   of a decision rather than at the end of an attrition war. */
+export const CREEP_MAX = 3
+export const creepOf = (h: Hold) => CREEP[abilityOf(h)] ?? 0
+
 /* UX-5. A run is fully determined by its starting seed — the forecast, the
    hold decks, every shuffle, event and offer. The live seed advances as you
    play, so the START is what has to be recorded for a run to be repeatable. */
@@ -4642,6 +4667,26 @@ export function resolve(s: GameState, rng: RNG): GameState {
     pump = Math.max(0, pump - 2)
     log.push(`Second wind. ${cleared} holds in — shed 2.`)
   }
+  /* HOLD-1: the wear and the hang tax are computed off the SAME list of lanes you left
+     hanging, so they can never disagree about what "unanswered" means — `unanswered` below
+     is this list's length rather than a second walk of the board. Written here, before `out`
+     exists, like every other board write in this function, and BEFORE `refillAndDraw` at the
+     end of it: a hold that arrives this turn has not been left yet. */
+  const hanging = [0, 1, 2].filter(i => boardH[i] && !boardP[i])
+  for (const i of hanging) {
+    const c = creepOf(boardH[i]!)
+    if (!c) continue
+    const was = boardH[i]!.worn ?? 0
+    const worn = Math.min(CREEP_MAX, was + c)
+    if (worn === was) continue
+    boardH[i] = { ...boardH[i]!, grip: boardH[i]!.grip + (worn - was), worn }
+    /* SWEATING, not "greasing". The route move (MOVE_WET) already owns "greases up" and the
+       tutorial teaches it as one of the WALL's moves — two mechanics under one phrase is how
+       you get a player who cannot tell the weather from their own hands. The Furnace's note
+       ("the one good hold sweats you off it") is where the game already put this idea. */
+    log.push(`${holdLabel(boardH[i]!)} is sweating up. +${worn - was} grip while you were elsewhere`
+      + (worn >= CREEP_MAX ? ', and that is as bad as it gets.' : '.'))
+  }
   let out: GameState = { ...s, boardH, boardP, piles, pump, cleared, worked, runout, lastPiece,
     // DAILY-2: `restedThis` is the game's existing definition of having shaken out
     // (it is what flow and a `norest` sequence already read), so an objective and a
@@ -4712,7 +4757,7 @@ export function resolve(s: GameState, rng: RNG): GameState {
 
   const flow = clearedThis > 0 && (!restedThis || bm.keepFlow) ? Math.min(FLOW_MAX, s.flow + 1) : 0
   const tax = Math.max(0, HANG_TAX - (flow >= FLOW_AT ? FLOW_TAX : 0))
-  const unanswered = [0, 1, 2].filter(i => boardH[i] && !boardP[i]).length
+  const unanswered = hanging.length
   const hooked = boardP[2]?.fx === 'hooked'
   const cruxTax = hooked ? 0 : boardH.filter(h => h && abilityOf(h) === 'Committing').length
   const doubt = s.inRun && s.psyche <= DOUBT_AT ? 1 : 0
