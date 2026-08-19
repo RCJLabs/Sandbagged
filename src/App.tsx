@@ -2,8 +2,8 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.49 — HOLD-1: a hold you leave hanging gets worse. Greasy holds sweat
-//   up while you are elsewhere, capped, telegraphed, and brushing stops the clock.
+// SANDBAGGED v10.50 — SEQ-2: a plan survives one slip, and two of the four cards that
+//   start one were named after other cards bar the case of "the".
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -34,7 +34,7 @@ import {
   mapContours, mapPoints, mutMods, newRun, nextPhase, phaseOf, phaseSummary,
   pickGearStep, pileFromHand, playBonusStep, postOpen, postTalk, powerAgainst, repliesFor,
   previewLane, previewPump, priceOf, recordRun, rerollCost, rerollStep, resolve,
-  rollEvent, roughPath, saveGame, seedCode, seqById, seqNeedText, sigById,
+  rollEvent, roughPath, saveGame, seedCode, seqById, seqNeedText, SEQ_GRACE, sigById,
   slotSummary, slotsUsed, spawn, specFromEstablished, specOf, startBurn, stockShop, windowNear, windowOf,
   styleMods, tagCounts, tagOf, takeOfferStep, takeTwoStep, vanOpen, walkAwayStep, weekKey,
   wipeSlot, xpForSend, xpMult, xpToNext,
@@ -1542,7 +1542,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.49 · RCJ Labs</div>
+          <div className="sfoot">v10.50 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1771,7 +1771,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.49 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.50 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -4207,11 +4207,20 @@ export default function App() {
       })()) : null}
       {/* A11Y-9: appears mid-climb on a screen you are already on, so it announces —
           the same rule the window and route-move banners beside it already follow. */}
-      {st.seq && seqById(st.seq.id) ? (
+      {/* SEQ-2: the slip is on the banner, because a margin you cannot see is not a margin
+          you can spend. Two states and they read differently on purpose — with the slip in
+          hand this turn is survivable, without it the next miss ends the plan, and that is
+          exactly the turn a player should feel. Words, not colour (VIS-7). */}
+      {st.seq && seqById(st.seq.id) ? (() => {
+        const slip = st.seq.slip ?? SEQ_GRACE
+        return (
         <div className="spot" role="status" aria-live="polite" style={{ borderLeftColor: 'var(--green)' }}>
           <b style={{ color: 'var(--green)' }}>
             {seqById(st.seq.id)!.name.toUpperCase()} · {st.seq.left} MORE</b>
-          Keep it alive: {seqNeedText(seqById(st.seq.id)!)} this turn.</div>) : null}
+          Keep it alive: {seqNeedText(seqById(st.seq.id)!)} this turn.
+          {' '}{slip > 0
+            ? `${slip} slip left — miss one and the plan holds.`
+            : 'No slip left — miss one and the plan is gone.'}</div>) })() : null}
       {/* NARR-15: a route changing under you is the loudest thing that happens mid-climb
           and they were silent through it. One clause, because it lands between moves,
           and only four routes have phases at all — so it stays a moment rather than a

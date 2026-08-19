@@ -5835,13 +5835,18 @@ test('the shop stocks something you could actually buy', () => {
     const s = E.stockShop({ ...E.freshRun(0, 0, i), act: i % 3, gear: [], boons: [] }, rng)
     eq(s.phase, 'shop', 'stocking did not open the shop')
     /* ROPE-2: three finds, plus a piece of protection in any act that has ropes. Asserted
-       as a rule rather than a number, so the shelf cannot quietly grow a fourth find. */
+       as a rule rather than a number, so the shelf cannot quietly grow a fourth find.
+       SEQ-2 put a PLAN here and took it back out again — measured 44.3% to 40.3% (n=3000),
+       because `bestOffer` buys the plan instead of a solid move on a valuation that overrates
+       it. The retraction is kept as an injection rather than a comment. */
     const ropedAct = E.ACTS[s.act].flat().some(n => n.routeIdx >= 0 && E.ROUTES[n.routeIdx]?.roped)
     const clips = s.shopCards.filter(c => c.clip)
     eq(s.shopCards.length - clips.length, 3, 'the shelf is the wrong size')
     eq(clips.length, ropedAct ? 1 : 0, ropedAct
       ? 'the post in a roped act has no rack on the shelf, so protection is unobtainable again'
       : 'a post is selling protection in an act with no ropes on it')
+    eq(s.shopCards.filter(c => c.seq).length, 0,
+      'a plan is on the shelf again — that measured 44.3% to 40.3%, see PLAN_STOCK in engine.ts')
     for (const c of s.shopCards) ok(E.priceOf(c) > 0, `${c.name} is free`)
     eq(s.bought.length, 0, 'the shop opened with something already sold')
   }

@@ -455,7 +455,10 @@ export type GameState = {
   line: number
   rerolls: number
   mutators: string[]
-  seq: { id: string; left: number } | null
+  /** SEQ-2: `slip` is how many misses this plan has left, seeded from `SEQ_GRACE`. Optional
+      so a save written before SEQ-2 loads as "not yet slipped" rather than as a plan that
+      cannot survive anything. */
+  seq: { id: string; left: number; slip?: number } | null
   /** RUN-9. How many upcoming hand-holds you have read off the deck. Counts
       down as they come onto the board, so it always means "the next this-many
       are known". Climb-scoped; costs a card to top up. */
@@ -1380,11 +1383,23 @@ for (const c of [
   // ---------- SEQUENCES · a plan you hold across turns ----------
   bn('Link It Up', 1, 'uncommon', { seq: 'linked',
     text: 'Work a hold three turns running, then two holds go free.' }),
-  bn('Read The Sequence', 1, 'uncommon', { seq: 'static',
+  /* SEQ-2: 'Keep Moving' and 'Quiet Feet' below were called 'Read The Sequence' and
+     'Trust The Feet' — and there is a COMMON called 'Read the Sequence' (draw 2) and a
+     COMMON called 'Trust the Feet' (+2 Power to one lane). Two of the four cards that start
+     a plan differed from an unrelated card by the case of the word "the", which no screen in
+     this game shows differently: the collection, the deck editor, a shelf and a reward offer
+     all read them as the same card. The deck BUILD ME ONE hands you contains 'Read the
+     Sequence', the common — so the built deck reads as though it has a plan in it and does
+     not. Renamed on THIS side, and the reason is save data rather than taste: a rename
+     orphans the old name in every save's `owned` list (`buildable` drops a name `CARDS` no
+     longer has, silently), and these two are the pair almost nobody holds — 1.43% of pack
+     rolls and no reward pool at all, against two commons that every pack roll can hand out.
+     Renaming the commons would have quietly deleted a card out of live collections. */
+  bn('Keep Moving', 1, 'uncommon', { seq: 'static',
     text: 'Two turns without resting, then draw 3.' }),
   bn('Find The Rest', 1, 'uncommon', { seq: 'breathe',
     text: 'Rest two turns running, then shed the lot.' }),
-  bn('Trust The Feet', 1, 'rare', { seq: 'committed',
+  bn('Quiet Feet', 1, 'rare', { seq: 'committed',
     text: 'Feet on for three turns, then everything gains 2 Contact and settles.' }),
 
   // ---------- SPECIALISTS · scale off what else is in the deck ----------
@@ -1906,6 +1921,23 @@ export const seqById = (id: string) => SEQUENCES.find(q => q.id === id)
 export const seqNeedText = (q: Sequence) =>
   q.need === 'clear' ? 'work a hold' : q.need === 'norest' ? 'do not rest'
     : q.need === 'rest' ? 'rest' : 'feet on'
+/* SEQ-2. A plan survives ONE miss.
+
+   WHY, measured rather than asserted. The four cards that start a plan were the four
+   worst-scoring bonus cards in the game — ranks 57, 58, 59 and 60 of 61, scoring 0.0 to 3.6
+   where the builder's cut-off is about 12.6 and the best bonus is 33.0 — so BUILD ME ONE
+   never took one and neither would a player. The valuation was not the bug: `seqValue`
+   already discounts the payout by the odds of holding the condition, and in play the odds
+   were a coin flip (600 campaigns: 55 plans completed, 53 broken). A three-turn plan that
+   pays two holds and dies to one unlucky draw really is worth less than a rare that acts
+   now. The card was honestly bad.
+
+   So the fix raises the value through RELIABILITY, not reward. Nothing pays more; a plan is
+   simply protectable. That is also the better game — a plan you lose to one bad draw is a
+   plan you never make, and "sequences are a side quest" is what that feels like from the
+   inside. One and not two: two slips on a two-turn plan cannot be failed at all. */
+export const SEQ_GRACE = 1
+
 /** Did this turn satisfy the plan? */
 export function seqMet(need: SeqNeed, clearedThis: number, restedThis: boolean, feetOn: boolean) {
   return need === 'clear' ? clearedThis > 0
@@ -2839,6 +2871,23 @@ export function applyOutcome(s: GameState, o: EventOutcome, rng: RNG): GameState
 
    So protection is sold, not given — see `stockShop`. Cash is the price, which is what
    ROPE-1 meant by a cost. */
+/* SEQ-2 TRIED PUTTING THE PLAN CARDS IN HERE AND IT WAS WRONG, measured. They could not be
+   had at all — no reward pool, no shelf, no loadout, only a 1.43% pack roll, so 97% of
+   campaigns never saw one — and the pools looked like the obvious home. Adding three
+   uncommons and the rare took measured completion from 44.2% to 26.6% (n=3000).
+
+   The cause is DILUTION, not the cards. This uncommon pool holds eight names and the rare
+   pool four; four more grows them by 37% and 25%, so a quarter of every reward roll became a
+   card that pays nothing until you have held a condition for two or three turns. The deck
+   starves of the moves and rests it needs. Isolated to be sure of it: with the four back out
+   and every other part of SEQ-2 in place the same measurement reads 45.8% (n=1000), and with
+   them in but the policy forbidden from ever PLAYING a plan it reads 22.9% — worse, so the
+   plans themselves were helping and the pools were the whole of the damage.
+
+   Which is the ROPE-2 lesson arriving from the opposite direction: clips in here made the
+   game easier because a cost-0 shed-and-draw is free value, and plans in here made it much
+   harder because a plan is dead weight until you build for it. Neither belongs in a pool that
+   hands cards over at random. So a plan is SOLD, like the rack — see PLAN_STOCK. */
 export const REWARDS = {
   common: ['Gaston', 'Sloper Slap', 'Undercling', 'Mantle', 'Pinch Grip', 'Deadpoint',
     'Heel Hook', 'Drop Knee', 'Flag', 'High Step', 'Breathe', 'Brush',
@@ -2851,6 +2900,18 @@ export const REWARDS = {
     these are bought, never handed over. Two commons and the rare, so which one is on the
     shelf still varies by where you are without varying by luck. */
 export const CLIP_STOCK = ['Quickdraw', 'Wired Nut', 'Bomber Cam']
+
+/* SEQ-2 TRIED A PLAN ON THIS SHELF TOO, AND RETRACTED IT — the second of the ticket's two
+   retractions and the one that says what is really wrong. A rotating plan on every post took
+   62.5% of campaigns from never seeing one to holding one, bought 498 times in 600 campaigns
+   — and measured completion 44.3% to 40.3% (n=3000), four points outside a 0.9-point error.
+
+   The mechanism is not dilution this time; the shelf displaces nothing. It is that
+   `bestOffer` buys the plan INSTEAD OF a solid move, because `cardValue` says the plan is
+   worth more, and it is not. So the plan is not merely unavailable — it is not yet worth
+   having, and putting it where it can be bought only lets a player make the same bad trade
+   the policy made. Availability is therefore BLOCKED on the plans being worth buying, which
+   is the next ticket and not this one. */
 
 /** Reward quality scales with the act — later ranges hand out better gear,
     which is what lets the deck keep pace with the grade ramp. */
@@ -4698,7 +4759,17 @@ export function resolve(s: GameState, rng: RNG): GameState {
     const q = seqById(out.seq.id)
     if (!q) out = { ...out, seq: null }
     else if (!seqMet(q.need, clearedThis, restedThis, !!boardP[2])) {
-      out = { ...out, seq: null, log: [...out.log, `${q.name} broken. It needed ${seqNeedText(q)}.`] }
+      /* SEQ-2: the slip is spent here and the turn does NOT count toward `left` — a missed
+         turn is forgiven, not banked, so a plan still costs the same number of GOOD turns as
+         its card says. Banking it would have made every plan a turn shorter, which is a
+         different and much larger change than the one this ticket measured. */
+      const slip = out.seq.slip ?? SEQ_GRACE
+      if (slip > 0) {
+        out = { ...out, seq: { ...out.seq, slip: slip - 1 },
+          log: [...out.log, `${q.name} — you missed one. That was your slip: it needed ${seqNeedText(q)}. Nothing spare now.`] }
+      } else {
+        out = { ...out, seq: null, log: [...out.log, `${q.name} broken. It needed ${seqNeedText(q)}.`] }
+      }
     } else {
       const left = out.seq.left - 1
       if (left > 0) {
@@ -4838,7 +4909,11 @@ export function playBonusStep(s: GameState, c: Card, lane: number, rng: RNG): Ga
   let seq = s.seq
   if (c.seq) {
     const q = seqById(c.seq)
-    if (q) { seq = { id: q.id, left: q.turns }; log.push(`${q.name}. ${q.turns} turns — ${seqNeedText(q)}.`) }
+    if (q) {
+      seq = { id: q.id, left: q.turns, slip: SEQ_GRACE }
+      log.push(`${q.name}. ${q.turns} turns — ${seqNeedText(q)}.`
+        + (SEQ_GRACE ? ` ${SEQ_GRACE} slip allowed.` : ''))
+    }
   }
   let runout = s.runout, lastPiece = s.lastPiece, clipped = s.clipped
   if (c.clip && specOf(s).roped) {
@@ -5252,7 +5327,30 @@ function bonusValue(c: Card, deck: Card[]): number {
 }
 /** What a plan is worth: the payout, discounted by the odds of holding it,
     and by whether this deck can meet the condition at all. A sequence card
-    with no valuation scored −3 and was never taken by anyone. */
+    with no valuation scored −3 and was never taken by anyone.
+
+    SEQ-2 FOUND A REAL INCONSISTENCY HERE AND THEN MEASURED THAT FIXING IT MADE THINGS WORSE.
+    Both halves matter, so both are written down.
+
+    THE INCONSISTENCY IS REAL. This function prices the payout with `bonusValue`'s per-effect
+    coefficients and then does not apply `BONUS_WEIGHT` to them, so the same unit is worth two
+    different amounts inside one valuation: `draw` is `2.2` in both expressions and
+    `bonusValue` multiplies it by 3.2 while this does not. Before this ticket, `Read the
+    Sequence` — a COMMON drawing 2 this turn — scored 12.3, and the uncommon drawing 3 two
+    turns from now scored 3.6. The four plan cards were ranks 57 to 60 of 61 bonuses against a
+    builder cut-off of 12.6.
+
+    AND APPLYING THE WEIGHT WAS WRONG ANYWAY. It lifts them to ranks 7 to 34 — and with a plan
+    then purchasable, measured completion went 44.3% to 40.3% (n=3000), because `bestOffer`
+    buys the plan INSTEAD OF a solid move on the strength of that number. The 3.2x was
+    cancelling a cost this model does not carry at all: a plan does not merely maybe-pay
+    later, it CONSTRAINS the play while it runs, and `norest` forbidding the rest you need in a
+    rising-pump race is a real price. Correcting one side of a two-sided cancellation makes the
+    valuation worse than leaving both alone, so the weight is NOT applied and the un-weighted
+    number stands — right for the wrong reason, which is worth knowing about it.
+
+    The next ticket owns both halves together: price the constraint, then apply the weight, and
+    only then put a plan somewhere it can be bought. Doing either alone measurably regresses. */
 function seqValue(c: Card, deck: Card[]): number {
   const q = seqById(c.seq)
   if (!q) return 0
@@ -5268,7 +5366,31 @@ function seqValue(c: Card, deck: Card[]): number {
     : q.need === 'norest' ? Math.min(1, 1.2 - rests)
     : q.need === 'feet' ? Math.min(1, feet * 3.5)
     : Math.min(1, power / 1.6)
-  return payout * Math.pow(hold, q.turns - 1)
+  /* SEQ-2: the odds of actually getting paid, exactly. A plan needs `turns` satisfied turns
+     and dies on its (SEQ_GRACE + 1)th miss — a miss spends a slip and does NOT consume
+     `left` — so this is the chance of `turns` successes arriving before `SEQ_GRACE + 1`
+     failures: the negative-binomial tail
+
+         P = Σ(k = 0..SEQ_GRACE)  C(turns - 1 + k, k) · hold^turns · (1 - hold)^k
+
+     Written out rather than approximated, because the first cut of this ticket used a
+     BINOMIAL over `turns - 1` trials and that is the wrong shape, not merely a loose one: at
+     `turns = 2` with one slip it collapses to 1, so a two-turn plan's odds stopped depending
+     on the deck at all and the guard that says a rest plan should prefer a rest deck failed —
+     correctly. Note it also fixes an off-by-one the old `hold^(turns - 1)` carried: the
+     condition IS checked on the turn the plan starts (`playCard` sets it, this same
+     resolution tests it), so `turns` turns must hit, not `turns - 1`.
+
+     Exact, so the builder is told the truth about the card — ENG-25's rule, and a policy fed
+     an inflated number takes a bad card just as surely as one blind to a good one. */
+  const miss = 1 - hold, t = q.turns
+  let odds = 0
+  for (let k = 0; k <= SEQ_GRACE; k++) {
+    let c = 1                                   // C(t - 1 + k, k)
+    for (let j = 0; j < k; j++) c = c * (t + j) / (j + 1)
+    odds += c * Math.pow(hold, t) * Math.pow(miss, k)
+  }
+  return payout * Math.min(1, odds)
 }
 /* DECK-1. Fifteen slots out of everything you own is a real decision and not
    everybody wants to make it from scratch. Put in the two or three cards you

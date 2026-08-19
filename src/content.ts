@@ -97,16 +97,24 @@ export type Sequence = {
   id: string; name: string; text: string; need: SeqNeed; turns: number
   onDone: { clear?: number; draw?: number; dumpPump?: boolean; contact?: number; settle?: number }
 }
+/* SEQ-2. `turns` counts the turn you START on — the bonus is played and the condition is
+   checked in the same resolution — so three turns is this one plus two, which is what the
+   banner's countdown already showed.
+
+   THE COPY SAYS THE SLIP, on every one of them. A plan that dies to one bad draw is a plan
+   a measured valuation correctly refuses (see SEQ_GRACE), so the slip is not a footnote —
+   it is the reason the card is worth a slot, and it has to be on the card you are deciding
+   whether to take. */
 export const SEQUENCES: Sequence[] = [
   { id: 'linked', name: 'Linked Moves', need: 'clear', turns: 3,
-    text: 'Work a hold every turn for three turns. Miss one and it is gone.',
+    text: 'Work a hold every turn for three turns. One slip is allowed.',
     onDone: { clear: 2 } },
   { id: 'static', name: 'Static Sequence', need: 'norest', turns: 2,
-    text: 'Two turns without resting.', onDone: { draw: 3 } },
+    text: 'Two turns without resting. One slip is allowed.', onDone: { draw: 3 } },
   { id: 'breathe', name: 'Breathing', need: 'rest', turns: 2,
-    text: 'Rest two turns running.', onDone: { dumpPump: true } },
+    text: 'Rest two turns running. One slip is allowed.', onDone: { dumpPump: true } },
   { id: 'committed', name: 'Committed', need: 'feet', turns: 3,
-    text: 'Keep something on your feet for three turns.',
+    text: 'Keep something on your feet for three turns. One slip is allowed.',
     onDone: { contact: 2, settle: 1 } },
 ]
 

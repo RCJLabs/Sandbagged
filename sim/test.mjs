@@ -35,7 +35,7 @@ function test(name, fn) {
 /* GUARD-8: shared with test-core.mjs, one copy, because two copies of one rule drift
    (ENG-19). `ok`/`eq` refuse an assertion with no failure message; `region` refuses a
    source window that cannot prove it is reading the right text. */
-import { ok, eq, region, tail } from './guard.mjs'
+import { ok, eq, region, tail, stripComments } from './guard.mjs'
 
 // ---- the engine, bundled from the same source the game ships -------------
 await build({
@@ -1442,7 +1442,7 @@ test('a sequence is worth more to a deck that can hold it', () => {
   const feet = [...base, ...Array(6).fill(0).map(() => E.spawn('Smear'))]
   const rest = [...base, ...Array(6).fill(0).map(() => E.spawn('Shake Out'))]
   const v = (c, d) => E.cardValue(vState({ runDeck: d }), c, d)
-  ok(v(E.spawn('Trust The Feet'), feet) > v(E.spawn('Trust The Feet'), rest),
+  ok(v(E.spawn('Quiet Feet'), feet) > v(E.spawn('Quiet Feet'), rest),
     'a feet sequence should prefer a feet deck')
   ok(v(E.spawn('Find The Rest'), rest) > v(E.spawn('Find The Rest'), feet),
     'a rest sequence should prefer a rest deck')
@@ -1479,12 +1479,23 @@ test('the pool does not fill up with cards nobody would take', () => {
      does not plan — it never consults `readAhead` at all, which is asserted just
      below so this classification stays a derived fact. When the policy can read
      ahead (SIM-7), `read` earns a real term and comes back out of this set. */
-  const situational = dead.filter(([n]) =>
-    E.CARDS[n].seq || E.CARDS[n].clip || E.CARDS[n].read).length
-  ok(dead.length / vals.length < 0.14,
+  /* SEQ-2 replaced the RATIO, not the excusing. The old second half said 40% of whatever is
+     down here must be structurally unpriceable — a bar that gets HARDER to clear the better
+     those cards are priced, which is backwards: pricing a plan properly moved three of the
+     four sequences out of the dead set and the ratio fell to 2 of 6, failing a guard whose
+     subject had just improved. So the claim is absolute now, and far stronger for it — the
+     old bar permitted 33 dead cards of which about 20 could be pure filler.
+
+     The situational classes stay excused, because that is a true statement about them rather
+     than a loophole: `seqValue` is deliberately deck-dependent, so a rest plan in a deck with
+     two rest cards SHOULD read as a bad card — the guard directly above requires exactly that
+     asymmetry. "A plan is worth a slot" is a claim about a deck that can hold one, and it is
+     asserted there, in the SEQ-2 guard, against such a deck. */
+  ok(dead.length / vals.length < 0.05,
     `${dead.length} of ${vals.length} cards would never be taken`)
-  ok(situational >= dead.length * 0.4,
-    `${situational} of ${dead.length} dead cards are situational — the rest is filler`)
+  const filler = dead.filter(([n]) => !E.CARDS[n].read && !E.CARDS[n].seq && !E.CARDS[n].clip)
+  ok(filler.length <= 6,
+    `${filler.length} dead cards the valuation CAN price and still would not take: ${filler.map(([n]) => n).join(', ')}`)
   // the derivation behind counting `read` as situational: the policy cannot spend it
   const eng = readFileSync('src/engine.ts', 'utf8')
   const auto = region(eng, 'export function autoPlay', ['export function coach',
@@ -1543,15 +1554,139 @@ test('every sequence is startable and pays something', () => {
     ok(starters.some(n => E.CARDS[n].seq === q.id), `${q.id} has no card`)
   }
 })
+test('SEQ-2: a plan is nameable, protectable, and priced on the deck holding it', () => {
+  /* SEQ-2. Sequences were a side quest, and the audit found five separate reasons rather than
+     one. Three are fixed here and asserted below; two were MEASURED AND RETRACTED, and the
+     retractions are guarded too, because a comment does not stop anybody re-adding a change
+     that cost four points. */
+
+  /* ONE — TWO OF THE FOUR PLAN CARDS WERE NAMED AFTER OTHER CARDS. 'Read The Sequence'
+     (uncommon, starts Static Sequence) against 'Read the Sequence' (common, draw 2), and
+     'Trust The Feet' (rare, starts Committed) against 'Trust the Feet' (common, +2 Power).
+     They differ by the case of the word "the", which no screen in this game renders
+     differently — the collection, the deck editor, a shelf and a reward offer all read them as
+     one card. Asserted pool-wide rather than on those two names, so it is the RECURRENCE that
+     is blocked and not the two instances. */
+  const byLower = {}
+  for (const n of Object.keys(E.CARDS)) (byLower[n.toLowerCase()] ??= []).push(n)
+  const clash = Object.values(byLower).filter(v => v.length > 1)
+  eq(clash.length, 0, `cards whose names differ only by case: ${clash.map(v => v.join(' / ')).join(' · ')}`)
+  /* AND THE SAME CHECK AT SOURCE, because `CARDS[c.name] = c` means an EXACT duplicate is
+     invisible at runtime: the second definition silently overwrites the first and the card
+     simply is not in the game any more. Two names one case apart leave two entries and are
+     caught above; two identical names leave one, and only the literal can show it. */
+  const engSrc = readFileSync('src/engine.ts', 'utf8')
+  const lit = region(engSrc, 'export const CARDS', [']) CARDS[c.name] = c'],
+    { min: 4000, what: 'the card table' })
+  const declared = [...lit.matchAll(/^ {2}(?:mv|bn|ft)\('([^']+)'/gm)].map(m => m[1])
+  ok(declared.length > 200, `only ${declared.length} card definitions found — this guard is reading the wrong window`)
+  const seenName = {}
+  for (const n of declared) seenName[n] = (seenName[n] ?? 0) + 1
+  const dupes = Object.keys(seenName).filter(n => seenName[n] > 1)
+  eq(dupes.length, 0, `defined twice, so the second silently deletes the first: ${dupes.join(', ')}`)
+  // and the four are still four, so a rename cannot quietly drop one out of the game
+  const plans = Object.keys(E.CARDS).filter(n => E.CARDS[n].seq)
+  eq(plans.length, E.SEQUENCES.length,
+    `${plans.length} cards start a plan but there are ${E.SEQUENCES.length} plans`)
+  for (const q of E.SEQUENCES) ok(plans.some(n => E.CARDS[n].seq === q.id),
+    `no card starts ${q.id}, so that plan is unreachable`)
+
+  /* TWO — A PLAN SURVIVES EXACTLY ONE MISS. The measured reason is in the SEQ_GRACE note: the
+     four cards were the worst-scoring bonuses in the game and the valuation was right, because
+     in play a plan was a coin flip (55 completed, 53 broken over 600 campaigns). A plan lost to
+     one bad draw is a plan nobody makes. */
+  ok(E.SEQ_GRACE >= 1, 'there is no slip at all, so a plan is a coin flip again')
+  const rng = new E.RNG(4)
+  let s = { ...E.freshRun(6, 0, 9), inRun: true,
+    runDeck: E.DEFAULT_LOADOUT.map(E.spawn), skin: 9, psyche: 3 }
+  s = E.startBurn(s, rng)
+  // 'breathe' wants a rest, and an empty board never rests, so every turn below is a miss
+  const miss = st => E.resolve({ ...st, boardP: [null, null, null], phase: 'climb', pump: 0 }, rng)
+  let live = { ...s, seq: { id: 'breathe', left: 2, slip: E.SEQ_GRACE } }
+  for (let i = 0; i < E.SEQ_GRACE; i++) {
+    const was = live.seq.left
+    live = miss(live)
+    ok(live.seq, `the plan died on miss ${i + 1} of ${E.SEQ_GRACE} allowed`)
+    eq(live.seq.left, was, 'a missed turn counted down the plan, so it pays sooner than the card says')
+    ok(live.log.some(l => /slip/i.test(l)), 'a slip was spent silently')
+  }
+  const dead = miss(live)
+  eq(dead.seq, null, 'the plan outlived its slips — it cannot be lost at all')
+  ok(dead.log.some(l => /broken/.test(l)), 'the plan was dropped without saying so')
+  // a save written before SEQ-2 has no `slip` field and must not read as zero
+  ok(miss({ ...s, seq: { id: 'breathe', left: 2 } }).seq,
+    'a pre-SEQ-2 save loses its plan on the first miss')
+
+  /* THREE — THE ODDS ARE THE RIGHT SHAPE. `seqValue` discounts a plan by whether the deck can
+     hold its condition, which is the whole reason a plan is worth a slot to one deck and not
+     another; the first cut of this ticket used a binomial over `turns - 1` trials, which
+     collapses to certainty at two turns and made the value stop depending on the deck. It also
+     carried an off-by-one: the condition is checked on the turn the plan STARTS, so `turns`
+     turns must hit. Both are asserted — the behaviour by measurement, the exponent at source,
+     because no deck distinguishes `turns` from `turns - 1` by value alone. */
+  const base = E.DEFAULT_LOADOUT.map(E.spawn)
+  const rests = [...base, ...Array(6).fill(0).map(() => E.spawn('Shake Out'))]
+  const feets = [...base, ...Array(6).fill(0).map(() => E.spawn('Smear'))]
+  const val = (n, d) => E.cardValue(vState({ runDeck: d }), E.spawn(n), d)
+  const restPlan = plans.find(n => E.seqById(E.CARDS[n].seq).need === 'rest')
+  const feetPlan = plans.find(n => E.seqById(E.CARDS[n].seq).need === 'feet')
+  ok(restPlan && feetPlan, 'the fixture needs a rest plan and a feet plan and one is gone')
+  ok(val(restPlan, rests) > val(restPlan, feets),
+    `${restPlan} is priced the same whatever the deck, so the odds no longer depend on it`)
+  ok(val(feetPlan, feets) > val(feetPlan, rests),
+    `${feetPlan} is priced the same whatever the deck, so the odds no longer depend on it`)
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  /* COMMENTS STRIPPED. The note above `seqValue` explains SEQ_GRACE at length, so the
+     un-stripped window matched the prose describing the rule rather than the code applying
+     it — ART-4's failure class, and this guard walked straight into it: the injection that
+     removes the slip from the odds left every word of that comment in place and passed. */
+  const sv = stripComments(region(eng, 'function seqValue(', ['\n/*', '\nexport '],
+    { min: 700, what: 'seqValue' }))
+  ok(/t = q\.turns$/m.test(sv),
+    'the odds need one turn fewer than the card says — the condition is checked on the turn the plan starts')
+  ok(/k <= SEQ_GRACE/.test(sv), 'the valuation no longer knows a plan gets a slip')
+
+  /* AND THE BANNER SAYS WHETHER THE MARGIN IS STILL THERE. A slip you cannot see is not a
+     slip you can spend, and the turn where the next miss ends the plan has to read differently
+     from the turn before it — the same telegraph rule ROUTE-6's windows set. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const banner = region(app, 'st.seq && seqById(st.seq.id)', ['NARR-15'],
+    { min: 300, what: 'the plan banner' })
+  ok(/slip > 0/.test(banner) && /No slip left/.test(banner),
+    'the banner does not say whether the slip is still there, so the margin cannot be spent')
+
+  /* AND THE TWO RETRACTIONS. Both were implemented, measured, and taken back out; each is
+     asserted here so re-adding it fails with the number attached rather than shipping. */
+  const pools = [...E.REWARDS.common, ...E.REWARDS.uncommon, ...E.REWARDS.rare]
+  eq(pools.filter(n => E.CARDS[n]?.seq).length, 0,
+    'a plan is in the reward pools again — that measured 44.2% to 26.6% (n=3000) by diluting them')
+  // the shelf retraction is asserted next door, in the core suite's shop guard
+  ok(!/PLAN_STOCK\s*=/.test(eng),
+    'a plan is on the shop shelf again — that measured 44.3% to 40.3% (n=3000), because bestOffer buys it instead of a move')
+})
+
 test('a broken sequence is dropped, not carried', () => {
+  /* SEQ-2 changed this rule, so the guard states the new one and still has to see a plan
+     DIE — "it survived" on its own would pass a sequence that can never be lost at all. */
   const rng = new E.RNG(21)
   let s = { ...E.freshRun(6, 0, 9), inRun: true,
     runDeck: E.DEFAULT_LOADOUT.map(E.spawn), skin: 9, psyche: 3 }
   s = E.startBurn(s, rng)
-  // demand a rest while playing normally: it must break rather than linger
-  s = { ...s, seq: { id: 'rest' in {} ? '' : 'breathe', left: 2 }, boardP: [null, null, null] }
-  const after = E.resolve(s, rng)
-  ok(after.seq === null || after.seq.left < 2, 'a sequence neither advanced nor broke')
+  ok(E.SEQ_GRACE >= 1, 'there is no slip, so the rest of this guard is testing nothing')
+  // 'breathe' wants a rest; an empty board never rests, so every turn here is a miss
+  const fresh = { ...s, seq: { id: 'breathe', left: 2, slip: E.SEQ_GRACE }, boardP: [null, null, null], pump: 0 }
+  const once = E.resolve(fresh, rng)
+  ok(once.seq, 'the first miss killed the plan outright, so the slip does nothing')
+  eq(once.seq.slip, E.SEQ_GRACE - 1, 'the miss did not cost the slip')
+  eq(once.seq.left, 2, 'a missed turn counted toward the plan, so it pays a turn earlier than the card says')
+  ok(once.log.some(l => /slip/i.test(l)), 'the slip was spent silently')
+  // and with nothing spare the next miss ends it
+  const twice = E.resolve({ ...once, boardP: [null, null, null], phase: 'climb', pump: 0 }, rng)
+  eq(twice.seq, null, 'the plan survived a second miss with no slip left — it cannot be lost')
+  ok(twice.log.some(l => /broken/.test(l)), 'it was dropped without saying so')
+  // a save written before SEQ-2 has no `slip` field, and must not read as un-slippable
+  const old = E.resolve({ ...s, seq: { id: 'breathe', left: 2 }, boardP: [null, null, null], pump: 0 }, rng)
+  ok(old.seq, 'a pre-SEQ-2 save loses its plan on the first miss')
 })
 
 /* =======================================================================
