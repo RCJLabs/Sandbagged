@@ -2104,6 +2104,72 @@ test('the forecast is deterministic, varied and bounded', () => {
   const scores = E.WEATHER.map((_, i) => E.forecastScore({ weather: i, rock: 0 }))
   ok(Math.max(...scores) > Math.min(...scores), 'every forecast scores the same')
 })
+test('COND-4: the forecast agrees with what the sky actually costs', () => {
+  /* Two things read `forecastScore`: the map paints the node and says "in nick" / "out of nick"
+     off its SIGN, and the reward policy takes the best-conditioned climb on offer off its
+     ORDER. So it is a claim about difficulty, and it can be checked against the difficulty.
+
+     Measured, four mid-ladder routes on a mid-act deck (`node sim/run.mjs conditions`), send%.
+     If a sky is added, renamed or re-costed this table has to be re-measured, which is what
+     the coverage check below is for — a stale table is a guard that has stopped guarding. */
+  const SEND = { crisp: 89, still: 57, freezing: 45, humid: 42, drizzle: 41, 'hot sun': 31 }
+  const NEUTRAL = 'still'
+  eq(Object.keys(SEND).length, E.WEATHER.length,
+    'the measured send% table does not cover every weather — re-run `sim/run.mjs conditions`')
+  for (const w of E.WEATHER)
+    ok(SEND[w.name] !== undefined, `${w.name} has never been measured — re-run the conditions table`)
+
+  const score = name => E.forecastScore({ weather: E.WEATHER.findIndex(w => w.name === name), rock: 0 })
+  // the sign is what the player is shown, so it must be right about kind vs unkind
+  eq(score(NEUTRAL), 0, `${NEUTRAL} is the zero point and scores ${score(NEUTRAL)}`)
+  for (const [name, sent] of Object.entries(SEND)) {
+    if (name === NEUTRAL) continue
+    const s2 = score(name)
+    ok(sent > SEND[NEUTRAL] ? s2 > 0 : s2 < 0,
+      `${name} sends at ${sent}% against ${NEUTRAL}'s ${SEND[NEUTRAL]}% and the map calls it ${s2}`)
+  }
+  /* And the order must not be BACKWARDS anywhere the measurement is clear about it. Ties are
+     allowed — freezing/humid/drizzle measure 45/42/41, which is one cluster and not a ranking —
+     so this only fires where two skies are more than 5 points apart. That is the tolerance the
+     formula was fitted at, not a number chosen to make it pass: the old formula, which carried
+     a flat -2 for `sloperGrip` and never read `dSupport`, scored humid WORST of the six while
+     it measures fourth of six, and fails this. */
+  const TOL = 5
+  const names = Object.keys(SEND)
+  for (const a of names) for (const b of names) {
+    if (SEND[a] - SEND[b] <= TOL) continue
+    ok(score(a) >= score(b),
+      `${a} sends at ${SEND[a]}% and ${b} at ${SEND[b]}%, and the forecast rates ${a} (${score(a)}) below ${b} (${score(b)})`)
+  }
+
+  /* And it must not be blind to a term the skies actually use. That was the bug: `dSupport` was
+     not read at all, so drizzle — the only sky that takes your feet — was scored entirely on
+     `sloperGrip`, a term VIS-3 had already measured as near-worthless ("only 6 of 231 cards care
+     about slopers") and which this function weighted as heavily as two points of Bite.
+     Anything left out has to be written down here with its reason. */
+  const EXCLUDED = {
+    sloperGrip: 'measured at ~0: humid carries 2 of it and costs 15 points, which its one point '
+      + 'of Contact already explains. Reaches one hold family, and 6 of 231 cards (VIS-3).',
+  }
+  const used = new Set()
+  for (const w of E.WEATHER)
+    for (const k of ['dBite', 'dContact', 'dSupport', 'sloperGrip']) if (w[k]) used.add(k)
+  ok(used.size >= 3, `only ${used.size} weather term(s) are used by any sky — nothing to be blind to`)
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const body = region(eng, 'export function forecastScore', ['export function gearMods'],
+    { min: 80, what: 'forecastScore' })
+  // read as a property OFF THE WEATHER, not merely mentioned: a term reached through an alias
+  // is a term the next person editing this cannot see is being used.
+  const reads = k => new RegExp('w\\.' + k + '\\b').test(body)
+  for (const k of used)
+    ok(reads(k) || EXCLUDED[k],
+      `forecastScore is blind to ${k}, which the skies use and nothing has written off`)
+  for (const k of Object.keys(EXCLUDED))
+    ok(!reads(k), `${k} is written off as excluded and forecastScore reads it anyway`)
+  // the rock is the standing carve-out: handed in, printed beside the verdict, never scored
+  ok(/f: \{ weather: number; rock: number \}/.test(body) && !body.includes('ROCK['),
+    'forecastScore has started scoring the rock — COND-5 is the row for that, and it needs the route')
+})
 test('ROUTE-9: each act has its own weather', () => {
   // sample a lot of stages per act and read off what each act can throw at you
   const wof = act => {

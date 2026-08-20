@@ -354,9 +354,23 @@ export const FALL_PUMP = 0.5      // pump you keep after being caught
 
    So the bar is untouched and the ITEM is repriced, which is the dial this contract has always
    used (BAL-15 set it, ENG-21, ENG-32 and SIM-6 each moved it: 0.4, 0.55, 0.45, 0.22). At 0.45
-   the lift measures 2.4 at n=900 — exactly the reference figure in the guard's own note — and
-   the default arm is unmoved at 41.9%, because the drafter never buys kit. */
-export const WIND_PUMP = 0.45   // share of the meter you carry into a wind burn
+   the lift measured 2.4 at n=900 and the default arm was unmoved at 41.9%, because the drafter
+   never buys kit.
+
+   COND-4 MOVED IT AGAIN, DOWN, and the reason is the same coupling read from the other end.
+   COND-4 changed which climb the reward policy walks toward, CARD-9 went red, and the control
+   said the ticket was not the cause: at v10.57, BEFORE the change, the lift measured +0.7 at
+   n=900 and +0.1 at n=3000. A difference of proportions at n=900 has a standard error of about
+   2.3 points, so a true lift of ~0.1 passes a `> 0` floor about half the time — this guard had
+   been green on a coin flip since v10.55, and COND-4 re-rolled it. What actually took the item
+   apart is PUMP-1's daylight clock: past DUSK_AT the hand shrinks every turn, and a burn that
+   STARTS at 45% pump is a short burn, so the two mechanics multiply.
+
+   0.45 → 0.30 puts it back: the lift reads +1.3 at n=900 and +1.0 at n=3000 — inside the bar
+   from both ends and, unlike before, the two sample sizes now AGREE, which is the actual test
+   of whether an item helps. The pinned band is untouched at 44.9%, measured, for the reason
+   above: the default arm spends zero winds. */
+export const WIND_PUMP = 0.30   // share of the meter you carry into a wind burn
 export type MapNode = { type: NodeType; routeIdx: number }
 
 export type GameState = {
@@ -2377,10 +2391,40 @@ export function forecastFor(s: GameState): { weather: number; rock: number }[] {
     }
   })
 }
-/** Rough read on whether a forecast is kind, for the map's colour. */
+/* Rough read on whether a forecast is kind. Two things depend on it: the map paints the node
+   green/red/grey and says "in nick" or "out of nick" off its SIGN, and the reward policy takes
+   the best-conditioned climb on offer off its ORDER.
+
+   COND-4 measured what the skies actually cost, over four mid-ladder routes on a mid-act deck
+   (`node sim/run.mjs conditions`), as send%:
+
+     crisp 89 · still 57 · freezing 45 · humid 42 · drizzle 41 · hot sun 31
+
+   Against `still` as the neutral, that prices a point of Bite at ~30 points of send% and a
+   point of Contact at ~14 — so the 2:1 weighting this function has always had is RIGHT, and
+   is kept. The other two terms were both wrong:
+
+   - `sloperGrip` carried a flat −2, the same as two whole points of Bite. Measured it is worth
+     about nothing: humid's `sloperGrip: 2` costs 15 points, of which its Contact point already
+     explains 14. It only ever touches one hold family, and the flat penalty was what made
+     humid score WORST of the six while actually being fourth of six. Gone.
+   - `dSupport` was not read at all, so drizzle — the one sky that takes your feet — was scored
+     purely on a term worth nothing. Measured it is worth about what Contact is, so it is
+     weighted the same.
+
+   What comes out ranks crisp > still > {freezing, humid, drizzle} > hot sun, against a measured
+   45/42/41 for that middle cluster — a three-way tie where the measurements are within four
+   points of each other, and the two ends exactly right. The signs are unchanged for every sky,
+   so nothing the player is shown flips; what changes is which sky the policy walks past.
+
+   IT STILL IGNORES THE ROCK IT IS HANDED, and the screen prints the rock beside this verdict.
+   The rock spans 42% (granite) to 57% (sandstone) — as wide as the gap between the good and bad
+   skies — but a rock's kindness is a function of the ROUTE's style (granite is sharp, which is
+   punishing on a crimp ladder and fine on a jug haul), so a flat term would be wrong in a way
+   this one is not. That needs the route, which this signature does not have. See COND-5. */
 export function forecastScore(f: { weather: number; rock: number }): number {
   const w = WEATHER[f.weather]
-  return -w.dBite * 2 + w.dContact - (w.sloperGrip > 0 ? 2 : 0)
+  return -w.dBite * 2 + w.dContact + (w.dSupport ?? 0)
 }
 /** Sum of everything you are carrying. */
 export function gearMods(ids: string[]): Required<Omit<Gear, 'id' | 'name' | 'slot' | 'text' | 'brushFirst'>> & { brushFirst: boolean } {

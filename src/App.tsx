@@ -2,9 +2,9 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.57 — COND-3: Contact was baked into every card at deal time, so the weather
-//   could not move during a burn. It is read live now (`contactOf`), the stat and the wear are
-//   two fields, and a window can wet the rock under you.
+// SANDBAGGED v10.58 — COND-4: the map's forecast verdict disagreed with what the skies cost.
+//   It weighted slopers as heavily as two points of Bite (measured: ~0) and never read dSupport
+//   at all, so it rated humid the worst sky in the game while it measures fourth of six.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1545,7 +1545,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.57 · RCJ Labs</div>
+          <div className="sfoot">v10.58 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1774,7 +1774,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.57 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.58 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
