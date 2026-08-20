@@ -567,6 +567,144 @@ test('DECK-4: the shape a deck commits to can be paid for', () => {
   eq(plain.length, tailored.length, 'the tailored shelf is a different size')
   ok(tailored.some(c => c.synergy), 'a committed deck was shown no payoff at all')
 })
+group('a plan can be bought (SEQ-3)')
+test('SEQ-3: the constraint is priced, so the weight can be applied', () => {
+  /* SEQ-2 found a real inconsistency — `seqValue` priced a payout with `bonusValue`'s
+     coefficients and then did not apply BONUS_WEIGHT to them, so `draw` was worth 2.2 here and
+     7.0 next door — and then measured that FIXING it made the game worse: plans went from ranks
+     57-60 of 61 bonuses to ranks 7-34, and with one purchasable, completion fell 44.3% to 40.3%
+     at n=3000. The 3.2x was cancelling a cost the model did not carry: a plan does not merely
+     maybe-pay later, it CONSTRAINS the play while it runs.
+
+     What was missing was a measurement. Over 88,609 climb turns of the real campaign, each
+     condition is met with nobody trying: clear 83.0%, norest 39.3%, rest 60.7%, feet 95.2%. So
+     the cost is not one number — three turns of keeping your feet on is nearly free, two turns
+     of NOT resting takes the play you would have made on three turns in five. With that priced
+     the weight applies and the same three changes land at −0.5 instead of −4.0. */
+  for (const q of E.SEQUENCES)
+    ok(E.SEQ_BASE[q.need] !== undefined,
+      `the '${q.need}' condition has no measured base rate, so its constraint is a guess`)
+  for (const [need, p] of Object.entries(E.SEQ_BASE))
+    ok(p > 0 && p < 1, `the base rate for '${need}' is ${p}, which is not a share of turns`)
+  ok(E.SEQ_CONSTRAINT > 0, 'a forced turn costs nothing, so the weight is uncancelled again')
+
+  // the cost is ORDERED by how often you would have complied anyway — the ticket's finding
+  const cost = q => q.turns * (1 - E.SEQ_BASE[q.need]) * E.SEQ_CONSTRAINT
+  const byId = id => E.SEQUENCES.find(q => q.id === id)
+  const feet = byId('committed'), norest = byId('static')
+  ok(feet && norest, 'the plans this compares are gone')
+  ok(cost(feet) < cost(norest),
+    `keeping your feet on for ${feet.turns} turns is priced at ${cost(feet).toFixed(1)} and `
+    + `staying off a rest for ${norest.turns} at ${cost(norest).toFixed(1)} — the wrong way round`)
+  ok(cost(feet) < E.SEQ_CONSTRAINT,
+    'a condition met on 95% of turns is charged more than a full forced turn')
+  /* And the valuation must READ the table per-condition, not merely have an ordered table
+     beside it. The ordering above is a statement about SEQ_BASE; this is what makes it a
+     statement about the price. A flat `forced` passes everything above it. */
+  const body = region(stripComments(readFileSync('src/engine.ts', 'utf8')),
+    'function seqValue(', ['export const WANT_FEET'], { min: 400, what: 'seqValue' })
+  ok(/SEQ_BASE\[q\.need\]/.test(body),
+    'seqValue charges a constraint that does not depend on which condition it is')
+  // one precise regex, not two alternatives where the looser makes the tighter pointless
+  ok(/payout \* BONUS_WEIGHT/.test(body),
+    'seqValue no longer applies BONUS_WEIGHT to the payout')
+  ok(/- forced \* SEQ_CONSTRAINT/.test(body), 'seqValue no longer subtracts the constraint')
+
+  /* And the weight is really applied: the payout side must now be worth BONUS_WEIGHT times its
+     raw coefficients. Read off the two plans whose payouts differ only in size, so this cannot
+     pass on the constraint alone. */
+  const deck = E.DEFAULT_LOADOUT.map(E.spawn)
+  const linked = E.spawn('Link It Up')
+  ok(linked, 'Link It Up is gone')
+  const raw = 2 * 4.5                     // Linked Moves pays clear:2, at bonusValue's 4.5
+  const v = E.seqShelfValue(linked, deck)
+  ok(v > raw - cost(byId('linked')),
+    `the plan values at ${v.toFixed(1)}, below its own unweighted payout — BONUS_WEIGHT is not applied`)
+})
+test('SEQ-3: a plan is on the shelf, and only one this deck could run', () => {
+  const rng = new E.RNG(31)
+  let shown = 0, runnable = 0, visits = 0
+  for (let i = 0; i < 90; i++) {
+    const base = { ...E.freshRun(0, 0, i), act: i % 3, tier: i % 4, gear: [], boons: [],
+      runDeck: E.DEFAULT_LOADOUT.map(E.spawn) }
+    const st = E.stockShop(base, rng)
+    visits++
+    const plans = st.shopCards.filter(c => c.seq)
+    ok(plans.length <= 1, `${plans.length} plans on one shelf`)
+    if (plans.length) {
+      shown++
+      if (E.seqShelfValue(plans[0], base.runDeck) >= E.SEQ_SHELF_BAR) runnable++
+      ok(!base.runDeck.some(c => c.name === plans[0].name),
+        `the shelf is selling ${plans[0].name} to a deck that already has one`)
+    }
+  }
+  ok(shown > 0, 'no shelf in 90 visits carried a plan — SEQ-2\'s retraction is still in force')
+  eq(runnable, shown, `${shown - runnable} shelf plan(s) were ones the deck could not run`)
+
+  /* The gate must DISCRIMINATE, which is the half that keeps the shelf an option rather than a
+     tax — SEQ-2's version put a plan there unconditionally. Asserted on the valuation rather
+     than on an empty deck: an empty deck turns out to satisfy `norest` perfectly well (it has
+     no rests to take), so "a deck that can run nothing" is not a thing the rules believe in,
+     and the first cut of this assertion was my intuition rather than a rule. */
+  const restDeck = ['Shake Out', 'Shake Out', 'Kneebar', 'Kneebar', 'Breathe', 'Breathe',
+    'Deep Breath', 'Crimp Grip', 'Lock Off', 'Smear'].map(E.spawn)
+  const feetless = ['Lock Off', 'Crimp Grip', 'Open Hand', 'Mantle', 'Try Hard'].map(E.spawn)
+  const noRestPlan = Object.values(E.CARDS).find(c => c.seq === 'static')
+  const feetPlan = Object.values(E.CARDS).find(c => c.seq === 'committed')
+  ok(noRestPlan && feetPlan, 'the plans this compares are gone')
+  ok(E.seqShelfValue(E.spawn(noRestPlan.name), restDeck)
+    < E.seqShelfValue(E.spawn(noRestPlan.name), feetless),
+    'a deck built on resting is valued no worse at a plan that forbids resting')
+  ok(E.seqShelfValue(E.spawn(feetPlan.name), feetless) < E.SEQ_SHELF_BAR,
+    'a deck with no feet cards clears the bar for a plan that needs feet every turn')
+
+  /* And it costs no randomness. The kit and the rack beside it are stage-picked for exactly
+     this reason — a draw here shifts every downstream roll and moves the balance guards. */
+  const a = E.stockShop({ ...E.freshRun(0, 0, 3), act: 1, tier: 1, gear: [], boons: [],
+    runDeck: E.DEFAULT_LOADOUT.map(E.spawn) }, new E.RNG(11))
+  const b = E.stockShop({ ...E.freshRun(0, 0, 3), act: 1, tier: 1, gear: [], boons: [],
+    runDeck: [] }, new E.RNG(11))
+  eq(a.shopCards.filter(c => !c.seq).map(c => c.name).join(','),
+    b.shopCards.filter(c => !c.seq).map(c => c.name).join(','),
+    'stocking a plan changed the rest of the shelf — the plan is drawing from the run stream')
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const fn = region(eng, 'export function shelfPlan', ['function seqValue'],
+    { min: 200, what: 'shelfPlan' })
+  ok(!/rng/i.test(fn), 'shelfPlan takes randomness, so the shelf perturbs the run')
+})
+test('SEQ-3: a bought plan actually runs, pays, and can be lost', () => {
+  /* The whole point of making it purchasable. Measured over 600 campaigns after this ticket:
+     the shelf showed a plan on 1,900 visits, 423 were affordable and 226 were bought, 33.8% of
+     runs ended holding one, and across 3,322 plan turns 1,170 paid, 929 spent the slip and 140
+     broke outright. Before it, a plan was in no pool and on no shelf and none of that happened. */
+  const rng = new E.RNG(515)
+  let started = 0, paid = 0, broke = 0
+  // a fixed sample, not an early exit: the first cut stopped as soon as it had seen enough and
+  // then asserted on how many it had started, which is a threshold fighting its own loop
+  for (let t = 0; t < 90; t++) {
+    let st = startClimb(4, rng, { seed: Math.floor(rng.next() * 2 ** 31), pump: 0 })
+    const plan = E.spawn('Link It Up')
+    st = { ...st, piles: { ...st.piles, hand: [plan, ...st.piles.hand] } }
+    st = E.playBonusStep(st, plan, -1, rng)
+    if (!st.seq) continue
+    started++
+    for (let k = 0; k < 8; k++) {
+      st = E.autoPlay(st, rng)
+      const before = st.seq
+      st = E.resolve(st, rng)
+      if (before && !st.seq) {
+        if (st.log.some(l => /It pays/.test(l))) paid++
+        else broke++
+        break
+      }
+      if (st.phase !== 'climb') break
+    }
+  }
+  ok(started > 20, `only ${started} plans started — the fixture never gets one running`)
+  ok(paid > 0, 'no plan ever paid out, so the payout side is unreachable')
+  ok(broke > 0, 'no plan was ever lost, so a plan is a free payout with no risk in it')
+})
+
 group('the board has a shape (LANE-1)')
 test('LANE-1: matched hands are a relationship between the lanes, both ways', () => {
   /* The row said Squeeze and the gaston/undercling pairing were the only cross-lane rules. They

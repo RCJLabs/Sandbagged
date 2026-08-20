@@ -2510,7 +2510,8 @@ export function gearMods(ids: string[]): Required<Omit<Gear, 'id' | 'name' | 'sl
 }
 /** Three offers, one per slot where possible, never a duplicate slot you filled. */
 export function stockShop(s: GameState, rng: RNG): GameState {
-  const cards = rollOffers(rng, 3, false, s.act)
+  // DECK-4 handed the deck to every reward roll; the shelf is a reward roll too
+  const cards = rollOffers(rng, 3, false, s.act, s.runDeck)
   const gp = GEAR.filter(g => !s.gear.includes(g.id))
   const bp = BOONS.filter(b => !s.boons.includes(b.id))
   // a post sells kit, and sometimes somebody is selling beta
@@ -2541,7 +2542,11 @@ export function stockShop(s: GameState, rng: RNG): GameState {
      roped line to another act provisions it without anybody remembering to. */
   const roped = ACTS[s.act]?.flat().some(n => n.routeIdx >= 0 && ROUTES[n.routeIdx]?.roped)
   const rack = roped ? [spawn(CLIP_STOCK[s.tier % CLIP_STOCK.length])] : []
-  return { ...s, shopCards: [...cards, ...rack], shopGear: stock, shopKit: [kitId], bought: [], phase: 'shop' }
+  /* SEQ-3: and a plan, when this deck could run one. See `shelfPlan` — stage-picked, so it
+     perturbs no roll, and gated on the deck, so it is an option rather than a tax on the shelf. */
+  const plan = shelfPlan(s)
+  return { ...s, shopCards: [...cards, ...rack, ...(plan ? [spawn(plan)] : [])],
+    shopGear: stock, shopKit: [kitId], bought: [], phase: 'shop' }
 }
 export const priceOf = (c: Card) =>
   c.rarity === 'rare' ? PRICE.rare : c.rarity === 'uncommon' ? PRICE.uncommon : PRICE.common
@@ -5896,8 +5901,53 @@ function bonusValue(c: Card, deck: Card[]): number {
     valuation worse than leaving both alone, so the weight is NOT applied and the un-weighted
     number stands — right for the wrong reason, which is worth knowing about it.
 
-    The next ticket owns both halves together: price the constraint, then apply the weight, and
-    only then put a plan somewhere it can be bought. Doing either alone measurably regresses. */
+    SEQ-3 OWNS BOTH HALVES, and the missing piece was a measurement nobody had taken: how often
+    each condition is met ANYWAY. Over 88,932 climb turns of the real campaign — `clear` 83.2%,
+    `norest` 39.0%, `rest` 61.0%, `feet` 95.2%. That is the cost the 3.2x was cancelling, and it
+    is not one number: being held to your feet for three turns is nearly free, because your feet
+    are on 95% of turns regardless, while being held OFF a rest for two turns takes the play you
+    would have made on three turns in five. Priced per-condition, the weight applies without
+    inflating anything, because the plans it inflates are the ones that cost the most to run. */
+/* SEQ-3: the share of climb turns on which each plan's condition is met with nobody trying —
+   measured over 88,932 turns of the full campaign (`sim/run.mjs`, built loadout). A plan holds
+   you to its condition for `turns` turns; on this share of them that costs nothing, and on the
+   rest it takes the play you wanted. Re-measure with the probe in the ticket if the board rules
+   change: LANE-1's matched shed and PUMP-1's daylight clock both move the rest rates. */
+export const SEQ_BASE: Record<SeqNeed, number> = {
+  clear: 0.832, norest: 0.390, rest: 0.610, feet: 0.952,
+}
+/* What one forced turn is worth, in the same units the payout is priced in. Derived rather than
+   chosen: the dearest thing a plan denies you is a rest, a typical rest card sheds 2, and
+   `bonusValue` prices a shed at 1.4 * BONUS_WEIGHT — so a turn you are held off your own play
+   is worth about 2 * 1.4 * 3.2. */
+export const SEQ_CONSTRAINT = 9
+/* SEQ-3: is there a plan on the shelf this deck could actually run, and which one? Asked of
+   `seqValue`, so the shelf and the drafter agree about what a plan is worth — one valuation,
+   which is the rule `laneBlows` and `windowOf` were both written to enforce.
+
+   THE SHELF, NOT THE REWARD POOLS. SEQ-2 measured plans in `REWARDS` at 44.2% → 26.6%: four
+   cards diluting pools of eight and four is not a new option, it is the removal of the old
+   ones. And it is picked from the STAGE rather than the run RNG, for the reason the kit and
+   the rack beside it already are — drawing from the shared stream shifts every downstream
+   roll and moves the balance guards for nothing. */
+export const SEQ_SHELF_BAR = 4
+/** What the shelf's gate sees. Exposed so a guard can ask the same question the shelf asks. */
+export function seqShelfValue(c: Card, deck: Card[]): number { return seqValue(c, deck) }
+export function shelfPlan(s: GameState): string | null {
+  const plans = Object.values(CARDS).filter(c => c.seq)
+  if (!plans.length) return null
+  const deck = s.runDeck
+  const held = new Set(deck.map(c => c.name))
+  /* Rotated by the stage so the shelf is not the same plan every post, then filtered by what
+     this deck can hold — a plan you cannot run is not an offer, it is a trap. */
+  const start = (s.act * 5 + s.tier) % plans.length
+  for (let i = 0; i < plans.length; i++) {
+    const d = plans[(start + i) % plans.length]
+    if (held.has(d.name)) continue
+    if (seqValue(spawn(d.name), deck) >= SEQ_SHELF_BAR) return d.name
+  }
+  return null
+}
 function seqValue(c: Card, deck: Card[]): number {
   const q = seqById(c.seq)
   if (!q) return 0
@@ -5937,7 +5987,11 @@ function seqValue(c: Card, deck: Card[]): number {
     for (let j = 0; j < k; j++) c = c * (t + j) / (j + 1)
     odds += c * Math.pow(hold, t) * Math.pow(miss, k)
   }
-  return payout * Math.min(1, odds)
+  /* SEQ-3: the payout now carries `BONUS_WEIGHT` like every other bonus effect in this
+     valuation — `draw` was 2.2 here and 2.2 * 3.2 next door, one unit priced two ways — and
+     the constraint is subtracted, which is what makes applying the weight safe. */
+  const forced = t * (1 - (SEQ_BASE[q.need] ?? 0.5))
+  return payout * BONUS_WEIGHT * Math.min(1, odds) - forced * SEQ_CONSTRAINT
 }
 /* DECK-1. Fifteen slots out of everything you own is a real decision and not
    everybody wants to make it from scratch. Put in the two or three cards you

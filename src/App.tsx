@@ -2,9 +2,9 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.61 — DECK-4: every deck already commits to a shape — 11 cards of one family —
-//   and the card that pays for it existed for only 2 of the 11 families. Commit to a family and
-//   the shelf now offers you its payoff, in place of the best card on it.
+// SANDBAGGED v10.62 — SEQ-3: a plan is worth buying and can be bought. The constraint a plan
+//   puts on the play is priced from measured base rates, so BONUS_WEIGHT applies without
+//   inflating it, and the post shelf sells one your deck can actually run.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1546,7 +1546,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.61 · RCJ Labs</div>
+          <div className="sfoot">v10.62 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1775,7 +1775,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.61 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.62 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
