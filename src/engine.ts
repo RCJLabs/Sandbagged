@@ -174,7 +174,29 @@ export const UNREAD_GRIP = 1
    not move, so both measured endpoints are exactly where they were and the band does not
    shift. UNREAD_MAX is NARR-7's range, and it now runs off every findable page. */
 export const BLIND_HOLD = 8
-export const UNREAD_MAX = 6
+/* LANE-2 RAISED THIS 6 → 11, and the reason is a coupling nobody had measured: the journal's
+   worth and the loadout builder's competence are the same quantity seen twice.
+
+   Removing the builder's family bonus took completion at 0 pages from 32.6% to 42.6% while the
+   full-journal arm moved only 42.6% → 46.4% — so his pages had been worth +10.0 points and were
+   suddenly worth +3.8, and the guard that says the journal can actually be read failed. The
+   pages were not doing less; the deck had stopped needing rescuing. A 9-of-one-family deck with
+   three duplicate pairs was being carried by his beta.
+
+   `UNREAD_MAX` is the only lever that widens that gap WITHOUT moving the pin, and it is exact by
+   construction: `unreadGrip` returns 0 at every findable page, so the full-journal arm cannot
+   feel this constant at all — measured, 46.4% at 6 and 46.4% at 11, identical. Raising the beta
+   cap instead was tried and fights the pin: BETA_TAKE 8 → 10 lifts the full-journal arm to 47.1%,
+   which is the band itself drifting.
+
+   At 11 the arms read 38.2% and 46.4%, so his pages are worth 8.2 points — near the 10.0 they
+   were, and far enough above the guard's bar of 5 to survive the n=300 that guard runs at, where
+   the standard error on a DIFFERENCE of two proportions is about 4. Landing it at 5.3 (which
+   UNREAD_MAX 8 did) would have been a guard that passed half the time — the CARD-9 knife-edge,
+   and not a thing to ship on purpose.
+
+   It is also the thematically exact lever: the wall is unreadable without what he wrote down. */
+export const UNREAD_MAX = 11
 /* NARR-17. Page 7 is the one he wrote at the top, and you get it by getting there —
    which makes it the only page that is not FINDABLE, not beta you can carry up, and not
    part of any count of how much of him you have read. That fact was spelled `7` in nine
@@ -2511,7 +2533,7 @@ export function gearMods(ids: string[]): Required<Omit<Gear, 'id' | 'name' | 'sl
 /** Three offers, one per slot where possible, never a duplicate slot you filled. */
 export function stockShop(s: GameState, rng: RNG): GameState {
   // DECK-4 handed the deck to every reward roll; the shelf is a reward roll too
-  const cards = rollOffers(rng, 3, false, s.act, s.runDeck)
+  const cards = rollOffers(rng, 3, false, s.act, s.runDeck, s)
   const gp = GEAR.filter(g => !s.gear.includes(g.id))
   const bp = BOONS.filter(b => !s.boons.includes(b.id))
   // a post sells kit, and sometimes somebody is selling beta
@@ -3246,7 +3268,10 @@ const ACT_ODDS: [number, number][] = [[0.70, 0.95], [0.50, 0.88], [0.35, 0.80]]
    how much family you have. Against an ordinary 3/7 reward card it scores 6.5 at zero cards of
    its family, 8.7 at three, 10.9 at six and 12.4 at eight, where it finally wins. Offering it
    any earlier is offering a card nobody should take, which is how it was. */
-export const COMMIT_AT = 8
+/* LANE-2 retired COMMIT_AT. It was 8 — the family size at which a specialist beat an ordinary
+   reward card — and it only ever worked because the loadout builder's family bonus handed you 9
+   of one family for free. Removing that bonus took the payoff from reaching 94.3% of runs to
+   11.2%, so the count is replaced by merit: see the substitution in `rollOffers`. */
 /* DECK-4: the family this deck has actually committed to, and the card that pays for it.
 
    IT SEARCHES EVERY CARD, NOT THE REWARD POOL, and that is the whole fix. `REWARDS` is a
@@ -3259,7 +3284,7 @@ export const COMMIT_AT = 8
 export function commitPayoff(deck: Card[]): string | null {
   if (!deck.length) return null
   const tags = tagCounts(deck)
-  let best: string | null = null, most = COMMIT_AT - 1
+  let best: string | null = null, most = SYNERGY_PER - 1
   for (const [tag, n] of Object.entries(tags)) if (n > most) { most = n; best = tag }
   if (!best) return null
   const held = new Set(deck.map(c => c.name))
@@ -3270,7 +3295,8 @@ export function commitPayoff(deck: Card[]): string | null {
   }
   return null
 }
-export function rollOffers(rng: RNG, count = 3, weak = false, act = 0, deck?: Card[]): Card[] {
+export function rollOffers(rng: RNG, count = 3, weak = false, act = 0, deck?: Card[],
+  st?: GameState): Card[] {
   const out: Card[] = [], used = new Set<string>()
   const [cw, uw] = ACT_ODDS[Math.max(0, Math.min(2, act))]
   let guard = 0
@@ -3303,7 +3329,21 @@ export function rollOffers(rng: RNG, count = 3, weak = false, act = 0, deck?: Ca
     const rank = (c: Card) => c.power * 2 + c.contact
     let bestAt = 0
     for (let i = 1; i < out.length; i++) if (rank(out[i]) > rank(out[bestAt])) bestAt = i
-    out[bestAt] = spawn(payoff)
+    /* LANE-2: AND ONLY IF IT IS ACTUALLY WORTH MORE THAN WHAT IT DISPLACES.
+
+       DECK-4 gated this on a family of COMMIT_AT = 8, which was reachable only because the
+       builder's family bonus handed you 9 of one family for free. LANE-2 removed that bonus and
+       the payoff went from reaching 94.3% of runs to 11.2% — DECK-4 became dead code one ticket
+       after it shipped, which is the compounding this ledger exists to catch.
+
+       So the gate is the thing DECK-4 actually wanted: the specialist for your largest family,
+       substituted when it beats the card it takes the place of. It fires whenever your
+       commitment has started paying, it can never make the shelf worse — which a count below
+       the crossover could — and there is no threshold to re-calibrate every time the builder
+       changes. `cardValue` rather than raw stats, because "worth more" is a question about your
+       deck, which is exactly what a specialist's value depends on. */
+    if (st && deck && cardValue(st, spawn(payoff), deck) > cardValue(st, out[bestAt], deck))
+      out[bestAt] = spawn(payoff)
   }
   return out
 }
@@ -4342,7 +4382,7 @@ export function endSession(s0: GameState, rng: RNG): GameState {
   if (s.result === 'send' && s.onProject) {
     // a project pays gear — otherwise boss-only — and a card on top
     return gate({ ...s, beta, onProject: false, gearOffers: gearOffers(s, rng),
-      offers: rollOffers(rng, 3, false, s.act, s.runDeck), phase: 'gear' })
+      offers: rollOffers(rng, 3, false, s.act, s.runDeck, s), phase: 'gear' })
   }
   if (s.onProject) {
     // it did not go. The days are spent either way.
@@ -4354,7 +4394,7 @@ export function endSession(s0: GameState, rng: RNG): GameState {
       // an act boss that is not the finale sends you over the pass to the next range
       if (!(lastAct && finale)) {
         if (s.tier + 1 < map.length)
-          return gate({ ...s, beta, offers: rollOffers(rng, 3, false, s.act, s.runDeck), phase: 'reward' })
+          return gate({ ...s, beta, offers: rollOffers(rng, 3, false, s.act, s.runDeck, s), phase: 'reward' })
         s = gainXp({ ...s, cash: s.cash + 35 }, 25, rng)
         return gate({ ...s, beta, act: s.act + 1, tier: 0, phase: 'gear',
           gearOffers: gearOffers(s, rng),
@@ -4374,7 +4414,7 @@ export function endSession(s0: GameState, rng: RNG): GameState {
       // topping out the finale is not a result screen — there is something up there
       return { ...s, beta, phase: 'epilogue', result: 'send' }
     }
-    return gate({ ...s, beta, offers: rollOffers(rng, 3, false, s.act, s.runDeck), phase: 'reward' })
+    return gate({ ...s, beta, offers: rollOffers(rng, 3, false, s.act, s.runDeck, s), phase: 'reward' })
   }
   // failing the boss, or running out of map, ends the run rather than
   // advancing past the last tier
@@ -4382,7 +4422,7 @@ export function endSession(s0: GameState, rng: RNG): GameState {
     return gate(recordRun({ ...s, beta, phase: 'runEnd', result: 'fall' }, false))
   // FALLING IS LEARNING. A lost session still banks something, or climbing is
   // a coin flip that can whiff entirely and skipping it becomes correct.
-  return gate({ ...s, beta, offers: rollOffers(rng, 2, true, s.act, s.runDeck), phase: 'reward' })
+  return gate({ ...s, beta, offers: rollOffers(rng, 2, true, s.act, s.runDeck, s), phase: 'reward' })
 }
 
 function refillAndDraw(s: GameState, rng: RNG): GameState {
@@ -6025,7 +6065,6 @@ export function buildLoadout(s: GameState, seed: string[], owned: string[]): str
     const moves = spawned.filter(c => c.kind === 'move').length
     const hands = spawned.filter(c => c.lane === 'hand' || c.lane === 'any').length
     const left = DECK_SIZE - deck.length
-    const tags = tagCounts(spawned)
     let bestName: string | null = null, bestScore = -Infinity
     for (const n of pool) {
       const d = CARDS[n]
@@ -6057,13 +6096,31 @@ export function buildLoadout(s: GameState, seed: string[], owned: string[]): str
       let v = cardValue(s, c, spawned)
       if (c.lane === 'feet' && feet < WANT_FEET) v += 14
       if (c.shed > 0 && rests < WANT_RESTS) v += 12
-      // build on what the player chose — but the bonus stops growing at the
-      // point synergy itself stops paying, or it feeds on itself
-      const tag = tagOf(c)
-      if (tag) {
-        const have = Math.min(tags[tag] ?? 0, SYNERGY_PER)
-        if (have > 0) v += 3 + have * 2
-      }
+      /* LANE-2: THERE USED TO BE A FAMILY BONUS HERE — `v += 3 + have * 2`, capped at
+         SYNERGY_PER — and it was costing the game three and a half points of completion.
+
+         It read as "build on what the player chose", but it compounds: each card of a family
+         makes the next one of that family more attractive, so whichever family the builder
+         happens to start with, it finishes. The deck it produced was 9 of one family out of 15,
+         including three duplicate pairs. Raced against decks built by this same value function
+         and these same structural gates, changing only this expression, at n=3000 (SE ~1.3):
+
+           bonus as it was     9 of one family, 3 duplicate pairs   42.1%
+           bonus removed       biggest family 4, no duplicates      45.5%   (+3.4)
+           bonus inverted      7 families, biggest 3                53.0%   (+10.9)
+
+         Monotonic in the direction of spreading, across three settings of one expression, and
+         the deaths fall in every act. Removed rather than inverted, which is Evan's call: the
+         +3.4 is the clean single-variable claim about this code, while the +10.9 conflates
+         which cards got picked — two spread decks measured 7.5 points apart, so the extra
+         headroom is real but not yet attributable. The penalty is still on the table (LANE-3).
+
+         WHAT IS NOT REMOVED: the synergy MECHANIC. A specialist still pays +1 Power for its
+         family (capped, DECK-4) and DECK-4's shelf still offers the payoff for a family you
+         have committed to. What is gone is the builder pushing you into a family before
+         anything has paid for it. `cardValue` keeps its own `synergy` and tag terms, which is
+         where the remaining bias lives — it rates the concentrated deck 15.31 and the spread
+         deck that beats it 13.93 (LANE-3). */
       v -= copies(n) * 4
       if (v > bestScore) { bestScore = v; bestName = n }
     }

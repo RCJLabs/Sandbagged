@@ -2,9 +2,9 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.62 — SEQ-3: a plan is worth buying and can be bought. The constraint a plan
-//   puts on the play is priced from measured base rates, so BONUS_WEIGHT applies without
-//   inflating it, and the post shelf sells one your deck can actually run.
+// SANDBAGGED v10.63 — LANE-2: the loadout builder's family bonus compounds, so it handed you 9
+//   cards of one family out of 15. Removed: 42.1% → 45.5%, and the band is re-pinned at ~45,
+//   because every difficulty call since v10.23 was measured against that deck.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1546,7 +1546,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.62 · RCJ Labs</div>
+          <div className="sfoot">v10.63 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1775,7 +1775,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.62 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.63 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

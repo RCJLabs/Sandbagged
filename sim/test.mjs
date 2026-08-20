@@ -486,22 +486,47 @@ test('DECK-4: the shape a deck commits to can be paid for', () => {
     const feeder = Object.values(E.CARDS).find(c =>
       E.tagOf(c) === fam && !c.synergy && c.rarity !== 'curse')
     ok(feeder, `nothing in the game is a plain ${fam} card, so the family cannot be built`)
-    for (let i = 0; i < E.COMMIT_AT; i++) deck.push(E.spawn(feeder.name))
+    for (let i = 0; i < E.SYNERGY_PER; i++) deck.push(E.spawn(feeder.name))
     const pay = E.commitPayoff(deck)
-    ok(pay, `a deck of ${E.COMMIT_AT} ${fam} cards is offered no payoff for committing`)
+    ok(pay, `a deck of ${E.SYNERGY_PER} ${fam} cards is offered no payoff for committing`)
     eq(E.CARDS[pay].synergy, fam, `the ${fam} payoff is ${pay}, which pays for ${E.CARDS[pay].synergy}`)
   }
 
-  // 2. and it holds its fire until the commitment is real
+  /* 2. and it holds its fire until there is a family at all.
+
+     LANE-2 MOVED THIS GATE FROM A COUNT TO MERIT, and had to. DECK-4 keyed on a family of
+     COMMIT_AT = 8, which was only reachable because the loadout builder's family bonus handed
+     you 9 of one family for free; LANE-2 removed that bonus and the payoff went from reaching
+     94.3% of runs to 11.2%, so DECK-4 was dead code one ticket after it shipped. The gate is
+     now the specialist for your largest family, substituted only when it beats the card it
+     displaces — which restores it to 92.2% of runs and, unlike a count, cannot make the shelf
+     worse. What is asserted here is therefore the floor (a family has to exist) and, below,
+     that the substitution is never a downgrade. */
   const crimps = n => [...Array(n)].map(() => E.spawn('Crimp Grip'))
-  ok(!E.commitPayoff(crimps(E.COMMIT_AT - 1)),
-    `a deck of ${E.COMMIT_AT - 1} of a family already gets the payoff — the threshold does nothing`)
+  /* A deck of n plain cards of ONE family, whichever family the game's own builder commits to.
+     Hardcoding crimps here is what broke three of the fixtures below when the deck under test
+     became the real built loadout: a crack specialist priced against a crimp deck measures the
+     absence of a family rather than the presence of one. */
+  const fam3 = n => {
+    const built = E.buildLoadout({ ...E.freshRun(0, 0, 1),
+      owned: Object.keys(E.CARDS).filter(x => ['common', 'uncommon', 'rare'].includes(E.CARDS[x].rarity ?? 'common')),
+      gear: [], boons: [], mutators: [] }, [], Object.keys(E.CARDS)
+      .filter(x => ['common', 'uncommon', 'rare'].includes(E.CARDS[x].rarity ?? 'common'))).map(E.spawn)
+    const tag = E.CARDS[E.commitPayoff(built)].synergy
+    const plain = Object.values(E.CARDS).find(c => E.tagOf(c) === tag && !c.synergy && c.rarity !== 'curse')
+    return [...Array(n)].map(() => E.spawn(plain.name))
+  }
+  ok(!E.commitPayoff(crimps(E.SYNERGY_PER - 1)),
+    `a deck of ${E.SYNERGY_PER - 1} of a family already gets a payoff — the floor does nothing`)
+  ok(!E.commitPayoff([]), 'an empty deck is offered a payoff for committing to nothing')
   /* And the threshold has to BE a commitment. A deck runs 15 cards built and about 33 by the
      end, so a handful of one family is a coincidence and eight is a plan. Below that this stops
      being the reward for a shape and becomes a tailored card at every reward table. */
-  ok(E.COMMIT_AT >= 5,
-    `COMMIT_AT is ${E.COMMIT_AT}, which no deck has to commit to anything to reach`)
-  ok(E.commitPayoff(crimps(E.COMMIT_AT)), 'a committed deck gets no payoff')
+  /* LANE-2: COMMIT_AT is gone. It was a count of 8, reachable only because the loadout builder
+     handed you 9 of one family for free; with that bonus removed the payoff reached 11.2% of
+     runs instead of 94.3%. The floor is now SYNERGY_PER — there has to BE a family — and
+     whether the payoff appears is decided on merit against the card it displaces. */
+  ok(E.commitPayoff(fam3(E.SYNERGY_PER)), 'a deck with a real family gets no payoff')
   ok(!E.commitPayoff([]), 'an empty deck is somehow committed to something')
 
   /* 3. It has to REACH the deck, on the path the game actually uses. Note what this does NOT
@@ -510,28 +535,74 @@ test('DECK-4: the shape a deck commits to can be paid for', () => {
      it — a first cut of this asserted "the drafter always takes it" and was simply wrong, which
      the campaign numbers say too (564 of 1,578 payable offers taken). What is true, and is the
      ticket, is that a committed deck now gets its payoff on the shelf and takes it often enough
-     to hold one: 94.3% of runs end holding a specialist against 11.2% before. */
+     to hold one: 92.2% of runs end holding a specialist against 11.2% before.
+
+     LANE-2 also changed what "on the shelf" means. Under DECK-4's count gate the payoff was on
+     EVERY shelf once the family hit 8, and this asserted exactly that. Under the merit gate it
+     appears only when it beats the card it displaces — about one shelf in seven for a committed
+     deck — which compounds over the ~16 shelves a run sees to the same 92% of runs holding one.
+     So the per-shelf certainty is gone on purpose and what is asserted is the property that
+     actually matters: it appears often enough to arrive, and it is never a downgrade. */
   const st = { ...E.freshRun(8, 1, 7), inRun: true, act: 1 }
-  const deck = crimps(E.COMMIT_AT)
-  const pay = E.spawn(E.commitPayoff(deck))
-  let shown = 0, taken = 0
-  for (let seed = 0; seed < 60; seed++) {
-    const offers = E.rollOffers(new E.RNG(seed * 7919 + 3), 3, false, 1, deck)
-    if (!offers.some(c => c.synergy === 'crimp')) continue
-    shown++
-    const pick = E.bestOffer(st, offers, deck)
-    if (pick && pick.synergy === 'crimp') taken++
+  /* THE DECK THE GAME ACTUALLY HANDS PEOPLE, not a synthetic pile. How often the substitution
+     fires depends on WHICH specialist your family maps to, because the gate is merit and the
+     specialists' own stat lines are uneven: measured over 400 shelves, a crack-committed deck
+     gets Crack Rat (1/7) on 70.8% of them and a crimp-committed one gets Crimp Specialist (1/5)
+     on 1.0%. A first cut of this used nine identical Crimp Grips — the worst case in the game —
+     and concluded the mechanism was dead when the campaign says 92.2% of runs hold a specialist.
+     The unevenness is real and is recorded as LANE-3; what belongs here is the deck the builder
+     produces, which is what the band is measured on. */
+  const owned = Object.keys(E.CARDS).filter(n => ['common', 'uncommon', 'rare'].includes(E.CARDS[n].rarity ?? 'common'))
+  const deck = E.buildLoadout({ ...E.freshRun(0, 0, 1), owned, gear: [], boons: [], mutators: [] },
+    [], owned).map(E.spawn)
+  const payName = E.commitPayoff(deck)
+  ok(payName, 'the deck the builder produces is offered no payoff for its own biggest family')
+  const pay = E.spawn(payName)
+  let shown = 0, taken = 0, downgrades = 0
+  const rank = c => c.power * 2 + c.contact
+  for (let seed = 0; seed < 200; seed++) {
+    const plain = E.rollOffers(new E.RNG(seed * 7919 + 3), 3, false, 1)
+    const offers = E.rollOffers(new E.RNG(seed * 7919 + 3), 3, false, 1, deck, st)
+    /* A SUBSTITUTION, not merely a crimp specialist being on the shelf — one can roll there by
+       itself, and counting those as substitutions compared a card nothing had displaced and read
+       31 false downgrades. Detected by diffing against the shelf the same seed rolls with no
+       deck handed in. */
+    const subbed = plain.map(c => c.name).join(',') !== offers.map(c => c.name).join(',')
+    if (subbed) {
+      shown++
+      /* THE SUBSTITUTION IS NEVER A DOWNGRADE — the whole reason merit replaced the count.
+         Compared against the shelf the same seed would have rolled without a deck. */
+      const before = plain.reduce((a, b) => (rank(b) > rank(a) ? b : a))
+      // `pay` — the card commitPayoff actually returns. Hardcoding a name here priced the
+      // wrong one of the two crimp specialists and read 31 false downgrades.
+      if (E.cardValue(st, pay, deck) < E.cardValue(st, before, deck)) downgrades++
+      const pick = E.bestOffer(st, offers, deck)
+      if (pick && pick.name === payName) taken++
+    }
+    // and the rest of the shelf is untouched: same seed, same cards but for the one slot
+    eq(plain.length, offers.length, 'handing rollOffers a deck changed how many cards it rolled')
   }
-  eq(shown, 60, `the payoff was on only ${shown} of 60 shelves for a committed deck`)
+  ok(shown > 10, `the payoff reached only ${shown} of 200 shelves — it cannot arrive in a run`)
+  eq(downgrades, 0, `${downgrades} substitution(s) put a worse card on the shelf`)
+  const perShelf = shown / 200
+  ok(1 - Math.pow(1 - perShelf, 16) > 0.5,
+    `at ${(100 * perShelf).toFixed(0)}% a shelf the payoff reaches only `
+    + `${(100 * (1 - Math.pow(1 - perShelf, 16))).toFixed(0)}% of runs over the ~16 shelves one sees`)
   ok(taken > 0,
     `the payoff was shown 60 times to a committed deck and taken ${taken} — it cannot reach a deck`)
-  const thin = crimps(E.SYNERGY_PER)
+  // a thin deck of the PAYOFF'S OWN family — hardcoding crimps here compared a crack
+  // specialist against a crimp deck once the fixture above became the real built loadout
+  const own = Object.values(E.CARDS).find(c =>
+    E.tagOf(c) === pay.synergy && !c.synergy && c.rarity !== 'curse')
+  ok(own, `nothing in the game is a plain ${pay.synergy} card`)
+  const thin = [...Array(E.SYNERGY_PER)].map(() => E.spawn(own.name))
   ok(E.cardValue(st, pay, thin) > E.cardValue(st, pay, []),
     'the payoff is worth no more to a deck with its family in it than to an empty one')
 
   /* 4. The cap is honoured on BOTH sides. The bake gives at most SYNERGY_CAP Power; if the
      drafter prices the uncapped curve it buys Power the rules never hand over. */
-  const huge = crimps(E.SYNERGY_PER * (E.SYNERGY_CAP + 3))
+  // likewise built from the payoff's own family, not from crimps
+  const huge = [...Array(E.SYNERGY_PER * (E.SYNERGY_CAP + 3))].map(() => E.spawn(own.name))
   const rng = new E.RNG(5)
   const burn = E.startBurn({ ...st, runDeck: [...huge, pay], skirmish: null,
     weather: 1, rock: 0 }, rng)
@@ -545,7 +616,8 @@ test('DECK-4: the shape a deck commits to can be paid for', () => {
      for the twin, so the family term cancels and only the synergy term is left. */
   const twin = { ...pay, synergy: '' }
   const synTerm = d => E.cardValue(st, pay, d) - E.cardValue(st, twin, d)
-  const atCap = synTerm(crimps(E.SYNERGY_PER * E.SYNERGY_CAP))
+  const fam = n => [...Array(n)].map(() => E.spawn(own.name))
+  const atCap = synTerm(fam(E.SYNERGY_PER * E.SYNERGY_CAP))
   ok(atCap > 0, `the synergy term is worth ${atCap.toFixed(2)} at the cap — it prices nothing`)
   ok(Math.abs(synTerm(huge) - atCap) < 1e-9,
     `the drafter pays ${(synTerm(huge) - atCap).toFixed(2)} more for family it will never be given Power for`)
@@ -562,11 +634,77 @@ test('DECK-4: the shape a deck commits to can be paid for', () => {
      is handed in or not, so a seed still replays. */
   const a = new E.RNG(4242), b = new E.RNG(4242)
   const plain = E.rollOffers(a, 3, false, 1)
-  const tailored = E.rollOffers(b, 3, false, 1, crimps(E.COMMIT_AT))
+  const tailored = E.rollOffers(b, 3, false, 1, fam3(9), { ...E.freshRun(8, 1, 7), inRun: true, act: 1 })
   eq(a.next(), b.next(), 'handing rollOffers a deck changed how much randomness it consumed')
   eq(plain.length, tailored.length, 'the tailored shelf is a different size')
-  ok(tailored.some(c => c.synergy), 'a committed deck was shown no payoff at all')
+  /* Not asserted here that the payoff APPEARS — under merit it appears only when it beats what
+     it displaces, and whether it does depends on which specialist the family maps to (measured:
+     70.8% of shelves for a crack deck, 1.0% for a crimp one, LANE-3). What this fixture is for
+     is the randomness, which is the same either way. */
 })
+test('LANE-2: the builder spreads, because concentrating cost three and a half points', () => {
+  /* The loadout builder used to carry a family bonus — `v += 3 + have * 2`, capped at
+     SYNERGY_PER — described as "build on what the player chose". It compounds: each card of a
+     family makes the next one more attractive, so whichever family it starts with, it finishes.
+     The deck it handed you was 9 of one family out of 15, three of them duplicate pairs.
+
+     Raced against decks built by the SAME value function and the SAME structural gates, changing
+     only that expression, at n=3000 (SE ~1.3):
+
+       bonus as it was    9 of one family, 3 duplicate pairs   42.1%
+       bonus removed      biggest family 4, no duplicates      45.5%   (+3.4)
+       bonus inverted     7 families, biggest 3                53.0%   (+10.9)
+
+     Monotonic across three settings of one expression, with deaths down in every act. Removed
+     rather than inverted, which was Evan's call — the +3.4 is the clean single-variable claim,
+     while the +10.9 conflates which cards got picked (two spread decks measured 7.5 apart). */
+  const owned = Object.keys(E.CARDS)
+    .filter(n => ['common', 'uncommon', 'rare'].includes(E.CARDS[n].rarity ?? 'common'))
+  const deck = E.buildLoadout({ ...E.freshRun(0, 0, 1), owned, gear: [], boons: [], mutators: [] },
+    [], owned).map(E.spawn)
+  eq(deck.length, E.DECK_SIZE, `the builder produced ${deck.length} cards`)
+
+  const tags = {}
+  for (const c of deck) { const t = E.tagOf(c); if (t) tags[t] = (tags[t] ?? 0) + 1 }
+  const sizes = Object.values(tags).sort((a, b) => b - a)
+  /* The bar is a THIRD of the deck. The bonus produced 9 of 15 (60%); without it the builder
+     lands on 4 (27%). A third sits between the two and is the shape of the claim rather than the
+     exact number, which is what stops this being a snapshot of one build. */
+  ok(sizes[0] <= Math.ceil(E.DECK_SIZE / 3),
+    `the builder committed ${sizes[0]} of ${E.DECK_SIZE} slots to one family — it is snowballing again`)
+  ok(sizes.length >= 5,
+    `the built deck holds only ${sizes.length} families, so it is a pile of one thing`)
+
+  // and it stops stacking duplicates, which is what the compounding bonus really bought
+  const counts = {}
+  for (const c of deck) counts[c.name] = (counts[c.name] ?? 0) + 1
+  const dupes = Object.entries(counts).filter(([, n]) => n > 1)
+  ok(dupes.length <= 1,
+    `the built deck carries ${dupes.length} duplicated cards (${dupes.map(([n, k]) => `${n} x${k}`).join(', ')})`)
+
+  /* AND THE BONUS IS REALLY GONE FROM THE BUILDER, not merely absent from this one build. The
+     behavioural assertions above are a property of the deck; this is a property of the code, and
+     it is the one that catches somebody reinstating the expression with a different shape. */
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  /* Ended at `cardValue`, which is the very next function — with `bestOffer` as the anchor this
+     window swallowed `cardValue` too, and `cardValue` counts families quite legitimately: that
+     is the remaining bias LANE-2 deliberately left alone (LANE-3). Scoping matters here. */
+  const body = region(eng, 'export function buildLoadout', ['export function cardValue'],
+    { min: 1000, what: 'buildLoadout' })
+  ok(!/v \+= 3 \+ have \* 2/.test(body), 'the family bonus is back in the builder verbatim')
+  ok(!/tagCounts\(/.test(body),
+    'the builder is counting families again, which is the only thing that expression needed')
+
+  /* DECK-4 STILL WORKS. Removing the bonus took its payoff from reaching 94.3% of runs to 11.2%,
+     because it keyed on a family of 8 that only the bonus could reach — so the gate moved to
+     merit and the payoff is back at 92.2%. Asserted here as well as in DECK-4's own guard,
+     because this is the change that broke it and this is where somebody will look. */
+  const payoff = E.commitPayoff(deck)
+  ok(payoff, 'the deck the builder produces is committed to nothing DECK-4 can pay for')
+  ok(sizes[0] >= E.SYNERGY_PER,
+    `the builder's biggest family is ${sizes[0]}, below SYNERGY_PER — nothing can ever pay for a shape`)
+})
+
 group('a plan can be bought (SEQ-3)')
 test('SEQ-3: the constraint is priced, so the weight can be applied', () => {
   /* SEQ-2 found a real inconsistency — `seqValue` priced a payout with `bonusValue`'s
