@@ -1434,6 +1434,15 @@ for (const c of [
   mv('Compression Lock', 3, 7, 'uncommon', { opposes: true, chip: 1, text: 'Chip 1 to every lane. Opposition.' }),
   mv('Off-Width Grovel', 2, 10, 'uncommon', { fx: 'tough', text: 'Tough · no style, all progress.' }),
   mv('Figure Four', 4, 5, 'uncommon', { fx: 'weight', text: 'Weight · +1 per other card out.' }),
+  /* LANE-1: core tension's specialist. Every other family has a card that counts its own kind —
+     CARD-19's own words are that a family with a mechanic and nothing to commit a deck to is "a
+     label rather than a plan" — and it added Body Tension for opposition on exactly that
+     argument. This is the same card one family over: it IS a Weight move, so it counts itself,
+     and it is the reason a deck can be built around what else is out rather than around one
+     card's stats. Power 1 because Weight already pays up to +2 on a full board and the synergy
+     term pays again on top. */
+  mv('Front Lever', 1, 8, 'uncommon', { fx: 'weight', synergy: 'core',
+    text: 'Core tension · Weight. +1 Power per 3 core cards.' }),
   mv('Kneedrop', 3, 6, 'uncommon', { text: 'Turn in and reach past it.' }),
   mv('Backstep', 3, 6, 'uncommon', { fx: 'echo', text: 'Echo · returns to hand when it clears.' }),
   mv('Recovery Hang', 0, 10, 'uncommon', { shed: 3, anchor: true, text: 'Rest · shed 3. Anchor.' }),
@@ -1610,19 +1619,26 @@ const TAG_WORDS: [Tag, string[]][] = [
    from the flag already on the card, and taken only AFTER the word scan so no card that
    already had a hold style loses it. */
 export function tagOf(c: { name: string; kind: string; lane: LaneTag; shed: number
-    synergy?: string; opposes?: boolean }): Tag {
+    synergy?: string; opposes?: boolean; fx?: string }): Tag {
   if (c.synergy) return c.synergy as Tag
   if (c.shed > 0) return 'rest'
   if (c.lane === 'feet') return 'feet'
   if (c.kind === 'bonus') return 'mental'
   for (const [tag, words] of TAG_WORDS)
     if (words.some(w => c.name.includes(w))) return tag
+  /* LANE-1: the board's shape. A Guard covers the other hand and a Weight move counts what else
+     is out — the two remaining cross-lane terms, and the two CARD-19 left with no name. Ahead of
+     the opposition fallback on purpose: `opposes` is the last resort by construction, and a card
+     that is both (Cross Under) is more specifically a move about the whole board than a move
+     about one other hand. Behind the word scan, so a card with a hold style keeps it. */
+  if (c.fx === 'guard' || c.fx === 'weight') return 'core'
   return c.opposes ? 'oppose' : ''
 }
 export const TAG_NAMES: Record<string, string> = {
   crimp: 'crimp', sloper: 'sloper', pinch: 'compression', pocket: 'pocket',
   dyno: 'dynamic', crack: 'crack', feet: 'footwork', rest: 'rest', mental: 'headgame',
   oppose: 'opposition',   // CARD-19: the one family the game plays and could not name
+  core: 'core tension',   // LANE-1: the other two, one ticket later
 }
 export function tagCounts(cards: { name: string; kind: string; lane: LaneTag; shed: number }[]) {
   const out: Record<string, number> = {}
@@ -4557,6 +4573,41 @@ export const exposureOf = (s: GameState) => {
 /** High enough that coming off is going to hurt. */
 export const exposed = (s: GameState) => exposureOf(s) >= EXPOSED_AT
 
+/* LANE-1: how many of the OTHER two lanes are loaded when a hand card lands, measured over
+   86,251 climb turns of the real campaign — both hands 90.6%, feet 95.5%. This is what a Weight
+   move is actually paid, and it is here rather than inline so the drafter and this note cannot
+   drift apart. */
+export const WEIGHT_BOARD = 1.86
+/* LANE-1: MATCHING. Both hands on the same kind of hold, with a card on each — you have worked
+   the move once and the other hand is the same move, so each hand takes a little less off you.
+
+   This is the row's actual answer, and the measurements are why it is a BOARD rule and not a
+   card. Of the five cross-lane terms the game already has, the three that fire are the ones that
+   need no draft — Squeeze is a hold ability (21.4% of turns), campusing is a board state (4.6%),
+   Featureless is a hold (26.4%) — and the two that are cards are dead: `fx: 'guard'` fires on
+   0.03% of turns and `fx: 'weight'` on 0.12%, because only 4.8% of runs ever hold one of those
+   eight cards at all. So the effect a card could not deliver is granted by the wall instead:
+   this IS the Guard rule, handed to you by the shape of the board.
+
+   Measured before writing it: the same hold type lands in both hands on 28.35% of climb turns and
+   nothing in the game read it. Requiring a card in the other hand too is what makes it a decision
+   rather than weather — you have to commit both hands to be matched. */
+export const MATCH_SHED = 1
+/* LANE-1: are both hands on the same kind of hold, with a card on each?
+
+   Reads hold NAMES, not `abilityOf`, so brushing never breaks a match — brushing strips an
+   ability and this is about the shape of the hold, which does not change.
+
+   IT TAKES THE BOARD, NOT THE STATE, and that is not cosmetic. `spit` removes a card from the
+   board mid-turn, so `s.boardP` and the board resolve is actually working on are different
+   arrays — the note on `afterMove` says exactly this, and `powerAgainst` already carries a
+   `live` parameter for it. Written against `s` first, this diverged the preview from resolve on
+   34 of 1750 turns and tripped ENG-21's spit fixture. One function, three callers, each handing
+   it the board it is really looking at. */
+export function matched(boardH: (Hold | null)[], boardP: (Card | null)[]): boolean {
+  const [a, b] = [boardH[0], boardH[1]]
+  return !!a && !!b && a.name === b.name && !!boardP[0] && !!boardP[1]
+}
 export const OPPOSE_ALONE = -2
 export const OPPOSE_PAIR = 2
 
@@ -4902,7 +4953,17 @@ export function powerAgainst(s: GameState, card: Card, hold: Hold, lane: number,
   // opposition: a gaston with nothing pulling against it is just a shrug
   if (card.opposes && lane < 2) {
     const other = board[1 - lane]
-    p += !other ? OPPOSE_ALONE : (other.opposes ? OPPOSE_PAIR : 0)
+    /* LANE-1: and matching is the one thing that stops a pair paying. Opposition is two hands
+       pulling in OPPOSITE directions; two hands on the same kind of hold, in the same
+       orientation, is not that — you are square to the wall. So the board's shape now decides
+       whether your gastons work, which is the decision this ticket exists for: the same matched
+       pair that covers your second hand takes your pairing away. */
+    /* LANE-1: and matching is what stops a pair paying at all. Opposition is two hands pulling
+       in OPPOSITE directions; two hands on the same kind of hold, in the same orientation, is
+       not that — you are square to the wall with nothing to pull against, which is the same
+       position a lone gaston is in. So the shape of the board now decides whether your
+       opposition cards work, which is the relationship this ticket exists to add. */
+    p += !other || matched(s.boardH, board) ? OPPOSE_ALONE : (other.opposes ? OPPOSE_PAIR : 0)
   }
   if (wb.dyno) p *= 2                    // Deadpointing
   return Math.max(0, p + wb.dPowerAll)   // Free Solo
@@ -4960,6 +5021,12 @@ export function resolve(s: GameState, rng: RNG): GameState {
     ? { ...s, boardH: boardH.slice(), boardP: boardP.slice(),
         stance: s.routeMove.kind === 'stance' }
     : s
+  /* LANE-1: matched is read HERE, off the board as you handed it in — the same reason DAILY-2
+     reads `feetOff` off the committed board just below. By the time the shed lands, the lane
+     loop has cleared holds and taken blown cards off, so asking down there describes a board
+     nobody played: measured, it disagreed with the preview on 315 of 1676 turns. This is the
+     post-telegraph board, which is exactly what `afterMove` hands the preview. */
+  const wasMatched = matched(boardH, boardP)
   const fxLane = ['', '', '']
   let restedThis = false, clearedThis = 0
   /* DAILY-2: "feet off" is a decision you made when you committed the turn, so it
@@ -5014,6 +5081,20 @@ export function resolve(s: GameState, rng: RNG): GameState {
     }
     pump = Math.max(0, pump - c.shed); restedThis = true
     log.push(`${c.name} · −${c.shed} pump, no progress.`)
+  }
+  /* LANE-1: matched — both hands on the same kind of hold — is where you shake out on a real
+     route, so it sheds. Board-level rather than per-lane on purpose: the only one-lane version
+     that held the band paid the RIGHT hand, which is arbitrary to anyone looking at the board.
+     Measured: covering both hands with a Bite point instead is +4.8 against the pin.
+
+     IT SITS WITH THE OTHER SHEDS, above the lane loop, and that position is load-bearing.
+     Resolve clamps at zero on EVERY shed and then the lane loop ADDS pump, so a shed placed
+     after the loop clamps against a different number than the same shed in `previewPump` —
+     measured, 34 of 1750 turns disagreed on pump for exactly that reason. Same place in both
+     functions, same answer. */
+  if (wasMatched && !noRest) {
+    pump = Math.max(0, pump - MATCH_SHED)
+    log.push(`Matched hands. A breath. Shed ${MATCH_SHED}.`)
   }
   if (!boardP[2]) log.push('Feet off — campusing.')
 
@@ -5663,6 +5744,8 @@ export function previewPump(s0: GameState, lanes?: LanePreview[]): number {
     const c = s.boardP[i]
     if (c && c.shed && !noRest && i !== noRestLane) pump = Math.max(0, pump - c.shed)
   }
+  // LANE-1: matched sheds, so the preview sheds — resolve does this and they must agree
+  if (matched(s.boardH, s.boardP) && !noRest) pump = Math.max(0, pump - MATCH_SHED)
   let cleared = 0
   for (let i = 0; i < 3; i++) {
     const p = L[i]
@@ -5939,6 +6022,13 @@ export function cardValue(s: GameState, c: Card, deck: Card[]): number {
      sees the grip it will actually face. That is what separates this from `read`. */
   if (c.restChip) v += c.restChip * 3
   if (c.fx === 'tough' || c.fx === 'guard') v += 2
+  /* LANE-1: `weight` was priced at NOTHING — the only cross-lane term with no entry here at all,
+     while `guard` at least had a flat 2. It is +1 Power per other card out, and the board it is
+     paid on is not hypothetical: measured over 86,251 climb turns of the real campaign, both
+     hands are loaded on 90.6% of turns and the feet lane on 95.5%, so a hand card expects 1.86
+     other cards out. Priced at that, through the same `power * 2` the raw stat line uses, rather
+     than at a number chosen to make it get picked. */
+  if (c.fx === 'weight') v += WEIGHT_BOARD * 2
   if (c.fx === 'echo') v += 3
   if (c.fx === 'settle2') v += settleCap
   if (c.chip) v += c.chip * 2.5
@@ -6450,6 +6540,10 @@ export const KEYWORDS: { name: string; text: string }[] = [
   { name: 'Snap', text: 'Outright clears any hold at Grip 3 or less.' },
   { name: 'Commit', text: 'A dyno. Roll to stick it — better fresh, worse pumped, better with feet on. Stick it and you skip the next hold as well. Miss and you are off it.' },
   { name: 'Guard', text: 'While it survives, the other hand lane takes 1 less Bite.' },
+  { name: 'Matching', text: 'Both hands on the same kind of hold, with a card on each. You have '
+    + 'worked the move once, so you get a breath — shed 1 pump. But you are square to the wall, '
+    + 'and opposition needs something to pull against: while you are matched, a sideways move is '
+    + 'alone even with a partner beside it.' },
   { name: 'Momentum', text: '+1 Power for each point of flow.' },
   { name: 'Weight', text: '+1 Power for every other card you have on the board.' },
   { name: 'Echo', text: 'Returns to your hand when it clears a hold.' },

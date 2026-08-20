@@ -33,6 +33,13 @@ export type Tag = '' | 'crimp' | 'sloper' | 'pinch' | 'pocket' | 'dyno' | 'crack
       family that had no name in the tag table — so nothing could count it, build for it, or
       say it out loud. Derived from `opposes`, never authored. */
   | 'oppose'
+  /** LANE-1: core tension. CARD-19 named opposition and left the OTHER two cross-lane terms
+      unnameable — `fx: 'guard'` (the other hand takes 1 less Bite) and `fx: 'weight'` (+1 Power
+      per other card out). Measured over 86,251 climb turns of the real campaign, they fired on
+      0.04% and 0.10% of turns against opposition's 63.5%, because a card with no family cannot
+      be built toward: the loadout builder's synergy bonus is +3 and 2 more per card of a kind,
+      which crowds out every untagged card whatever its stats say. Derived from `fx`. */
+  | 'core'
 
 export type Hold = {
   uid: number; name: string; bite: number; grip: number; crux: boolean; clean: boolean

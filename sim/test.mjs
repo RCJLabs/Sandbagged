@@ -462,6 +462,156 @@ test('ROUTE-7: the bosses are not all the same trick', () => {
   ok(kinds.size >= 4, `the bosses only muster ${kinds.size} distinct threats — too samey`)
 })
 
+group('the board has a shape (LANE-1)')
+test('LANE-1: matched hands are a relationship between the lanes, both ways', () => {
+  /* The row said Squeeze and the gaston/undercling pairing were the only cross-lane rules. They
+     were not: measured over 86,251 climb turns of the real campaign there are five hand-to-hand
+     terms and six on the feet-to-hands axis, and a hand-to-hand rule is live on 56.8% of turns
+     (opposition 63.5% counting both sides of it, Squeeze 21.4%). What was true is that the two
+     rules carried by CARDS are dead — `fx: 'guard'` fires on 0.03% of turns and `fx: 'weight'`
+     on 0.12%, because only 4.8% of runs ever hold one of those eight cards. The three that fire
+     are the three that need no draft: Squeeze is a hold ability, campusing is a board state,
+     Featureless is a hold.
+
+     So this rule is carried by the BOARD. Matched — both hands on the same kind of hold, a card
+     on each — fires on 28.2% of turns and nothing read it before. It pays a breath and it takes
+     your opposition away, and the two-sidedness is not decoration: every version that only gave
+     something measured +1.6 to +5.0 against a 44.3 pin (both hands covered for a Bite point was
+     +5.0; the shed alone +2.4), and the pure cost was −1.1. */
+  ok(E.MATCH_SHED >= 1, `MATCH_SHED is ${E.MATCH_SHED}, so matching does nothing`)
+  const H = (uid, name, grip) => ({ uid, name, bite: 3, grip, crux: false, clean: false })
+  const rng = new E.RNG(1717)
+  /* `pump` is set AFTER startClimb, not through it: startBurn resets the meter to 0, so passing
+     it in left every arm of this test at zero pump and the shed clamped to nothing — the whole
+     block measured 0 against 0 and would have passed with the mechanic deleted. */
+  const base = { ...startClimb(4, rng, { weather: 1 }), turn: 3, pump: 6 }
+  const a = E.spawn('Gaston'), b = E.spawn('Undercling')
+  ok(a.opposes && b.opposes, 'the opposition fixture is not made of opposition cards')
+
+  // 1. the predicate itself: same KIND in both hands, a card on each
+  const same = [H(1, 'crimp', 9), H(2, 'crimp', 9), null]
+  const diff = [H(1, 'crimp', 9), H(2, 'pinch', 9), null]
+  ok(E.matched(same, [a, b, null]), 'two hands on the same kind of hold do not read as matched')
+  ok(!E.matched(diff, [a, b, null]), 'two DIFFERENT holds read as matched')
+  ok(!E.matched(same, [a, null, null]), 'one hand on the wall reads as matched')
+  ok(!E.matched(same, [null, b, null]), 'the other single hand reads as matched')
+  ok(!E.matched([H(1, 'crimp', 9), null, null], [a, b, null]), 'one hold reads as matched')
+  /* Brushing strips a hold's ABILITY and this rule is about the hold's SHAPE, so a brushed
+     crimp still matches a crimp. Keyed on `abilityOf` this would silently stop working the
+     moment anybody used the Brush card. */
+  ok(E.matched([{ ...same[0], clean: true }, same[1], null], [a, b, null]),
+    'brushing one of the two holds broke the match')
+
+  // 2. the cost: square to the wall, so an opposing pair is alone
+  const hold = same[0]
+  const paired = { ...base, boardH: diff, boardP: [a, b, null] }
+  const matchedSt = { ...base, boardH: same, boardP: [a, b, null] }
+  const lone = { ...base, boardH: diff, boardP: [a, null, null] }
+  const pairPower = E.powerAgainst(paired, a, diff[0], 0)
+  const matchPower = E.powerAgainst(matchedSt, a, hold, 0)
+  const lonePower = E.powerAgainst(lone, a, diff[0], 0)
+  eq(pairPower - lonePower, E.OPPOSE_PAIR - E.OPPOSE_ALONE,
+    'the fixture does not read the full opposition swing, so the cost below proves nothing')
+  eq(matchPower, lonePower,
+    `a seated pair on matched hands still pays ${matchPower - lonePower} more than a lone card`)
+
+  // 3. the breath: it sheds, and the preview and resolve agree that it does
+  const drive = st => {
+    const before = st.pump
+    const pv = E.previewPump(st)
+    const out = E.resolve(st, new E.RNG(99))
+    return { before, pv, after: out.pump, log: out.log }
+  }
+  /* Both holds are BRUSHED and share their Bite and Grip, so the only thing that differs
+     between these two boards is whether the names match. Unbrushed, the first cut of this
+     compared a jug (Rest) against a pinch (Squeeze) and measured their abilities instead of the
+     shed — it read a difference of 0 and would have passed with the shed deleted. Grip 99 so
+     nothing clears and no lane resolves differently. */
+  const C = (uid, name) => ({ uid, name, bite: 3, grip: 99, crux: false, clean: true })
+  const m = drive({ ...matchedSt, boardH: [C(1, 'crimp'), C(2, 'crimp'), null] })
+  const u = drive({ ...matchedSt, boardH: [C(1, 'crimp'), C(2, 'pinch'), null] })
+  ok(E.matched([C(1, 'crimp'), C(2, 'crimp'), null], [a, b, null]),
+    'the matched arm of the shed fixture is not actually matched')
+  ok(m.before > E.MATCH_SHED, `the fixture starts at ${m.before} pump, so the shed cannot land`)
+  eq(m.pv, m.after, `the preview said ${m.pv} pump and resolve did ${m.after} on a matched board`)
+  eq(u.pv, u.after, `the preview said ${u.pv} pump and resolve did ${u.after} unmatched`)
+  eq(u.after - m.after, E.MATCH_SHED,
+    `matching shed ${u.after - m.after} pump, not ${E.MATCH_SHED}`)
+  ok(m.log.some(l => /Matched/.test(l)), 'the breath is taken and never mentioned in the log')
+  ok(!u.log.some(l => /Matched/.test(l)), 'an unmatched board claims a match in the log')
+
+  /* 4. It reads the BOARD, not the state. `spit` takes a card off mid-turn, so the board resolve
+     works on and `s.boardP` are different arrays — written against the state this diverged the
+     preview from resolve on 34 of 1750 turns and tripped ENG-21's spit fixture. */
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const decl = region(eng, 'export function matched(', ['export const OPPOSE_ALONE'],
+    { min: 100, what: 'matched' })
+  ok(/boardH: \(Hold \| null\)\[\], boardP: \(Card \| null\)\[\]/.test(decl),
+    'matched takes a GameState again — the spit divergence is back')
+  ok(!/GameState/.test(decl), 'matched reads the state rather than the board it is handed')
+  // and one copy of the rule: nothing else compares the two hand holds' names
+  const others = (eng.match(/boardH\[0\][^\n]*?\.name === /g) ?? []).length
+  eq(others, 0, `${others} place(s) outside matched() compare the two hand holds by name`)
+
+  /* 5. And it must keep firing. A board rule that stops happening is the guard/weight story
+     again — the full campaign reads 28.2% of climb turns matched, 14.2% of them with an
+     opposing card out. Sampled here, so the floor is loose but not decorative. */
+  let turns = 0, hits = 0
+  const rng2 = new E.RNG(88)
+  for (let t = 0; t < 120; t++) {
+    let st = startClimb(Math.floor(rng2.next() * E.ROUTES.length), rng2,
+      { seed: Math.floor(rng2.next() * 2 ** 31), pump: 0 })
+    for (let k = 0; k < 6; k++) {
+      st = E.autoPlay(st, rng2)
+      turns++
+      if (E.matched(st.boardH, st.boardP)) hits++
+      const nx = E.resolve(st, rng2)
+      if (nx.phase !== 'climb') break
+      st = nx
+    }
+  }
+  ok(turns > 300, `only ${turns} turns driven — nothing was really sampled`)
+  ok(hits / turns > 0.1,
+    `hands matched on ${(100 * hits / turns).toFixed(1)}% of turns — the board rule has gone quiet`)
+
+  /* 6. And the two cross-lane terms the drafter could not see. `weight` had NO entry in
+     cardValue at all — the only cross-card term priced at zero — while the board it is paid on
+     is loaded on 90.6% of turns. Named as a family too, so the loadout builder's synergy nudge
+     can reach it; that alone did not resurrect the cards (measured: 0.04% → 0.03% of turns,
+     because only 4.8% of runs ever hold one), which is why this ticket's own rule lives on the
+     board instead. Both halves are still worth having and both are asserted. */
+  const bare = { ...E.freshRun(8, 1, 7), inRun: true, act: 1 }
+  const plain = E.synth(3, 5)
+  const wt = { ...plain, fx: 'weight' }
+  const none = []
+  const wtGain = E.cardValue(bare, wt, none) - E.cardValue(bare, plain, none)
+  ok(Math.abs(wtGain - E.WEIGHT_BOARD * 2) < 1e-6,
+    `a Weight move is worth no more to the drafter than the same card without it: ${wtGain.toFixed(2)}`)
+  ok(E.WEIGHT_BOARD > 1, `WEIGHT_BOARD is ${E.WEIGHT_BOARD}, which is not a board anyone plays on`)
+  for (const n of ['Cut Loose', 'Dead Hang', 'Front Lever'])
+    eq(E.tagOf(E.spawn(n)), 'core', `${n} is a cross-lane card with no family the game can name`)
+  const spec = Object.values(E.CARDS).filter(c => c.synergy === 'core')
+  eq(spec.length, 1, 'core tension has no specialist, so the family is a label rather than a plan')
+  ok(spec[0].fx === 'weight' || spec[0].fx === 'guard',
+    `${spec[0].name} counts core cards and is not one`)
+})
+test('LANE-1: the board says when it has matched you', () => {
+  // two things happen at once and neither is legible from the lanes, so the screen says both
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const banner = region(app, "matched(st.boardH, st.boardP) ? (", ['A11Y-9'],
+    { min: 200, what: 'the matched banner' })
+  ok(/MATCHED/.test(banner), 'the matched banner does not name itself')
+  ok(/MATCH_SHED/.test(banner), 'the banner does not say what the breath is worth')
+  ok(/square to the wall/.test(banner), 'the banner never mentions the cost, only the gift')
+  ok(/role="status"/.test(banner) && /aria-live/.test(banner),
+    'the banner appears mid-climb and does not announce itself')
+  // and the rule is written down where every other rule is
+  ok(E.KEYWORDS.some(k => k.name === 'Matching'), 'matching is not in the keywords')
+  const kw = E.KEYWORDS.find(k => k.name === 'Matching')
+  ok(/shed/.test(kw.text) && /alone/.test(kw.text),
+    'the keyword explains one half of matching and not the other')
+})
+
 group('the weather can move (COND-3)')
 test('COND-3: Contact is read live, so the weather can turn under you', () => {
   /* Contact used to be worked out ONCE, in startBurn, and written onto every card as it was

@@ -2512,8 +2512,14 @@ test('ENG-25: the sim can see opposition — it drafts toward it and seats the p
   })
   ok(plainName, 'no equal-power plain control card to discriminate the fix')
   const plain = E.spawn(plainName)
+  /* LANE-1: the two hand holds are DIFFERENT TYPES on purpose. They used to be two crimps, and
+     matching — both hands on the same kind of hold — now takes an opposition pair apart, because
+     you are square to the wall and nothing is pulling back. So on the old fixture this measured
+     a swing of 0 and the guard failed: it was no longer isolating opposition, it was measuring
+     opposition cancelled by a match. Two types keeps this about the mechanic it names. */
   const hold = { uid: 10, name: 'crimp', bite: 3, grip: 9, crux: false, clean: false }
-  const st = { ...base, boardH: [hold, { ...hold, uid: 11 }, null],
+  const other = { uid: 11, name: 'pinch', bite: 3, grip: 9, crux: false, clean: false }
+  const st = { ...base, boardH: [hold, other, null],
     boardP: [null, null, null],
     piles: { ...base.piles, hand: [g1, plain, g2] } }
   const out = E.autoPlay(st, new E.RNG(3))

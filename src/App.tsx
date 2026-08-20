@@ -2,9 +2,9 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.59 — COND-5: the forecast verdict read the weather and ignored the rock, which
-//   the map printed beside it. It reads both now, and prices the rock against the LINE — the same
-//   rock is worth 37% on compression and 10% on a crimp ladder.
+// SANDBAGGED v10.60 — LANE-1: the board's shape now does something on its own. Matched hands —
+//   both on the same kind of hold — pay a breath and take your opposition away, on 28% of turns.
+//   And the two cross-lane card terms nothing could name are core tension now.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -38,6 +38,7 @@ import {
   previewLane, previewPump, priceOf, recordRun, rerollCost, rerollStep, resolve,
   rollEvent, roughPath, saveGame, seedCode, seqById, seqNeedText, SEQ_GRACE, sigById,
   slotSummary, slotsUsed, spawn, specFromEstablished, specOf, startBurn, stockShop, windowNear, windowOf,
+  matched, MATCH_SHED,
   contactOf,
   styleMods, tagCounts, tagOf, takeOfferStep, takeTwoStep, vanOpen, walkAwayStep, weekKey,
   wipeSlot, xpForSend, xpMult, xpToNext,
@@ -1545,7 +1546,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.59 · RCJ Labs</div>
+          <div className="sfoot">v10.60 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1774,7 +1775,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.59 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.60 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -4255,6 +4256,18 @@ export default function App() {
           {st.turn < DUSK_AT
             ? 'Next turn you start losing the hand. Whatever is left up there, this is the time.'
             : `You are drawing ${Math.max(0, st.turn - DUSK_AT) * DUSK_DRAW} card${Math.max(0, st.turn - DUSK_AT) * DUSK_DRAW === 1 ? '' : 's'} fewer. It only gets darker.`}</div>) : null}
+      {/* LANE-1: matched hands. The shape of the board is doing two things to you at once — a
+          breath, and your opposition cards going quiet — and neither is legible from the lanes
+          themselves, so it is said. Only while it is true, and only on the climb. */}
+      {st.phase === 'climb' && matched(st.boardH, st.boardP) ? (
+        <div className="spot" role="status" aria-live="polite"
+          style={{ borderLeftColor: 'var(--blue)' }}>
+          <b style={{ color: 'var(--blue)' }}>MATCHED</b>
+          {`Both hands on the same ${st.boardH[0]!.name}. You worked it once — a breath, `}
+          {`shed ${MATCH_SHED}. `}
+          {st.boardP.some(c => c?.opposes)
+            ? 'And you are square to the wall: your opposition is alone up here.'
+            : 'Square to the wall, though — nothing to pull against.'}</div>) : null}
       {/* A11Y-9: appears mid-climb on a screen you are already on, so it announces —
           the same rule the window and route-move banners beside it already follow. */}
       {/* SEQ-2: the slip is on the banner, because a margin you cannot see is not a margin
