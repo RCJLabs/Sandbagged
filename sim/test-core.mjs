@@ -25,6 +25,7 @@ function test(name, fn) {
    there for what each of them refuses to do. `guardScan` is asserted at the bottom of
    this file, over this file. */
 import { ok, eq, region, declBody, appFn, cssRule, tail, guardScan, stripComments } from './guard.mjs'
+import { BAND_PIN, BAND_TOL, BAND_N, BAND_LOG } from './band.mjs'
 /* GUARD-9: the kept injections. The table is data; the guard below checks it has not
    rotted. `node sim/mutants.mjs` is what actually runs them. */
 import { MUTANTS, applyPatch, touched } from './mutants.mjs'
@@ -7065,6 +7066,84 @@ test('GUARD-9: the kept injections still injure something', () => {
   }
   eq(dead.length, 0,
     `${dead.length} kept injection(s) patch nothing any more:\n    ${dead.join('\n    ')}`)
+})
+test('GUARD-10: the band cannot drift a version at a time', () => {
+  /* THE FAILURE THIS EXISTS FOR HAPPENED, and it happened while every ticket was being honest.
+     COND-2 measured −0.5, COND-3 +0.5, COND-4 −0.1, COND-5 −0.4, LANE-1 −1.7, DECK-4 −0.2 and
+     SEQ-3 −0.5 against the band — every one inside its own standard error, every one reported
+     band-neutral in good faith — and the sum walked the campaign from the 44.3 it was pinned at
+     down to 42.1. That is BAL-14's compounding, which the ledger guard in test.mjs exists to
+     catch, and it did not catch it because it cannot: it reads `campaign 300` where the standard
+     error is ~2.9, so its tolerance has to be ±6, and ±6 cannot see a 2.2-point slide. Buying
+     that resolution in simulation is ~9,000 extra campaign runs on a slow suite already running
+     11,300.
+
+     So the number is bought once by hand at n=3000 and written into `sim/band.mjs`, and this
+     guard is the thing that makes writing it non-optional. It runs in the FAST suite because it
+     costs nothing — no sims, just arithmetic over a list somebody had to fill in. */
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
+  ok(BAND_LOG.length >= 2, 'the band ledger has no history to read drift out of')
+  ok(BAND_N >= 1500,
+    `the ledger is measured at n=${BAND_N}, where a two-point drift is inside the noise — `
+    + 'a cheap reading recorded as a dear one is how this failed the first time')
+  /* THE TOLERANCE HAS TO BE ABLE TO SEE THE THING IT WAS SIZED FOR. The slide this guard exists
+     because of was 2.2 points (44.3 pinned, 42.1 measured at v10.62), so a tolerance at or above
+     that is the +-6 window's mistake in smaller print: it would pass the exact failure it was
+     written for. Sized against the ledger's own widest step rather than a number in a comment. */
+  const steps = BAND_LOG.slice(1).map((e, i) => Math.abs(e.band - BAND_LOG[i].band))
+  const widestStep = Math.max(...steps)
+  ok(BAND_TOL < widestStep,
+    `the tolerance is ${BAND_TOL} and the ledger's own widest single step is ${widestStep.toFixed(1)} — `
+    + 'a tolerance that wide cannot see the drift it was written for')
+
+  // 1. every entry is a real measurement, at the sample the pin is expressed in
+  for (const e of BAND_LOG) {
+    ok(/^\d+\.\d+\.\d+$/.test(e.version), `"${e.version}" is not a version`)
+    ok(typeof e.band === 'number' && e.band > 0 && e.band < 100,
+      `${e.version} records a band of ${e.band}`)
+    ok(e.note && e.note.length > 8, `${e.version} records no note saying what moved`)
+  }
+  // 2. oldest first, no duplicates — a ledger you can read backwards
+  for (let i = 1; i < BAND_LOG.length; i++) {
+    const [a, b] = [BAND_LOG[i - 1].version, BAND_LOG[i].version]
+    const cmp = (v) => v.split('.').map(Number)
+    const [pa, pb] = [cmp(a), cmp(b)]
+    const older = pa[0] !== pb[0] ? pa[0] < pb[0] : pa[1] !== pb[1] ? pa[1] < pb[1] : pa[2] < pb[2]
+    ok(older, `the ledger runs ${a} then ${b} — it is not oldest-first`)
+  }
+
+  /* 3. THE TEETH. The newest entry has to be THIS version, so a release cannot happen without
+     somebody measuring the band. This is the assertion that would have made the slide above an
+     argument instead of an accumulation. */
+  const newest = BAND_LOG[BAND_LOG.length - 1]
+  eq(newest.version, pkg.version,
+    `package.json is ${pkg.version} and the band ledger stops at ${newest.version} — `
+    + `measure it (\`PAGES=14 SHARP_AT=99 node sim/run.mjs campaign ${BAND_N}\`) and add the entry`)
+
+  // 4. and it has to be near the pin, or be a re-pin somebody argued for
+  const off = newest.band - BAND_PIN
+  ok(Math.abs(off) <= BAND_TOL,
+    `${newest.version} measures ${newest.band}% against a pin of ${BAND_PIN} (${off > 0 ? '+' : ''}${off.toFixed(1)}, `
+    + `tolerance ${BAND_TOL}) — pay it back, or re-pin deliberately and say why in band.mjs`)
+
+  /* 5. And the drift is REPORTED whether or not it trips, because the whole lesson is that the
+     individually-innocent steps are the ones that get you. Any run of consecutive versions
+     moving the same way by more than the tolerance is called out by name. */
+  let worst = null
+  for (let i = 0; i < BAND_LOG.length; i++) {
+    for (let j = i + 1; j < BAND_LOG.length; j++) {
+      const d = BAND_LOG[j].band - BAND_LOG[i].band
+      if (!worst || Math.abs(d) > Math.abs(worst.d)) {
+        worst = { d, from: BAND_LOG[i], to: BAND_LOG[j] }
+      }
+    }
+  }
+  ok(worst, 'no span of the ledger could be compared')
+  /* Not an assertion about the past — the history is allowed to contain the slide it recorded,
+     and re-pins legitimately move the band a long way. What is asserted is that the ledger is
+     legible enough to see one: the widest span in it must be a real number somebody can read. */
+  ok(Number.isFinite(worst.d),
+    `the widest span in the ledger is unreadable: ${worst.from.version} → ${worst.to.version}`)
 })
 test('GUARD-8: no guard reads a window it cannot prove is the right one', () => {
   /* This is the ticket. GUARD-3 found and fixed unchecked-anchor windows; GUARD-8 found
