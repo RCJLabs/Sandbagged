@@ -2,9 +2,9 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.58 — COND-4: the map's forecast verdict disagreed with what the skies cost.
-//   It weighted slopers as heavily as two points of Bite (measured: ~0) and never read dSupport
-//   at all, so it rated humid the worst sky in the game while it measures fourth of six.
+// SANDBAGGED v10.59 — COND-5: the forecast verdict read the weather and ignored the rock, which
+//   the map printed beside it. It reads both now, and prices the rock against the LINE — the same
+//   rock is worth 37% on compression and 10% on a crimp ladder.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -30,7 +30,7 @@ import {
   SEASON_WEEKS, seasonKey, seasonWeekOf, seasonTitle, nextSeasonTitle, weekShare, dayKey, DEEDS, deedsDone, desperationOf,
   endSession, endingFor, endingStep, unreadGrip, FINDABLE, pagesHeld, KNOWN_AT, nextPage,
   metCount, loreFor, establishedIn, exportSave, exposed, exposureOf,
-  faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
+  RouteSpec, faRoute, familyOf, forecastFor, forecastScore, freshRun, gainXp, gearById,
   gearMods, gradeLabel, gradeText, gripShown, holdLabel, honestyOf, importSave,
   jit, leaveEventStep, leaveShopStep, lineCanVary, loadGame, loadoutDeck, mapCliff,
   mapContours, mapPoints, mutMods, newRun, nextPhase, phaseOf, phaseSummary,
@@ -1545,7 +1545,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.58 · RCJ Labs</div>
+          <div className="sfoot">v10.59 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1774,7 +1774,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.58 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.59 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -2153,7 +2153,17 @@ export default function App() {
           {tier.map((n, i) => {
             const f = fc[i]
             const w = WEATHER[f.weather], rk = ROCK[f.rock]
-            const good = forecastScore(f)
+            /* COND-5: the verdict needs the LINE, because half the forecast is the rock and what a
+               rock is worth depends on what the line is made of. So it is a function of the route
+               rather than a value computed before we know which one this node is — and one copy of
+               the tint-and-tag, because there were four and four copies of one rule drift. */
+            const nick = (r?: RouteSpec) => {
+              const g = forecastScore(f, r)
+              return {
+                color: g > 0 ? 'var(--green)' : g < 0 ? 'var(--red)' : 'var(--fade)',
+                tag: g > 0 ? ' · ▲ in nick' : g < 0 ? ' · ▼ out of nick' : '',
+              }
+            }
             if (n.type === 'camp') return (
               <div key={i} className="menu-item" {...tap(() => takeNode(n, i))}>
                 <div className="row"><span className="big">Camp</span>
@@ -2173,9 +2183,8 @@ export default function App() {
                   <div className="sub" style={{ color: 'var(--red)' }}>
                     A long line. Falls cost no skin, but there is nothing in it
                     unless it goes — and if it goes, gear and a card.</div>
-                  <div className="sub" style={{ marginTop: 2,
-                    color: good > 0 ? 'var(--green)' : good < 0 ? 'var(--red)' : 'var(--fade)' }}>
-                    ☁ {w.name} · ⛰ {rk.name}{good > 0 ? ' · ▲ in nick' : good < 0 ? ' · ▼ out of nick' : ''}</div>
+                  <div className="sub" style={{ marginTop: 2, color: nick(r).color }}>
+                    ☁ {w.name} · ⛰ {rk.name}{nick(r).tag}</div>
                 </div>)
             }
             if (n.type === 'established') {
@@ -2190,9 +2199,8 @@ export default function App() {
                       FA · {gradeLabel(r, st.grades)}</span></div>
                   <div className="sub">{r.style} · top out at {r.clear} · {r.crux} crux</div>
                   <div className="sub" style={{ color: 'var(--green)' }}>{r.note}</div>
-                  <div className="sub" style={{ marginTop: 2,
-                    color: good > 0 ? 'var(--green)' : good < 0 ? 'var(--red)' : 'var(--fade)' }}>
-                    ☁ {w.name} · ⛰ {rk.name}{good > 0 ? ' · ▲ in nick' : good < 0 ? ' · ▼ out of nick' : ''}</div>
+                  <div className="sub" style={{ marginTop: 2, color: nick(r).color }}>
+                    ☁ {w.name} · ⛰ {rk.name}{nick(r).tag}</div>
                 </div>)
             }
             if (n.type === 'fa') {
@@ -2206,9 +2214,8 @@ export default function App() {
                   <div className="sub">{r.style} · nobody has been up it, so nobody knows how long</div>
                   <div className="sub" style={{ color: 'var(--red)' }}>
                     A season of dirt on every hold. Bring a brush.</div>
-                  <div className="sub" style={{ marginTop: 2,
-                    color: good > 0 ? 'var(--green)' : good < 0 ? 'var(--red)' : 'var(--fade)' }}>
-                    ☁ {w.name} · ⛰ {rk.name}{good > 0 ? ' · ▲ in nick' : good < 0 ? ' · ▼ out of nick' : ''}</div>
+                  <div className="sub" style={{ marginTop: 2, color: nick(r).color }}>
+                    ☁ {w.name} · ⛰ {rk.name}{nick(r).tag}</div>
                 </div>)
             }
             if (n.type === 'shop') return (
@@ -2302,9 +2309,8 @@ export default function App() {
                         : 'Nothing on your rack. You can lead it, but you will be climbing scared.'}</div>) : null}
                   {st.book[r.name] ? <span style={{ color: 'var(--green)' }}>
                     {' '}· ticked, best {st.book[r.name].bestBurn}</span> : null}</div>
-                <div className="sub" style={{ marginTop: 2,
-                  color: good > 0 ? 'var(--green)' : good < 0 ? 'var(--red)' : 'var(--fade)' }}>
-                  ☁ {w.name} · ⛰ {rk.name}{good > 0 ? ' · ▲ in nick' : good < 0 ? ' · ▼ out of nick' : ''}
+                <div className="sub" style={{ marginTop: 2, color: nick(r).color }}>
+                  ☁ {w.name} · ⛰ {rk.name}{nick(r).tag}
                 </div>
                 {/* ROPE-2 §3. The only route in the game whose SHAPE you choose, and the choice
                     is made here — on the ground, before you commit — because that is the whole

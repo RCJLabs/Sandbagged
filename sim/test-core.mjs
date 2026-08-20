@@ -2166,9 +2166,112 @@ test('COND-4: the forecast agrees with what the sky actually costs', () => {
       `forecastScore is blind to ${k}, which the skies use and nothing has written off`)
   for (const k of Object.keys(EXCLUDED))
     ok(!reads(k), `${k} is written off as excluded and forecastScore reads it anyway`)
-  // the rock is the standing carve-out: handed in, printed beside the verdict, never scored
-  ok(/f: \{ weather: number; rock: number \}/.test(body) && !body.includes('ROCK['),
-    'forecastScore has started scoring the rock — COND-5 is the row for that, and it needs the route')
+  /* COND-5 took the carve-out this used to pin: the rock IS scored now, through the route.
+     What is pinned instead is that the weather half stays computable WITHOUT one — a camp or a
+     shop has no line to climb, and every assertion above reads the weather in isolation, which
+     only means anything while that call is legal. */
+  ok(/spec\?: RouteSpec/.test(body), 'forecastScore no longer takes an optional route')
+  const wOnly = E.forecastScore({ weather: 2, rock: 0 })
+  eq(wOnly, E.forecastScore({ weather: 2, rock: 4 }),
+    'the weather half of the forecast moved with the rock on a node that has no route')
+})
+test('COND-5: the forecast reads the rock, against the line it is on', () => {
+  /* `forecastScore` was handed `{weather, rock}` and read only the weather, while the map printed
+     the rock name directly beside its ▲/▼ verdict. Measured (`node sim/run.mjs rock 400`, send%
+     per rock per style), the rock is as wide a lever as the sky:
+
+       style          granite  sandstone  limestone  gneiss  basalt
+       compression        37%        42%        37%     30%     33%
+       power              16%        24%        21%     20%     22%
+       mixed              19%        32%        27%     26%     28%
+       crimp ladder       10%        16%        18%     18%     18%
+       slab                6%        12%        11%      9%     11%
+
+     And it is not a flat property of the rock: a rock's `boost` multiplies the STYLE's own hold
+     weights, so granite is the harshest rock on four styles and neutral on compression (which
+     has no crimp weight for granite to land on), and sandstone is kindest overall yet FOURTH on
+     a crimp ladder (its `bite` lands on exactly the holds that style is made of). Those two are
+     the cases a single number per rock cannot express, so they are asserted by name below. */
+  const M = {
+    compression:    { granite: 37, sandstone: 42, limestone: 37, gneiss: 30, basalt: 33 },
+    power:          { granite: 16, sandstone: 24, limestone: 21, gneiss: 20, basalt: 22 },
+    mixed:          { granite: 19, sandstone: 32, limestone: 27, gneiss: 26, basalt: 28 },
+    'crimp ladder': { granite: 10, sandstone: 16, limestone: 18, gneiss: 18, basalt: 18 },
+    slab:           { granite:  6, sandstone: 12, limestone: 11, gneiss:  9, basalt: 11 },
+  }
+  const rockIdx = name => E.ROCK.findIndex(r => r.name === name)
+  for (const name of Object.keys(M.slab))
+    ok(rockIdx(name) >= 0, `${name} is in the measured table and not in the game — re-measure`)
+  const specFor = style => {
+    const r = E.ROUTES.find(x => x.style === style && !x.finale && !x.tutorial)
+    ok(r, `no route in the game climbs ${style}, so the measured row is stale`)
+    return r
+  }
+  const kind = (style, name) => E.rockKindness(specFor(style), rockIdx(name))
+
+  // 1. it is centred on the mean rock, so the sign of the whole forecast still means what it did
+  for (const style of Object.keys(M)) {
+    const all = E.ROCK.map((_, i) => E.rockKindness(specFor(style), i))
+    const mean = all.reduce((a, b) => a + b, 0) / all.length
+    ok(Math.abs(mean) < 1e-9, `on ${style} the rock term averages ${mean.toFixed(3)}, not zero`)
+    ok(Math.max(...all) - Math.min(...all) > 0.1, `on ${style} every rock scores the same`)
+  }
+
+  /* 2. the two cases a flat number per rock cannot express, checked BEFORE the aggregate below,
+     because they are the specific claims this ticket is built on and an aggregate that passes at
+     80% can swallow either of them. */
+  ok(kind('compression', 'granite') > kind('compression', 'gneiss'),
+    'granite is rated below gneiss on compression, where it measures 37% against 30% — the flat-rock mistake')
+  ok(kind('crimp ladder', 'sandstone') < kind('crimp ladder', 'limestone'),
+    'sandstone is rated above limestone on a crimp ladder, where it measures 16% against 18% — the flat-rock mistake')
+
+  // 3. and it agrees with the rest of the measurement wherever the measurement is clear
+  const TOL = 4
+  let pairs = 0, agreed = 0
+  for (const style of Object.keys(M)) {
+    const names = Object.keys(M[style])
+    for (const a of names) for (const b of names) {
+      if (M[style][a] - M[style][b] <= TOL) continue
+      pairs++
+      if (kind(style, a) >= kind(style, b)) agreed++
+    }
+  }
+  ok(pairs >= 15, `only ${pairs} clear pairs to check — the measured table has gone flat`)
+  ok(agreed / pairs >= 0.8,
+    `the rock term agrees with only ${agreed}/${pairs} of the pairs the measurement is clear about`)
+
+  // 4. the model is derived from how buildRoute builds a line, not a table of chosen numbers
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const cost = region(eng, 'const rockCost', ['export function rockKindness'],
+    { min: 200, what: 'rockCost' })
+  for (const bit of ['STYLES[style].w', 'boost[k]', 'grip[k]', 'bite[k]', 'HOLD_STATS[k]'])
+    ok(cost.includes(bit), `rockCost no longer reads ${bit} — it has stopped modelling the line`)
+
+  /* 5. And it must actually decide something. The reward policy picks the best-conditioned climb
+     on the tier, and over the full campaign the weather alone left that choice TIED more than
+     half the time — so a forecast that could not see the rock was settling those by node order.
+     Sampled small here; the full sweep (3000 seeds, 78,000 tiers) read 50.0% of tiers offering a
+     choice, 56.4% of those tied on weather, and the rock deciding 22.2% of them. */
+  const CLIMBABLE = ['climb', 'project', 'boss']
+  let choices = 0, moved = 0
+  for (let seed = 0; seed < 300; seed++) {
+    const s0 = E.freshRun(0, 0, seed)
+    for (let act = 0; act < E.ACTS.length; act++)
+      for (let tier = 0; tier < E.ACTS[act].length; tier++) {
+        const s = { ...s0, act, tier, reroll: 0 }
+        const nodes = E.tierNodes(s), fcs = E.forecastFor(s)
+        const climbs = nodes.map((n, i) => [n, i]).filter(([n]) => CLIMBABLE.includes(n.type))
+        if (climbs.length < 2) continue
+        choices++
+        const pick = withRock => climbs.reduce((a, b) =>
+          (E.forecastScore(fcs[b[1]], withRock ? E.ROUTES[b[0].routeIdx] : undefined)
+            > E.forecastScore(fcs[a[1]], withRock ? E.ROUTES[a[0].routeIdx] : undefined) ? b : a))[1]
+        if (pick(false) !== pick(true)) moved++
+      }
+  }
+  ok(choices > 500, `only ${choices} tiers offered a choice of climb — nothing to decide`)
+  ok(moved / choices > 0.05,
+    `the rock changes the pick on ${(100 * moved / choices).toFixed(1)}% of choices — it is not reaching the decision`)
 })
 test('ROUTE-9: each act has its own weather', () => {
   // sample a lot of stages per act and read off what each act can throw at you

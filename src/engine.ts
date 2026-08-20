@@ -606,7 +606,7 @@ export type GameState = {
 export { ASCENT, WEATHER, ROCK, JOURNAL, SEQUENCES, SUSTAINED_CUT, MUTATORS, BOONS } from './content'
 export type { AscentStyle, Weather, Rock, SeqNeed, Sequence, Mutator, Boon } from './content'
 import { ASCENT, WEATHER, ROCK, JOURNAL, SEQUENCES, SUSTAINED_CUT, MUTATORS, BOONS } from './content'
-import type { AscentStyle, SeqNeed, Sequence } from './content'
+import type { AscentStyle, SeqNeed, Sequence, Rock as RockType } from './content'
 
 export function styleMods(level: number): AscentStyle {
   const n = Math.max(0, Math.min(ASCENT.length - 1, level))
@@ -2422,9 +2422,60 @@ export function forecastFor(s: GameState): { weather: number; rock: number }[] {
    skies — but a rock's kindness is a function of the ROUTE's style (granite is sharp, which is
    punishing on a crimp ladder and fine on a jug haul), so a flat term would be wrong in a way
    this one is not. That needs the route, which this signature does not have. See COND-5. */
-export function forecastScore(f: { weather: number; rock: number }): number {
+/* COND-5: what the ROCK is worth on THIS line, which is the half of the forecast this function
+   was handed and did not read. Derived, not fitted: `buildRoute` builds a line by taking the
+   style's hold weights, multiplying each by the rock's `boost`, and dealing holds whose Grip and
+   Bite carry the rock's `grip` and `bite`. So the expected cost of a hold on this rock is that
+   same combination, and nothing here is a coefficient somebody chose.
+
+   Measured against it (`node sim/run.mjs rock 400`, send% per rock per style):
+
+     style          granite  sandstone  limestone  gneiss  basalt   spread
+     compression        37%        42%        37%     30%     33%     12pt
+     power              16%        24%        21%     20%     22%      8pt
+     mixed              19%        32%        27%     26%     28%     12pt
+     crimp ladder       10%        16%        18%     18%     18%      8pt
+     slab                6%        12%        11%      9%     11%      6pt
+
+   The model agrees with 18 of the 22 pairs the measurement is clear about (>4pt apart), and it
+   is right about both cases a FLAT rock term gets badly wrong — granite is neutral on
+   compression, because compression has no crimp weight at all for granite's `boost` to land on,
+   and sandstone is the FOURTH kindest rock on a crimp ladder despite being the kindest overall,
+   because its `bite` lands on exactly the holds a crimp ladder is made of. My own COND-5 row
+   said "granite is sharp — punishing on a crimp ladder, fine on a jug haul", which is the right
+   shape and the wrong example: granite is harshest on four styles of five and simply ABSENT on
+   the fifth.
+
+   It is centred on the mean rock for the style, because "no rock" is not a thing you can draw —
+   the choice a player is making is between the nodes on this tier, so the comparison that means
+   anything is against the average rock they could have got. That also keeps the sign of this
+   function meaning what it has always meant. */
+const rockCost = (style: StyleKey, rock?: RockType): number => {
+  const w0 = STYLES[style].w
+  let tot = 0, sum = 0
+  for (const k of Object.keys(w0)) {
+    const w = w0[k] * (rock ? (rock.boost[k] ?? 1) : 1)
+    const d = HOLD_STATS[k]
+    if (!d) continue
+    tot += w * (d.grip + (rock?.grip[k] ?? 0) + d.bite + (rock?.bite[k] ?? 0))
+    sum += w
+  }
+  return sum ? tot / sum : 0
+}
+export function rockKindness(spec: RouteSpec, rockIdx: number): number {
+  const mine = ROCK[rockIdx]
+  if (!mine || !STYLES[spec.style]) return 0
+  const mean = ROCK.reduce((a, r) => a + rockCost(spec.style, r), 0) / ROCK.length
+  return mean - rockCost(spec.style, mine)
+}
+/* One model unit is worth ~10 points of send% (the spreads above against the model's spans);
+   a weather unit is ~14 (COND-4 measured Bite at ~30 for its weight of 2). So the rock is
+   scaled to the same ruler rather than being handed a coefficient of convenience. */
+export const ROCK_WEIGHT = 0.7
+export function forecastScore(f: { weather: number; rock: number }, spec?: RouteSpec): number {
   const w = WEATHER[f.weather]
   return -w.dBite * 2 + w.dContact + (w.dSupport ?? 0)
+    + (spec ? rockKindness(spec, f.rock) * ROCK_WEIGHT : 0)
 }
 /** Sum of everything you are carrying. */
 export function gearMods(ids: string[]): Required<Omit<Gear, 'id' | 'name' | 'slot' | 'text' | 'brushFirst'>> & { brushFirst: boolean } {

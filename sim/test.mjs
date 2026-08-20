@@ -845,10 +845,20 @@ test('VIS-7: the forecast never rides on colour alone, on any node', () => {
   // non-colour ▲/▼ cue — colour-blind players get no read otherwise, and the
   // project / FA / established nodes used to render it green/red with no arrow
   const conditions = app.match(/☁ \{w\.name\} · ⛰ \{rk\.name\}/g) ?? []
-  const cued = app.match(/☁ \{w\.name\} · ⛰ \{rk\.name\}\{good > 0 \? ' · ▲ in nick'/g) ?? []
+  // COND-5 moved the tint and the cue into one shared helper, because there were four copies
+  // of the same ternary pair and the verdict now needs the route. So the sites are checked for
+  // the shared tag, AND the helper is checked for the cue actually being in it — a tag that
+  // resolved to the empty string would satisfy the call sites and lose the arrows.
+  const cued = app.match(/☁ \{w\.name\} · ⛰ \{rk\.name\}\{nick\(r\)\.tag\}/g) ?? []
   ok(conditions.length >= 4, `only ${conditions.length} node types show the forecast`)
   eq(cued.length, conditions.length,
     `${conditions.length - cued.length} forecast line(s) still ride on colour alone`)
+  const helper = region(app, 'const nick = (r?: RouteSpec)', ['if (n.type ==='],
+    { min: 200, what: 'the shared forecast verdict' })
+  ok(/▲ in nick/.test(helper) && /▼ out of nick/.test(helper),
+    'the shared forecast tag no longer carries the ▲/▼ cue, so every node rides on colour alone')
+  ok(/var\(--green\)/.test(helper) && /var\(--red\)/.test(helper),
+    'the shared forecast verdict lost its colour')
 })
 test('VIS-6: the family mark reaches every card-list screen', () => {
   const app = readFileSync('src/App.tsx', 'utf8')

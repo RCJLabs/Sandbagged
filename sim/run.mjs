@@ -70,6 +70,38 @@ if (mode === 'conditions') {
     console.log(`  ${E.ROCK[r].name.padEnd(10)} ${avg({ rock: r }).toFixed(0).padStart(4)}%`)
 }
 
+/* COND-5. send% by rock AND by the route's style. The `conditions` table above averages the
+   rock over four mid-ladder routes that happen to be mixed, crimp ladder and compression — no
+   slab, no power, no jug haul — so its single number per rock hides the thing that matters:
+   a rock's `boost` MULTIPLIES the style's own hold weights, so how kind it is depends entirely
+   on what the line is made of. This is the matrix `forecastScore` needs to be right. */
+if (mode === 'rock') {
+  const byStyle = new Map()
+  E.ROUTES.forEach((r, i) => {
+    if (r.finale || r.tutorial || r.grade < 3 || r.grade > 8) return
+    const l = byStyle.get(r.style) ?? []
+    if (l.length < 4) { l.push(i); byStyle.set(r.style, l) }
+  })
+  const names = E.ROCK.map(r => r.name)
+  console.log(`send% by rock and style — mid-act deck, ${N} sessions per cell\n`)
+  console.log('style'.padEnd(15) + names.map(n => n.padStart(11)).join('') + '     spread')
+  console.log('-'.repeat(15 + 11 * names.length + 11))
+  const rows = []
+  for (const [style, idxs] of byStyle) {
+    const cells = E.ROCK.map((_, r) =>
+      idxs.reduce((a, i) => a + stat(i, 1, { rock: r }).send, 0) / idxs.length)
+    rows.push([style, cells])
+    const spread = Math.max(...cells) - Math.min(...cells)
+    console.log(style.padEnd(15) + cells.map(c => (c.toFixed(0) + '%').padStart(11)).join('')
+      + `${spread.toFixed(0).padStart(9)}pt`)
+  }
+  console.log('')
+  for (const [style, cells] of rows) {
+    const best = cells.indexOf(Math.max(...cells)), worst = cells.indexOf(Math.min(...cells))
+    console.log(`  ${style.padEnd(14)} kindest ${names[best].padEnd(10)} harshest ${names[worst]}`)
+  }
+}
+
 if (mode === 'costing') {
   const shell = (P, C) => {
     const d = []
@@ -178,7 +210,9 @@ function runOnce(seed, carry) {
           const fcs = E.forecastFor(s)
           const climbs = tier.map((x, i) => [x, i]).filter(([x]) => x.type === 'climb' || x.type === 'boss')
           n = climbs.length
-            ? climbs.reduce((a, b) => (E.forecastScore(fcs[b[1]]) > E.forecastScore(fcs[a[1]]) ? b : a))[0]
+            // COND-5: with the route, so the rock counts — it is half of what the forecast says
+            ? climbs.reduce((a, b) => (E.forecastScore(fcs[b[1]], E.ROUTES[b[0].routeIdx])
+              > E.forecastScore(fcs[a[1]], E.ROUTES[a[0].routeIdx]) ? b : a))[0]
             : (climb ?? tier[0])
         }
         else n = climb ?? tier[0]
