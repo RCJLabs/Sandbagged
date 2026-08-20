@@ -306,20 +306,21 @@ export const MUTANTS = [
       "      if (r === 'rare' && slotsUsed(deck, 'rare') >= RARE_SLOTS) continue",
       "      if (false && r === 'rare' && slotsUsed(deck, 'rare') >= RARE_SLOTS) continue"]] },
   { id: 'SIM-8/band-excludes-its-pin', suite: 'core',
-    why: 'the pin number and its band drift apart', catches: 'but its band is',
-    patch: [['sim/test.mjs', '    ok(full > 38 && full < 50,', '    ok(full > 60 && full < 80,']] },
+    why: 'the drift guard states its own literal band again instead of reading BAND_PIN, which is exactly how it sat two versions behind a re-pin that had already happened — both of its own copies agreed with each other and neither was the pin',
+    catches: 'no longer measures against BAND_PIN',
+    patch: [['sim/test.mjs', '    ok(Math.abs(full - BAND_PIN) < 6,', '    ok(full > 38 && full < 50,']] },
   { id: 'SIM-8/band-too-wide', suite: 'core',
     why: 'the band widened until it could not catch a drift',
     catches: 'which would not catch a BAL-14 slide',
-    patch: [['sim/test.mjs', '    ok(full > 38 && full < 50,', '    ok(full > 5 && full < 95,']] },
+    patch: [['sim/test.mjs', 'ok(Math.abs(full - BAND_PIN) < 6,', 'ok(Math.abs(full - BAND_PIN) < 45,']] },
   { id: 'SIM-8/repin-undated', suite: 'core',
     why: 'the re-pin loses its date', catches: 'does not say which version set the pin',
     patch: [['sim/test.mjs',
       '    /* THE PIN IS ~44, RE-SET AT v10.23 (SIM-8), and this is a deliberate dated re-pin in',
       '    /* THE PIN IS ~44, and this is a deliberate dated re-pin in'],
       ['sim/test.mjs',
-      '      `the campaign completes ${full}% with a full journal — ~44, re-pinned at v10.23 (SIM-8)`)',
-      '      `the campaign completes ${full}% with a full journal — ~44, re-pinned lately`)']] },
+      'against a pin of ${BAND_PIN} — re-pinned at v10.23 (SIM-8) and again at v10.63 (LANE-2)`)',
+      'against a pin of ${BAND_PIN} — re-pinned lately`)']] },
 
   // ---- GUARD-9: the kept injections themselves ----------------------------------
   /* A ticket that says every guard gets injections had better have its own. These are
@@ -1440,7 +1441,7 @@ export const MUTANTS = [
   { id: 'RUN-14/swaps-a-climb', suite: 'core',
     why: 'THE SECOND VERSION MEASURED AND THROWN AWAY: the swap can take a CLIMB, which reads 39.2% — worse than dropping a node — because sends are what grow a deck, so trading a climb for a camp is a loss even though a camp hands skin back',
     catches: 'changed how much you can climb',
-    patch: [['src/engine.ts', '  const open = all.map((n, i) => (CLIMBABLE.includes(n.type) ? -1 : i)).filter(i => i >= 0)', "  const open = all.map((n, i) => (n.type === 'boss' ? -1 : i)).filter(i => i >= 0)"]] },
+    patch: [['src/engine.ts', '  const open = all.map((n, i) => (MAP_SWAP_IN.includes(n.type) ? i : -1)).filter(i => i >= 0)', "  const open = all.map((n, i) => (n.type === 'boss' ? -1 : i)).filter(i => i >= 0)"]] },
   { id: 'RUN-14/duplicate-kinds', suite: 'core',
     why: 'a stage can be given a kind it already offers, so a run can find two shops at one stage and the swap stops varying anything',
     catches: 'offers two',
@@ -1625,11 +1626,20 @@ export const MUTANTS = [
   { id: 'GUARD-10/release-without-a-band', suite: 'core',
     why: 'a version ships with no band measured for it, which is the state every one of the eight versions that walked the campaign from 44.3 to 42.1 shipped in',
     catches: 'and the band ledger stops at',
-    patch: [['package.json', '"version": "10.64.0"', '"version": "10.65.0"']] },
+    /* ANCHORED OFF THE NEIGHBOUR, NOT THE NUMBER. This injection was written as
+       `"version": "10.64.0"` -> the next one, and it rotted on the very next release — twice,
+       because the obvious repair (`"version": "`) is under GUARD-9's 12-character floor. It now
+       renames the real key and inserts a version no ledger will ever hold, which is version-
+       agnostic and cannot rot on a bump. */
+    patch: [['package.json', '"private": true,\n  "version": "', '"private": true,\n  "version": "99.0.0",\n  "_wasVersion": "']] },
   { id: 'GUARD-10/band-far-from-the-pin', suite: 'core',
     why: 'a recorded band sits miles from the pin and nobody has re-pinned or paid it back — the guard has to refuse the number, not the arithmetic',
     catches: 'pay it back, or re-pin deliberately',
-    patch: [['sim/band.mjs', "{ version: '10.64.0', band: 46.4,", "{ version: '10.64.0', band: 51.9,"]] },
+    /* AT THE PIN, NOT AT AN OLD ENTRY. It used to move v10.64's recorded band, which stopped
+       working the moment v10.64 stopped being the newest entry — the guard polices the NEWEST
+       band against the pin and deliberately leaves the history alone. Moving the pin is the
+       same failure from the other side and does not rot. */
+    patch: [['sim/band.mjs', 'export const BAND_PIN = 45', 'export const BAND_PIN = 20']] },
   { id: 'GUARD-10/tolerance-opened-up', suite: 'core',
     why: 'the tolerance is widened until it cannot see the 2.2-point slide it was sized to catch, which is exactly how the old +-6 window missed it',
     catches: 'cannot see the drift it was written for',
@@ -1648,6 +1658,31 @@ export const MUTANTS = [
     catches: 'records no note',
     patch: [['sim/band.mjs', "note: 'GUARD-10 · this ledger and its guard; no game rule touched, and the band is identical, which is what that should look like' }",
       "note: 'tidy' }"]] },
+
+  // ---- NARR-22: the ending the pages exist for, on a band that can see a slide ----
+  { id: 'NARR-22/run-14s-rule-restored', suite: 'slow',
+    why: "THE BUG, in the words RUN-14 shipped: any NON-CLIMBING node may be dropped. That takes the trail node — the journal's only tap — from a fixed 11 a run to 10.56, and FA nodes from 3 to 1.93, and it cost nine points of the known ending (61.3% of careers at v10.51 to 52.1% at v10.52) unnoticed for twelve versions, because the guard over it read the wrong number at too small a sample",
+    catches: 'of careers against a pin of',
+    patch: [['src/engine.ts', '  const open = all.map((n, i) => (MAP_SWAP_IN.includes(n.type) ? i : -1)).filter(i => i >= 0)',
+      "  const open = all.map((n, i) => (['climb', 'project', 'boss'].includes(n.type) ? -1 : i)).filter(i => i >= 0)"]] },
+  { id: 'NARR-22/swap-takes-what-it-cannot-give', suite: 'core',
+    why: 'the trail node goes back into the swap pool, so it becomes droppable again and a dropped one is replaced by a camp or a shop two times in three — 13.29 events a run when it is only ever gained, 10.56 when it can also be lost, and neither is the 11 the static table says',
+    catches: 'the swap can only take what it can give back',
+    patch: [['src/engine.ts', "export const MAP_SWAP_IN: NodeType[] = ['camp', 'shop']",
+      "export const MAP_SWAP_IN: NodeType[] = ['camp', 'event', 'shop']"]] },
+  { id: 'NARR-22/alpinist-unbought', suite: 'slow',
+    why: "the Alpinist loses the buy-back the map fix forced. RUN-14's leak had been inflating camps 9 to 10.55 a run and propping this climber up by ~1.4 points; with the leak closed and the dial gone it reads 5.0% against a floor of 5, which is where it has actually been since v10.55",
+    catches: 'completes only',
+    patch: [['src/engine.ts', "    settleMax: 3, dContact: -2, dAttempts: 2, deed: 'enduro',",
+      "    settleMax: 3, dContact: -2, deed: 'enduro',"]] },
+  { id: 'NARR-22/ending-recorded-nowhere', suite: 'core',
+    why: 'a release ships without its known-ending rate written down, which is the state all twenty-one versions of the 43.1%-to-25.1% slide shipped in and the reason locating it cost a bisection',
+    catches: 'records no known-ending rate',
+    patch: [['sim/band.mjs', "band: 45.2, ending: 62.9, note: 'NARR-22", "band: 45.2, note: 'NARR-22"]] },
+  { id: 'NARR-22/ending-read-cheaply', suite: 'core',
+    why: 'the ending column drops back to the 60-career reading, where the standard error is over 6 points — the sample that forced the old bar 18 points below its pin in the first place',
+    catches: 'the standard error is over 4 points',
+    patch: [['sim/band.mjs', 'export const ENDING_N = 240', 'export const ENDING_N = 60']] },
 
   // ---- COND-4: the forecast agrees with what the sky costs ----
   { id: 'COND-4/forecast-as-it-was', suite: 'core',

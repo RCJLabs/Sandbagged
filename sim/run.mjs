@@ -678,9 +678,17 @@ if (mode === 'career') {
   const pagesAt = [], talksAt = [], wonAt = []
   const END = { known: 0, partial: 0, stranger: 0 }
   let finished = 0, finishTrip = []
+  /* NARR-22. `known` over WINS is the wrong denominator and it took a bisection to see why.
+     It divides late-trip wins (the only ones that can hold ten pages) by every win in the
+     career, so getting BETTER at the game lowers it: LANE-2 raised the campaign band 42.1 to
+     46.4, which won 174 expeditions instead of 199, and the ending rate "fell" 29.3% to 25.1%
+     while the share of careers that actually reached the known ending ROSE 48.3% to 50.0%.
+     A guard on the ratio fires at improvements. This counts CAREERS instead: did the story
+     land at all, for this player, inside eight expeditions. */
+  let careersKnown = 0
   for (let c = 0; c < N; c++) {
     let carry = { seen: [], journal: [] }
-    let done = -1
+    let done = -1, everKnown = false
     for (let t = 0; t < TRIPS; t++) {
       const r = runOnce(Math.floor(rng.next() * 2 ** 31), carry)
       // page 7 is the summit page: only a completed expedition brings it back
@@ -695,8 +703,13 @@ if (mode === 'career') {
         if (!a.includes(c)) { a.push(c); firstSeen.set(id, a) }
       }
       if (done < 0 && E.TALKS.every(k => carry.seen.includes(k.id))) done = t
-      if (r.won) END[E.endingFor({ journal: r.journalOut.includes(7) ? r.journalOut : [...r.journalOut, 7] })]++
+      if (r.won) {
+        const e = E.endingFor({ journal: r.journalOut.includes(7) ? r.journalOut : [...r.journalOut, 7] })
+        END[e]++
+        if (e === 'known') everKnown = true
+      }
     }
+    if (everKnown) careersKnown++
     if (done >= 0) { finished++; finishTrip.push(done + 1) }
   }
   console.log(`${N} careers x ${TRIPS} expeditions\n`)
@@ -706,6 +719,8 @@ if (mode === 'career') {
       `${(talksAt[t] / N).toFixed(1).padStart(14)}/${E.TALKS.length}   ${(pagesAt[t] / N).toFixed(1).padStart(14)}/15`)
   console.log(`\n  all ${E.TALKS.length} talks seen within ${TRIPS} trips: ${(100 * finished / N).toFixed(1)}%` +
     (finishTrip.length ? `  (median trip ${finishTrip.sort((a,b)=>a-b)[Math.floor(finishTrip.length/2)]})` : ''))
+  // NARR-22: the number the guard reads. Careers, not wins — see the note above.
+  console.log(`\n  careers reaching the known ending: ${(100 * careersKnown / N).toFixed(1)}%`)
   const tot = END.known + END.partial + END.stranger
   console.log(`\n  epilogue over ${tot} wins: known ${(100*END.known/tot).toFixed(1)}%  partial ${(100*END.partial/tot).toFixed(1)}%  stranger ${(100*END.stranger/tot).toFixed(1)}%   (known needs ${E.KNOWN_AT}, partial ${E.PARTIAL_AT} of ${E.FINDABLE})`)
   console.log('\n  talk                     careers reaching it')

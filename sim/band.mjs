@@ -25,6 +25,18 @@
  *
  * HOW TO MEASURE: `PAGES=14 SHARP_AT=99 node sim/run.mjs campaign 3000`, the full-journal arm.
  * That is the same measurement the pin is expressed in and the same one the ROADMAP quotes.
+ *
+ * NARR-22 ADDED A SECOND COLUMN, and it is here for a different reason than the band is.
+ * The known-ending rate had slid 43.1% to 25.1% over twenty-one versions in exactly the same
+ * way, and finding out where cost a version-by-version bisection — nine measurements, because
+ * no version had written its number down. That number is CHEAP to measure (75 seconds), so
+ * unlike the band it is policed by a real band in the suite: the NARR-22 guard in test.mjs owns
+ * the pin and the tolerance. This column is not a second guard on the value. It is the history,
+ * so the next slide is a file somebody reads instead of a bisection somebody runs.
+ *
+ * HOW TO MEASURE IT: `TRIPS=8 node sim/run.mjs career 240 reads`, and take the line that says
+ * "careers reaching the known ending". Careers, not wins — see the NARR-22 note in test.mjs for
+ * why the wins ratio falls when the game gets better.
  */
 
 /** The band the game is aimed at, in the CARD-15 sense: a number somebody chose, with a date. */
@@ -35,10 +47,18 @@ export const BAND_TOL = 2.0
 /** The sample the recorded numbers must be measured at, so a cheap reading cannot be passed off
     as a dear one. */
 export const BAND_N = 3000
+/** NARR-22: the sample the `ending` column is measured at. Kept here rather than in the guard so
+    the ledger and the band in test.mjs cannot quietly disagree about what the number means. */
+export const ENDING_N = 240
 
-/* Oldest first. `band` is the full-journal campaign completion at BAND_N.
+/* Oldest first. `band` is the full-journal campaign completion at BAND_N; `ending` is the share
+   of `reads` careers that reach the known ending at ENDING_N.
    Only add an entry you have actually measured — the guard cannot tell a real number from an
-   invented one, and an invented one is worse than no ledger at all. */
+   invented one, and an invented one is worse than no ledger at all.
+
+   `ending` starts at v10.65 because that is the version that made it measurable in one line.
+   For the record, and measured during NARR-22's bisection at the same sample: v10.51 read 61.3%,
+   v10.52 (RUN-14) 52.1%, and v10.64 53.3%. The whole nine-point step is v10.52. */
 export const BAND_LOG = [
   { version: '10.56.0', band: 43.5, note: 'COND-2 · windows can pass' },
   { version: '10.57.0', band: 45.0, note: 'COND-3 · Contact read live; finale traded Bite for Contact' },
@@ -49,4 +69,5 @@ export const BAND_LOG = [
   { version: '10.62.0', band: 42.1, note: 'SEQ-3 · a plan can be bought — the pin was 44.3 and this is where the slide became undeniable' },
   { version: '10.63.0', band: 46.4, note: 'LANE-2 · builder family bonus removed; band re-pinned ~44 → ~45 with Evan' },
   { version: '10.64.0', band: 46.4, note: 'GUARD-10 · this ledger and its guard; no game rule touched, and the band is identical, which is what that should look like' },
+  { version: '10.65.0', band: 45.2, ending: 62.9, note: 'NARR-22 · RUN-14 could thin the trail node, which is the journal\'s only tap; the ending guard re-pinned on careers, not wins' },
 ]

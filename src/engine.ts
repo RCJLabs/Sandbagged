@@ -1995,8 +1995,49 @@ export const ARCHETYPES: Archetype[] = [
       ['Heel Hook', 2], ['Smear', 1], ['Kneebar', 1], ['Breathe', 2], ['Brush', 2]) },
   { id: 'alpine', name: 'The Alpinist', unlock: 12, gear: 'liquid',
     text: 'Used to being cold, tired and a long way from the road.',
-    sig: 'Endurance', sigText: 'Moves settle all the way to +3, but everything has 2 less Contact.',
-    settleMax: 3, dContact: -2, deed: 'enduro',  // META-6: earned by an eight-line Circuit
+    sig: 'Endurance', sigText: 'Moves settle all the way to +3 and two more burns a day, but everything has 2 less Contact.',
+    /* NARR-22 BOUGHT THIS CLIMBER BACK, and the reason is worth keeping because the money was
+       coming from a bug. RUN-14's swap could take a node the pool cannot hand back, and one side
+       effect was that it INFLATED CAMPS from 9 a run to 10.55 — which had been propping the
+       Alpinist up by about 1.4 points ever since v10.52. NARR-22 stops that, and underneath it
+       this climber reads 5.0% against a floor of 5. It has been there or thereabouts since
+       v10.55: measured on a STATIC map it reads 7.0 at v10.51, 7.0 at v10.53, 5.1 at v10.55,
+       8.0 at v10.60 and 5.2 at v10.64 — three points a version, in both directions, every one of
+       them a real engine effect at n=2000 and none of them visible to anybody at the time. That
+       is BAL-18's ticket, not this one.
+
+       So this is the CARD-15 / BAL-16 move: pay for the climber openly rather than take it from
+       a leak. `dPsyche` is BAL-16's own dial, the one that bought the Comp Kid back.
+
+       TEN DIALS WERE MEASURED AT n=2000. What they say about this climber is worth more than
+       the one that shipped, so all of them are here:
+         dSkin +1               5.0%  — nothing. Skin deaths 35% to 29%, psyche 20% to 23%: it
+                                        swaps one death for another. Paired with dAttempts +1 it
+                                        reads 6.0%, BELOW dAttempts alone, so skin is not a lever
+                                        on this climber at any burn count. (The 67% skin deaths at
+                                        five burns are the extra burns being spent, not a new
+                                        constraint — an easy thing to read backwards, and I did.)
+         betaGrip +1            6.1%  — inert, paired with dAttempts +1 and worth 0.0 over it.
+                                        BAL-16 measured the same nothing on the Comp Kid.
+         settleMax 3 to 4       3.8%  — WORSE. Settling longer costs turns, and the turn is the
+                                        scarce thing — the lesson RUN-14 learned from the other
+                                        end when it traded a climb away.
+         dContact -2 to -1     10.6%  — a different climber, not a buy-back: second best in the
+                                        game. Walked back with dAttempts -1 it reads 5.6% and with
+                                        settleMax 2 it reads 10.0%. There is no landing between.
+         dHand +1              15.9%  — the best climber in the game by a distance. BAL-16 found
+                                        the same cliff on the Comp Kid (15.6%).
+         dPsyche +1             6.4%  — clears the floor, and RULED OUT rather than measured out:
+                                        BAL-16 guards `dPsyche` as one climber's buy-back, and
+                                        needing a dial is not a reason to spend somebody else's.
+         dAttempts +1           6.1%  — real, but it clears the floor by 2.06 SE against a bar of
+                                        2, which is a guard passing on a coin flip.
+         dAttempts +2           7.0%  — SHIPPED. 3.5 SE clear, back where the climber sat at
+                                        v10.51 and v10.53, with the headroom something that swings
+                                        three points a version needs. Skin deaths 83%, psyche 1%:
+                                        it now always runs out of skin, which for this one reads
+                                        as the character rather than as a flaw. */
+    settleMax: 3, dContact: -2, dAttempts: 2, deed: 'enduro',  // META-6: earned by an eight-line Circuit
     loadout: L(['Open Hand', 3], ['Jug Haul', 2], ['Flag', 2], ['Heel Hook', 2],
       ['Gaston', 2], ['Shake Out', 1], ['Breathe', 2], ['Brush', 1]) },
   /* META-7. The one climber built out of the hooks the engine already had and
@@ -2394,19 +2435,64 @@ const ACT_ROCK: number[][] = [
    handler — so a second place that decides which nodes exist is the ENG-26 divergence arriving
    by the front door. Everything that asks what a stage offers comes through here. */
 export const MAP_FLOOR = 2
-/** RUN-14: the kinds a stage can gain. All three are self-contained (`routeIdx -1`), which is
-    why the swap can only ever reach for one of these — a climb would need a route, and choosing
-    one per stage is authoring a second map rather than varying this one. */
-export const MAP_SWAP_IN: NodeType[] = ['camp', 'event', 'shop']
-/** RUN-14: what a stage must always keep at least one of. */
-const CLIMBABLE: NodeType[] = ['climb', 'project', 'boss']
+/** RUN-14: the kinds a stage can gain, and — since NARR-22 — the only kinds it can lose. Both
+    are self-contained (`routeIdx -1`), which is why the swap can only ever reach for one of
+    these: a climb would need a route, and choosing one per stage is authoring a second map
+    rather than varying this one. */
+export const MAP_SWAP_IN: NodeType[] = ['camp', 'shop']
+/* NARR-22. THE SWAP MAY ONLY TAKE WHAT IT CAN GIVE BACK, and RUN-14's rule was one word looser
+   than that.
 
+   RUN-14 replaced "one of the NON-CLIMBING nodes", and it argued the climbing boundary carefully
+   — anything that reduces how much you can climb costs several points, so climbs, projects and
+   bosses are out of range. What it did not notice is that non-climbing is not the same as
+   interchangeable. Two of the kinds it could drop can never be handed back:
+
+     · `event` is the TRAIL NODE, and it is the only tap the journal has. Pages come from event
+       outcomes (`applyOutcome`, `o.journal`), and the camp talks that also grant them are gated
+       on pages — so the trail node feeds the beta you carry, the conversations that open, and
+       which of the three endings you top out into.
+     · `fa` is the only place you can put up a line of your own, which is the one way to earn the
+       First Ascensionist badge.
+
+   Neither is in `MAP_SWAP_IN`, so every drop that landed on one was a one-way loss. Measured
+   over a run: trail nodes fell from a fixed 11 to 10.56 and FA nodes from 3 to 1.93.
+
+   WHAT THE 4% SHAVE ON THE TRAIL NODE COST, at 240 careers x 8 expeditions on the `reads`
+   policy — the share of careers whose story lands at all. NINE POINTS, in the one version:
+   61.3% at v10.51 to 52.1% at v10.52, with the journal after eight expeditions falling 11.2
+   pages to 10.4. `KNOWN_AT` is 10, so a 0.8-page shave lands directly on the threshold and moves
+   the ending a whole trip later. Nobody saw it because the guard over it was reading the wrong
+   number at too small a sample — see the NARR-22 note in test.mjs, which is the other half.
+
+   THE RULE NOW. The drop is confined to `MAP_SWAP_IN` itself, so a stage can trade a camp for a
+   shop and nothing else. Every other kind's count in a run is byte-identical to the static
+   table: climbs 35, projects 6, bosses 4, events 11, FAs 3, with camps and shops at 9.04 and
+   8.96 against 9 and 9. That is asserted rather than described, in the RUN-14 core guard.
+
+   This reads 62.9% of careers at 240, against 58.8% for an engine where RUN-14 never happened,
+   and the band is 45.2% at n=3000 — on GUARD-10's pin of 45.
+
+   TWO NARROWER SHAPES WERE MEASURED FIRST AND BOTH ARE WORTH KEEPING HERE, because each is a
+   plausible reading of the bug that makes it somewhere else.
+     · PROTECT `event` AND LEAVE THE DROP OTHERWISE WIDE. 58.3% — it fixes the story and moves
+       the leak onto the FA node, which goes from 3 a run to 1.49: WORSE than RUN-14 shipped. It
+       also thins camps 10.55 to 9.78, which costs the Alpinist 0.7 points and puts a floor guard
+       1.5 SE from its bar. Fixing one leak by widening another is how this bug was written.
+     · PROTECT `event` BUT LEAVE IT IN THE SWAP POOL, gainable and not losable. 67.1% on 13.29
+       events a run: 21% more trail nodes than this game has ever had, and eight points above the
+       counterfactual it is meant to restore. That is a re-tune of the narrative economy wearing
+       a bug fix's clothes.
+
+   WHAT IT COSTS. Variety, a little, honestly: 16 of the 26 stages produced more than one shape
+   and now 14 do, because a stage that already offers both a camp and a shop has nothing left to
+   be given. That is the price of the map varying the support instead of the story. */
 export function tierNodes(s: GameState, tier = s.tier): MapNode[] {
   const all = ACTS[s.act]?.[tier] ?? []
   if (all.length <= MAP_FLOOR) return all
-  // only the support around the climbing is in range — see the note above for what it cost to
-  // let this touch a climb
-  const open = all.map((n, i) => (CLIMBABLE.includes(n.type) ? -1 : i)).filter(i => i >= 0)
+  // NARR-22: only what the pool can hand back is in range — see the note above for what each of
+  // the two wider versions of this line cost
+  const open = all.map((n, i) => (MAP_SWAP_IN.includes(n.type) ? i : -1)).filter(i => i >= 0)
   if (!open.length) return all
   const rng = new RNG((s.runSeed ^ (s.act * 31337) ^ (tier * 15485863)) >>> 0)
   const drop = open[rng.int(open.length)]

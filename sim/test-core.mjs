@@ -25,7 +25,7 @@ function test(name, fn) {
    there for what each of them refuses to do. `guardScan` is asserted at the bottom of
    this file, over this file. */
 import { ok, eq, region, declBody, appFn, cssRule, tail, guardScan, stripComments } from './guard.mjs'
-import { BAND_PIN, BAND_TOL, BAND_N, BAND_LOG } from './band.mjs'
+import { BAND_PIN, BAND_TOL, BAND_N, ENDING_N, BAND_LOG } from './band.mjs'
 /* GUARD-9: the kept injections. The table is data; the guard below checks it has not
    rotted. `node sim/mutants.mjs` is what actually runs them. */
 import { MUTANTS, applyPatch, touched } from './mutants.mjs'
@@ -670,6 +670,34 @@ test('RUN-14: the map is a property of the run, and one function says so', () =>
         `act ${a + 1} stage ${t + 1} offers two ${k} nodes on seed ${r}`)
       ok(at.every(n => n.routeIdx >= 0 || !CAN.includes(n.type)),
         `act ${a + 1} stage ${t + 1} invented a climb with no route on seed ${r}`)
+    }
+  }
+
+  /* NARR-22: THE SWAP MAY ONLY TAKE WHAT IT CAN GIVE BACK, and this is the assertion that
+     sentence exists for. RUN-14 replaced "one of the NON-CLIMBING nodes", and non-climbing is
+     not the same as interchangeable: `event` is the only tap the journal has and `fa` is the only
+     place you put up a line of your own, and NEITHER IS IN THE POOL — so every drop that landed
+     on one was a one-way loss. Trail nodes fell from a fixed 11 a run to 10.56 and FA nodes from
+     3 to 1.93. The trail-node half cost nine points of the known ending in the version that
+     shipped it (61.3% of careers to 52.1%; the NARR-22 note in test.mjs has the rest).
+
+     Asserted PER STAGE and per kind, which is stronger than a per-run count: a stage may differ
+     from the static table in how many camps and shops it offers and in nothing else. That also
+     makes the ticket's own two rejected shapes fail here rather than 4,000 campaigns later. */
+  const KINDS = [...new Set(E.ACTS.flat(2).map(n => n.type))]
+  const SUPPORT = ['camp', 'shop']
+  for (const k of SUPPORT) ok(E.MAP_SWAP_IN.includes(k),
+    `${k} is not in the swap pool, so the pool and this guard disagree about what may vary`)
+  for (let a = 0; a < E.ACTS.length; a++) for (let t = 0; t < E.ACTS[a].length; t++) {
+    const all = E.ACTS[a][t]
+    for (let r = 1; r <= 40; r++) {
+      const at = E.tierNodes(run(r, a), t)
+      for (const k of KINDS) {
+        if (SUPPORT.includes(k)) continue
+        eq(at.filter(n => n.type === k).length, all.filter(n => n.type === k).length,
+          `act ${a + 1} stage ${t + 1} changed how many ${k} nodes it offers on seed ${r} — `
+          + 'the swap can only take what it can give back')
+      }
     }
   }
 
@@ -3352,24 +3380,30 @@ test('SIM-8: the band measures a deck a player can actually hold', () => {
     mutators: [], arch: 0 }, [], claimed).filter(n => (E.CARDS[n].rarity ?? '') === 'beta').length, 0,
     'claiming beta cards as owned puts them back in the measured deck')
 
-  /* THE PIN AND ITS GUARD MUST AGREE. The band is stated twice — as a number in the
-     assertion and as prose in its message — and a re-pin that updates one and not the other
-     is how a pin quietly stops meaning anything. */
+  /* THE PIN AND ITS GUARD MUST AGREE — and NARR-22 made that STRUCTURAL instead of checked.
+     This used to read the band twice, as a literal in the assertion and as prose in the
+     message, and assert the two matched. They matched right up to the day it mattered: LANE-2
+     re-pinned the band ~44 → 45 and moved `BAND_PIN` in band.mjs, and the literal here stayed
+     38..50 for two versions — invisible, because both of the copies THIS guard compared were
+     still consistent with each other while neither was the pin. Two guards over one quantity is
+     the ENG-26 class; the fix is one number, not a third comparison. The drift guard reads
+     `BAND_PIN` now, and what is asserted is that it still does and has not grown a copy. */
   const led = readFileSync('sim/test.mjs', 'utf8')
   const drift = region(led, "test('the campaign has not drifted since it was last set'", ["  test('"],
     { min: 800, what: 'the drift guard' })
-  const band = /ok\(full > (\d+) && full < (\d+)/.exec(drift)
-  ok(band, 'the drift guard no longer states a band')
-  const said = /completes \$\{full\}% with a full journal — ~(\d+)/.exec(drift)
-  ok(said, 'the drift guard does not say what it is pinned at')
-  const [lo, hi] = [Number(band[1]), Number(band[2])], pin = Number(said[1])
-  ok(pin > lo && pin < hi, `the guard is pinned at ~${pin} but its band is ${lo}–${hi}`)
-  ok(hi - lo <= 14, `the band is ${hi - lo} points wide, which would not catch a BAL-14 slide`)
+  const band = /ok\(Math\.abs\(full - BAND_PIN\) < (\d+)/.exec(drift)
+  ok(band, 'the drift guard no longer measures against BAND_PIN, so it can hold a stale pin again')
+  ok(/^import \{ BAND_PIN \} from '\.\/band\.mjs'$/m.test(led),
+    'test.mjs no longer imports the pin, so the number in the drift guard is a copy again')
+  ok(!/full > \d+ && full < \d+/.test(drift),
+    'the drift guard states a literal band beside the pin it reads — that is the copy that went stale')
+  const width = Number(band[1]) * 2
+  ok(width <= 14, `the band is ${width} points wide, which would not catch a BAL-14 slide`)
   /* the date has to be in the MESSAGE, not merely somewhere in the test. The first cut
      asserted it anywhere in the window, which the ledger note above the assertion satisfies
      on its own — so stripping the date off the pin itself left this green. A failing run
      prints the message and nothing else, so that is where the version has to be. */
-  const msg = /with a full journal — [^`]*/.exec(drift)
+  const msg = /with a full journal against a pin of [^`]*/.exec(drift)
   ok(msg && /v\d+\.\d+/.test(msg[0]),
     `the drift guard's message does not say which version set the pin: ${msg ? msg[0] : 'no message'}`)
 })
@@ -7125,6 +7159,19 @@ test('GUARD-10: the band cannot drift a version at a time', () => {
   ok(Math.abs(off) <= BAND_TOL,
     `${newest.version} measures ${newest.band}% against a pin of ${BAND_PIN} (${off > 0 ? '+' : ''}${off.toFixed(1)}, `
     + `tolerance ${BAND_TOL}) — pay it back, or re-pin deliberately and say why in band.mjs`)
+
+  /* 4b. NARR-22 PUT A SECOND NUMBER UNDER THE SAME TEETH. The known-ending rate slid 43.1% to
+     25.1% over twenty-one versions the same way the band did, and locating it cost a nine-point
+     bisection because no version had recorded its number. The VALUE is policed by the NARR-22
+     band in test.mjs, which can afford to measure it; what is enforced here is that the release
+     writes it down, so the next slide is read rather than bisected. Newest entry only — the
+     column starts at v10.65 and the history before it does not exist to be back-filled. */
+  ok(typeof newest.ending === 'number' && newest.ending > 0 && newest.ending < 100,
+    `${newest.version} records no known-ending rate — measure it `
+    + `(\`TRIPS=8 node sim/run.mjs career ${ENDING_N} reads\`) and add \`ending\` to the entry`)
+  ok(ENDING_N >= 150,
+    `the ending column is measured at n=${ENDING_N}, where the standard error is over 4 points — `
+    + 'the old 60-career reading is exactly why that bar sat 18 points below its own pin')
 
   /* 5. And the drift is REPORTED whether or not it trips, because the whole lesson is that the
      individually-innocent steps are the ones that get you. Any run of consecutive versions

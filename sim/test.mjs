@@ -20,6 +20,7 @@
 import { build } from 'esbuild'
 import { readFileSync, unlinkSync } from 'node:fs'
 import { execSync } from 'node:child_process'
+import { BAND_PIN } from './band.mjs'
 
 const SLOW = process.argv.includes('slow')
 const HISTORY_CAP_TEST = 35
@@ -3058,7 +3059,7 @@ if (SLOW) {
     for (let i = 1; i < pcts.length; i++)
       ok(pcts[i] >= pcts[i - 1] - 2, `${pcts[i]}% with more pages than ${pcts[i - 1]}% with fewer`)
   })
-  test('NARR-21: the pages reach the ending they exist for', () => {
+  test('NARR-22: the ending the pages exist for, on a band that can see a slide', () => {
     /* THE HOLE THIS FILLS. The campaign audit (NARR-16..NARR-20) was closed against two
        harness policies: never take a trail node, and take every one. They produced `known`
        ending figures of 0.0% and 51.1%, which BRACKET the truth without ever measuring it —
@@ -3083,21 +3084,67 @@ if (SLOW) {
 
        WHAT THIS STILL CANNOT MEASURE: whether a human reads the label. That is the one
        question left in the audit and no harness can answer it. */
-    const career = policy => {
-      const out = execSync(`TRIPS=8 node sim/run.mjs career 60 ${policy}`, { encoding: 'utf8' })
+    /* NARR-22 — WHAT THIS GUARD GOT WRONG, TWICE, AND WHAT THAT COST.
+
+       It was pinned at 43.1% and asserted `> 25`. Measured at v10.64 it read 25.1%: it had
+       been passing by one tenth of a point, and nobody could have known, because a bar
+       EIGHTEEN POINTS below its own pin is not a guardrail, it is a formality. That is the
+       GUARD-10 failure shape exactly — a long slide passes every run until it doesn't — and
+       the reason the bar was set that low is honest enough: at 60 careers the standard error
+       on this is about 6 points, so any bar close to the pin would have cried wolf.
+
+       FIRST MISTAKE: THE DENOMINATOR. `known` is measured over WINS, and only a late
+       expedition holds ten pages, so the ratio divides late wins by all wins — which means
+       PLAYING BETTER LOWERS IT. LANE-2 is the proof: it raised the campaign band 42.1 to
+       46.4, which turned 174 wins into 199, and this number "fell" 29.3% to 25.1% while the
+       share of careers that actually reached the known ending ROSE 48.3% to 50.0%. A guard
+       that fires on an improvement is worse than no guard. LANE-3 is parked behind exactly
+       that misreading. So the band is now on CAREERS — did the story land at all, for this
+       player, inside eight expeditions — which is the question the pages exist to answer and
+       is monotone in the right direction.
+
+       SECOND MISTAKE: THE SAMPLE. 60 careers was chosen when this only had to bracket a
+       number, and at that sample the fix reads 58.3% where 240 reads 62.9% — the old bar was set
+       18 points low precisely to survive that noise. A band needs resolution, so it now reads
+       240 (SE ~3.2, ~75s) and the tolerance is ±6: under two standard errors, and tight enough
+       to have caught RUN-14's nine-point step in the version that shipped it. The `climbs` arm
+       stays at 60 because it is structurally zero — it finishes on 5.8 pages against a
+       threshold of 10, and no sample size changes that.
+
+       WHAT THE BISECTION FOUND. On the career measure at 240, v10.51 reads 61.3% and v10.52
+       reads 52.1% — RUN-14, one step, nine points — and v10.64 reads 53.3%, so everything
+       after it is flat inside one standard error. The cause is in the `tierNodes` note in the
+       engine: RUN-14's swap could take the trail node, which is the journal's only tap, and
+       could not hand one back. Fixed there, and this reads 62.9% against 58.8% for an engine
+       where RUN-14 never happened.
+
+       WHAT THIS BAND DOES NOT HAVE TO CATCH, and it matters for how wide it is. The two
+       narrower fixes measured on the way — protect the trail node but leave the drop wide
+       (58.3%), and leave it gainable in the swap pool (67.1%) — both fail the RUN-14 core
+       guard in the FAST suite, on the count of a kind per stage, in milliseconds. So this
+       band is not the thing standing between a plausible misfix and the release. It is here
+       for the case nothing structural can see: the ending arriving a trip later because of
+       something somewhere else entirely, which is what happened for twelve versions. */
+    const career = (policy, n) => {
+      const out = execSync(`TRIPS=8 node sim/run.mjs career ${n} ${policy}`, { encoding: 'utf8' })
+      const ck = /careers reaching the known ending: ([\d.]+)%/.exec(out)
+      ok(ck, `could not read a career ending rate out of the ${policy || 'climbs'} career`)
       const ep = /known ([\d.]+)%\s+partial ([\d.]+)%\s+stranger ([\d.]+)%/.exec(out)
       ok(ep, `could not read an epilogue split out of the ${policy || 'climbs'} career`)
       const rows = [...out.matchAll(/\/20\s+([\d.]+)\/15/g)].map(m => Number(m[1]))
       ok(rows.length >= 8, `read ${rows.length} expedition rows, not the eight asked for`)
-      return { known: Number(ep[1]), stranger: Number(ep[3]), pages: rows[rows.length - 1] }
+      return { ending: Number(ck[1]), stranger: Number(ep[3]), pages: rows[rows.length - 1] }
     }
-    const reads = career('reads')
-    /* The band, with a date on it, in the shape BAL-14 established: what gets defended is
-       the band, and the number in the comment is what somebody last chose.
-       Set 2026-08-17 at 43.1% known / 11.2 pages. */
-    ok(reads.known > 25,
-      `an informed player reaches the known ending only ${reads.known}% of the time — the pages no longer arrive`)
-    ok(reads.pages > 9,
+    const reads = career('reads', 240)
+    /* THE BAND, with a date on it, in the shape BAL-14 established and GUARD-10 sharpened:
+       what gets defended is the band, and the number here is what somebody last chose.
+       Set 2026-08-20 at 62.9% of careers / 11.0 pages, at 240 careers x 8 expeditions.
+       Re-pinning is allowed and expected — moving the number without saying so is not. */
+    const PIN = 62.9, TOL = 6
+    ok(Math.abs(reads.ending - PIN) <= TOL,
+      `an informed player's story lands ${reads.ending}% of careers against a pin of ${PIN} — ` +
+      `re-measure, pay it back, or re-pin here on purpose`)
+    ok(reads.pages > 9.5,
       `an informed player finishes eight expeditions with ${reads.pages} of 14 pages, and the ending needs ten`)
     ok(reads.stranger < 20,
       `${reads.stranger}% of informed wins still top out as a stranger to him`)
@@ -3105,9 +3152,9 @@ if (SLOW) {
     /* AND THE DELTA IS THE TICKET'S ACTUAL CLAIM: that knowing what the trail node is for
        is worth the ending. A band on `reads` alone would still pass if the node became
        free for everybody. */
-    const blind = career('')
-    ok(reads.known - blind.known > 20,
-      `knowing what the trail node is for is worth only ${(reads.known - blind.known).toFixed(1)} points of the known ending`)
+    const blind = career('', 60)
+    ok(reads.ending - blind.ending > 20,
+      `knowing what the trail node is for is worth only ${(reads.ending - blind.ending).toFixed(1)} points of the known ending`)
     ok(reads.pages - blind.pages > 3,
       `reading the node is worth only ${(reads.pages - blind.pages).toFixed(1)} pages, so NARR-18 bought nothing`)
   })
@@ -3374,8 +3421,17 @@ if (SLOW) {
        is the only deck a player can actually arrive at. 44.3% at n=2700, PAGES=14.
        Tolerance is +-6 around it: about 2 SE at the n=300 this guard runs, and still tight
        enough to catch a BAL-14-shaped 10-point slide in either direction. */
-    ok(full > 38 && full < 50,
-      `the campaign completes ${full}% with a full journal — ~44, re-pinned at v10.23 (SIM-8)`)
+    /* NARR-22: THE WINDOW IS DERIVED FROM THE PIN NOW, because it had already come apart.
+       LANE-2 re-pinned the band ~44 → 45 with Evan and moved `BAND_PIN` in band.mjs; this window
+       stayed hard-coded at 38..50, centred on the old number and a version behind. Two guards
+       over one quantity, one of them silently stale, is the ENG-26 duplication class — so this
+       reads the pin GUARD-10 holds and cannot drift away from it again. Same ±6 width: about
+       2 SE at the n=300 this runs, still tight enough for a BAL-14-shaped 10-point slide.
+       AND WORTH KNOWING BEFORE YOU TRUST IT: at v10.65 this arm read 50.7 while the hand
+       measurement at n=3000 read 45.2 — a 1.9 SE draw on a fixed seed. This is a tripwire.
+       GUARD-10's ledger is the instrument. */
+    ok(Math.abs(full - BAND_PIN) < 6,
+      `the campaign completes ${full}% with a full journal against a pin of ${BAND_PIN} — re-pinned at v10.23 (SIM-8) and again at v10.63 (LANE-2)`)
     ok(pcts[0] < full - 5, `reading his journal is worth ${(full - pcts[0]).toFixed(1)} points`)
   })
   test('the acts get deadlier in order', () => {
