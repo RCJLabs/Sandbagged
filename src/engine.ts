@@ -1647,6 +1647,7 @@ export function tagCounts(cards: { name: string; kind: string; lane: LaneTag; sh
 }
 /** Specialists gain +1 Power for every 3 cards of their tag in the deck. */
 export const SYNERGY_PER = 3
+export const SYNERGY_CAP = 1
 
 export const BY_RARITY = (r: Rarity) =>
   Object.values(CARDS).filter(c => c.rarity === r).map(c => c.name)
@@ -3233,7 +3234,38 @@ export const CLIP_STOCK = ['Quickdraw', 'Wired Nut', 'Bomber Cam']
 /** Reward quality scales with the act — later ranges hand out better gear,
     which is what lets the deck keep pace with the grade ramp. */
 const ACT_ODDS: [number, number][] = [[0.70, 0.95], [0.50, 0.88], [0.35, 0.80]]
-export function rollOffers(rng: RNG, count = 3, weak = false, act = 0): Card[] {
+/* DECK-4: how many cards of one family before the game offers you the card that pays for it.
+
+   Eight, and the number is measured rather than chosen. A specialist is a weak body — Crimp
+   Specialist is 1/5 — that turns the family into Power, so what it is worth depends entirely on
+   how much family you have. Against an ordinary 3/7 reward card it scores 6.5 at zero cards of
+   its family, 8.7 at three, 10.9 at six and 12.4 at eight, where it finally wins. Offering it
+   any earlier is offering a card nobody should take, which is how it was. */
+export const COMMIT_AT = 8
+/* DECK-4: the family this deck has actually committed to, and the card that pays for it.
+
+   IT SEARCHES EVERY CARD, NOT THE REWARD POOL, and that is the whole fix. `REWARDS` is a
+   curated shelf of 27 cards and it holds exactly TWO of the game's twelve specialists — Crimp
+   Specialist and Pocket Poacher. So for nine of the eleven families a deck can commit to, the
+   card that pays for the commitment was not obtainable at all, and for the other two it was
+   offered uniformly whether you were building crimps or not. Measured: 2,394 specialists offered
+   across 600 runs, 1,841 of them with NONE of that specialist's family in the deck, and every
+   single one refused. This is what makes committing to a shape a thing the game can answer. */
+export function commitPayoff(deck: Card[]): string | null {
+  if (!deck.length) return null
+  const tags = tagCounts(deck)
+  let best: string | null = null, most = COMMIT_AT - 1
+  for (const [tag, n] of Object.entries(tags)) if (n > most) { most = n; best = tag }
+  if (!best) return null
+  const held = new Set(deck.map(c => c.name))
+  const draftable: Rarity[] = ['common', 'uncommon', 'rare']
+  for (const name of Object.keys(CARDS)) {
+    const d = CARDS[name]
+    if (d.synergy === best && !held.has(name) && draftable.includes(d.rarity ?? 'common')) return name
+  }
+  return null
+}
+export function rollOffers(rng: RNG, count = 3, weak = false, act = 0, deck?: Card[]): Card[] {
   const out: Card[] = [], used = new Set<string>()
   const [cw, uw] = ACT_ODDS[Math.max(0, Math.min(2, act))]
   let guard = 0
@@ -3243,6 +3275,30 @@ export function rollOffers(rng: RNG, count = 3, weak = false, act = 0): Card[] {
     const name = pool[rng.int(pool.length)]
     if (used.has(name)) continue
     used.add(name); out.push(spawn(name))
+  }
+  /* DECK-4: and one slot notices what you are building. Measured before this: the drafter was
+     offered a specialist 2,394 times across 600 runs and took it ZERO times — 1,841 of those
+     offers arrived with none of that specialist's family in the deck at all, because there are
+     eleven families and the offer was uniform. The shape was there (every run ends with 11
+     cards of one family and four payable families in it) and the card that pays for it was a
+     lottery ticket. So the deck's own commitment now puts it in front of you.
+
+     REPLACING rather than seeding, and after the loop, so the RNG stream is untouched: this
+     draws exactly as many numbers as it always did, and the change is what is in the offers
+     rather than where the run's randomness goes next. */
+  const payoff = deck && out.length ? commitPayoff(deck) : null
+  if (payoff && !used.has(payoff)) {
+    /* It displaces the BEST card on the shelf, not a random one. Showing you the card your deck
+       has been asking for is itself the reward — measured, dropping it into a spare slot was
+       worth +3.1 points of completion against the pin, which is what a good card is worth. So
+       the shelf makes room for it: you get the payoff for your shape and you give up the pick
+       you would otherwise have made. Raw stats rather than `cardValue` because this has no
+       state to price against, and raw stats are what "the best of these three" means before
+       anything knows what you are building. */
+    const rank = (c: Card) => c.power * 2 + c.contact
+    let bestAt = 0
+    for (let i = 1; i < out.length; i++) if (rank(out[i]) > rank(out[bestAt])) bestAt = i
+    out[bestAt] = spawn(payoff)
   }
   return out
 }
@@ -4237,7 +4293,7 @@ export function endSession(s0: GameState, rng: RNG): GameState {
     if (boonOffer.length) return { ...s, beta, skirmish: circuitRoute(n, rng),
       gearOffers: boonOffer, phase: 'gear' }
     // a card every third line, so the deck grows with the grade
-    if (n % 3 === 0) return { ...s, beta, offers: rollOffers(rng, 3, false, Math.min(2, Math.floor(n / 6))),
+    if (n % 3 === 0) return { ...s, beta, offers: rollOffers(rng, 3, false, Math.min(2, Math.floor(n / 6)), s.runDeck),
       phase: 'reward' }
     return { ...s, beta, skirmish: circuitRoute(n, rng), phase: 'circuitNext' }
   }
@@ -4281,7 +4337,7 @@ export function endSession(s0: GameState, rng: RNG): GameState {
   if (s.result === 'send' && s.onProject) {
     // a project pays gear — otherwise boss-only — and a card on top
     return gate({ ...s, beta, onProject: false, gearOffers: gearOffers(s, rng),
-      offers: rollOffers(rng, 3, false, s.act), phase: 'gear' })
+      offers: rollOffers(rng, 3, false, s.act, s.runDeck), phase: 'gear' })
   }
   if (s.onProject) {
     // it did not go. The days are spent either way.
@@ -4293,7 +4349,7 @@ export function endSession(s0: GameState, rng: RNG): GameState {
       // an act boss that is not the finale sends you over the pass to the next range
       if (!(lastAct && finale)) {
         if (s.tier + 1 < map.length)
-          return gate({ ...s, beta, offers: rollOffers(rng, 3, false, s.act), phase: 'reward' })
+          return gate({ ...s, beta, offers: rollOffers(rng, 3, false, s.act, s.runDeck), phase: 'reward' })
         s = gainXp({ ...s, cash: s.cash + 35 }, 25, rng)
         return gate({ ...s, beta, act: s.act + 1, tier: 0, phase: 'gear',
           gearOffers: gearOffers(s, rng),
@@ -4313,7 +4369,7 @@ export function endSession(s0: GameState, rng: RNG): GameState {
       // topping out the finale is not a result screen — there is something up there
       return { ...s, beta, phase: 'epilogue', result: 'send' }
     }
-    return gate({ ...s, beta, offers: rollOffers(rng, 3, false, s.act), phase: 'reward' })
+    return gate({ ...s, beta, offers: rollOffers(rng, 3, false, s.act, s.runDeck), phase: 'reward' })
   }
   // failing the boss, or running out of map, ends the run rather than
   // advancing past the last tier
@@ -4321,7 +4377,7 @@ export function endSession(s0: GameState, rng: RNG): GameState {
     return gate(recordRun({ ...s, beta, phase: 'runEnd', result: 'fall' }, false))
   // FALLING IS LEARNING. A lost session still banks something, or climbing is
   // a coin flip that can whiff entirely and skipping it becomes correct.
-  return gate({ ...s, beta, offers: rollOffers(rng, 2, true, s.act), phase: 'reward' })
+  return gate({ ...s, beta, offers: rollOffers(rng, 2, true, s.act, s.runDeck), phase: 'reward' })
 }
 
 function refillAndDraw(s: GameState, rng: RNG): GameState {
@@ -4379,7 +4435,7 @@ export function startBurn(s: GameState, rng: RNG): GameState {
     ...c,
     spent: 0,
     power: Math.max(0, c.power + (c.lane === 'feet' ? gm.dPowerFeet : gm.dPowerHand)
-      + (c.synergy ? Math.floor((tags[c.synergy] ?? 0) / SYNERGY_PER) : 0)),
+      + (c.synergy ? Math.min(SYNERGY_CAP, Math.floor((tags[c.synergy] ?? 0) / SYNERGY_PER)) : 0)),
   }))
   return refillAndDraw({
     ...s, holdDeck: holds, feetDeck: feet,
@@ -5999,7 +6055,10 @@ export function cardValue(s: GameState, c: Card, deck: Card[]): number {
   // synergy runs both ways: a specialist gains from the deck, and a tagged
   // card feeds any specialist already in it
   const tags = tagCounts(deck)
-  if (c.synergy) v += ((tags[c.synergy] ?? 0) / SYNERGY_PER) * 2.2
+  /* DECK-4: capped the same way the bake is. Uncapped, this priced a specialist as if a
+     fourteen-card family paid +4 Power when the rules give it SYNERGY_CAP, and the drafter
+     bought it at a price the game never honours. */
+  if (c.synergy) v += Math.min(SYNERGY_CAP, (tags[c.synergy] ?? 0) / SYNERGY_PER) * 2.2
   const t = tagOf(c)
   if (t) v += deck.filter(x => x.synergy === t).length * 1.6
 

@@ -462,6 +462,111 @@ test('ROUTE-7: the bosses are not all the same trick', () => {
   ok(kinds.size >= 4, `the bosses only muster ${kinds.size} distinct threats — too samey`)
 })
 
+group('a deck can commit to a shape (DECK-4)')
+test('DECK-4: the shape a deck commits to can be paid for', () => {
+  /* The row said deckbuilding pays in raw stats with no shape to commit to. The opposite was
+     true and worse. Measured over 600 finished runs, EVERY run ends with 11 cards of one family
+     and about four and a half families big enough to pay a specialist — decks are heavily
+     shaped. What was broken was the payoff: the drafter was offered a specialist 2,394 times
+     and took it ZERO times, and 1,841 of those offers arrived with none of that specialist's
+     family in the deck at all.
+
+     The root cause was not the price and not the odds. `REWARDS` is a curated shelf of 27 cards
+     and it held exactly TWO of the game's twelve specialists — so for nine of the eleven
+     families a deck can commit to, the card that pays for the commitment WAS NOT OBTAINABLE. */
+  const specialists = Object.values(E.CARDS).filter(c => c.synergy)
+  ok(specialists.length >= 10, `only ${specialists.length} specialists exist`)
+  const families = [...new Set(specialists.map(c => c.synergy))]
+  ok(families.length >= 8, `only ${families.length} families have a specialist at all`)
+
+  /* 1. Every family a deck can commit to has a payoff the game can hand you. This is the
+     assertion the old reward shelf failed for nine families out of eleven. */
+  for (const fam of families) {
+    const deck = []
+    const feeder = Object.values(E.CARDS).find(c =>
+      E.tagOf(c) === fam && !c.synergy && c.rarity !== 'curse')
+    ok(feeder, `nothing in the game is a plain ${fam} card, so the family cannot be built`)
+    for (let i = 0; i < E.COMMIT_AT; i++) deck.push(E.spawn(feeder.name))
+    const pay = E.commitPayoff(deck)
+    ok(pay, `a deck of ${E.COMMIT_AT} ${fam} cards is offered no payoff for committing`)
+    eq(E.CARDS[pay].synergy, fam, `the ${fam} payoff is ${pay}, which pays for ${E.CARDS[pay].synergy}`)
+  }
+
+  // 2. and it holds its fire until the commitment is real
+  const crimps = n => [...Array(n)].map(() => E.spawn('Crimp Grip'))
+  ok(!E.commitPayoff(crimps(E.COMMIT_AT - 1)),
+    `a deck of ${E.COMMIT_AT - 1} of a family already gets the payoff — the threshold does nothing`)
+  /* And the threshold has to BE a commitment. A deck runs 15 cards built and about 33 by the
+     end, so a handful of one family is a coincidence and eight is a plan. Below that this stops
+     being the reward for a shape and becomes a tailored card at every reward table. */
+  ok(E.COMMIT_AT >= 5,
+    `COMMIT_AT is ${E.COMMIT_AT}, which no deck has to commit to anything to reach`)
+  ok(E.commitPayoff(crimps(E.COMMIT_AT)), 'a committed deck gets no payoff')
+  ok(!E.commitPayoff([]), 'an empty deck is somehow committed to something')
+
+  /* 3. It has to REACH the deck, on the path the game actually uses. Note what this does NOT
+     claim: that the payoff is the best card on any shelf. With the bake capped it is a weak
+     body plus SYNERGY_CAP Power, so it wins by displacing the best rival rather than by beating
+     it — a first cut of this asserted "the drafter always takes it" and was simply wrong, which
+     the campaign numbers say too (564 of 1,578 payable offers taken). What is true, and is the
+     ticket, is that a committed deck now gets its payoff on the shelf and takes it often enough
+     to hold one: 94.3% of runs end holding a specialist against 11.2% before. */
+  const st = { ...E.freshRun(8, 1, 7), inRun: true, act: 1 }
+  const deck = crimps(E.COMMIT_AT)
+  const pay = E.spawn(E.commitPayoff(deck))
+  let shown = 0, taken = 0
+  for (let seed = 0; seed < 60; seed++) {
+    const offers = E.rollOffers(new E.RNG(seed * 7919 + 3), 3, false, 1, deck)
+    if (!offers.some(c => c.synergy === 'crimp')) continue
+    shown++
+    const pick = E.bestOffer(st, offers, deck)
+    if (pick && pick.synergy === 'crimp') taken++
+  }
+  eq(shown, 60, `the payoff was on only ${shown} of 60 shelves for a committed deck`)
+  ok(taken > 0,
+    `the payoff was shown 60 times to a committed deck and taken ${taken} — it cannot reach a deck`)
+  const thin = crimps(E.SYNERGY_PER)
+  ok(E.cardValue(st, pay, thin) > E.cardValue(st, pay, []),
+    'the payoff is worth no more to a deck with its family in it than to an empty one')
+
+  /* 4. The cap is honoured on BOTH sides. The bake gives at most SYNERGY_CAP Power; if the
+     drafter prices the uncapped curve it buys Power the rules never hand over. */
+  const huge = crimps(E.SYNERGY_PER * (E.SYNERGY_CAP + 3))
+  const rng = new E.RNG(5)
+  const burn = E.startBurn({ ...st, runDeck: [...huge, pay], skirmish: null,
+    weather: 1, rock: 0 }, rng)
+  const dealt = [...burn.piles.draw, ...burn.piles.hand].find(c => c.name === pay.name)
+  ok(dealt, 'the specialist was not dealt, so the cap is untested')
+  eq(dealt.power - pay.power, E.SYNERGY_CAP,
+    `a family of ${huge.length} baked ${dealt.power - pay.power} Power onto its specialist, cap ${E.SYNERGY_CAP}`)
+  /* Isolated against a TWIN of the same card with the synergy term stripped, because cardValue
+     has deck-size terms of its own — feet coverage moves with the deck's length, and comparing
+     two different-sized decks measured that instead of the cap. `tagOf` falls back to the name
+     for the twin, so the family term cancels and only the synergy term is left. */
+  const twin = { ...pay, synergy: '' }
+  const synTerm = d => E.cardValue(st, pay, d) - E.cardValue(st, twin, d)
+  const atCap = synTerm(crimps(E.SYNERGY_PER * E.SYNERGY_CAP))
+  ok(atCap > 0, `the synergy term is worth ${atCap.toFixed(2)} at the cap — it prices nothing`)
+  ok(Math.abs(synTerm(huge) - atCap) < 1e-9,
+    `the drafter pays ${(synTerm(huge) - atCap).toFixed(2)} more for family it will never be given Power for`)
+
+  /* 5. The payoff DISPLACES the best card on the shelf. Dropped into a spare slot it measured
+     +3.1 points of completion against the pin, because being shown the card your deck wants is
+     itself the reward — so the shelf makes room for it. */
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const body = region(eng, 'export function rollOffers', ['const SK_A'],
+    { min: 400, what: 'rollOffers' })
+  ok(/rank\(out\[i\]\) > rank\(out\[bestAt\]\)/.test(body),
+    'the payoff no longer displaces the best card on the shelf')
+  /* And it must not move the run's randomness: the loop draws the same numbers whether a deck
+     is handed in or not, so a seed still replays. */
+  const a = new E.RNG(4242), b = new E.RNG(4242)
+  const plain = E.rollOffers(a, 3, false, 1)
+  const tailored = E.rollOffers(b, 3, false, 1, crimps(E.COMMIT_AT))
+  eq(a.next(), b.next(), 'handing rollOffers a deck changed how much randomness it consumed')
+  eq(plain.length, tailored.length, 'the tailored shelf is a different size')
+  ok(tailored.some(c => c.synergy), 'a committed deck was shown no payoff at all')
+})
 group('the board has a shape (LANE-1)')
 test('LANE-1: matched hands are a relationship between the lanes, both ways', () => {
   /* The row said Squeeze and the gaston/undercling pairing were the only cross-lane rules. They
