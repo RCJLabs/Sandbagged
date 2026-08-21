@@ -20,7 +20,7 @@
 import { build } from 'esbuild'
 import { readFileSync, unlinkSync } from 'node:fs'
 import { execSync } from 'node:child_process'
-import { BAND_PIN } from './band.mjs'
+import { BAND_PIN, ARCH_N, ARCH_FLOOR, ARCH_TOL, BAND_LOG } from './band.mjs'
 
 const SLOW = process.argv.includes('slow')
 const HISTORY_CAP_TEST = 35
@@ -2942,17 +2942,48 @@ if (SLOW) {
        actually asserted. `ARCH_ONLY` exists so that costs 4,000 runs and not 12,500 — the
        other three climbers cannot hold the floor and there is no reason to pay for them
        (GUARD-6). Two rather than one because the coarse pass picks the lowest off noisy
-       numbers and the bottom two currently sit 0.0 apart. */
+       numbers and the bottom two currently sit 0.0 apart.
+
+       BAL-18 RETIRED THE COARSE PASS, and both of the sentences above turned out to be the
+       problem rather than the design.
+
+       "The other three climbers cannot hold the floor" was true when the roster spanned 3.3
+       to 29.8. At v10.65 four of the five sit inside 0.5 points at n=600, where the SE is
+       about 1.0 — so the coarse pass is ranking a roster it cannot resolve. Measured, on
+       the same engine and the same seeds: it read Boulderer 6.7, Comp Kid 6.8, Alpinist
+       7.0, Trad Dad 7.2 and picked {Boulderer, Comp Kid}, while the truth at n=2000 is Comp
+       Kid 6.8, Alpinist 7.0, Boulderer 7.7, Trad Dad 7.8. It named the FOURTH climber as
+       the lowest and left the second-lowest unmeasured — and passed, because the pair it
+       happened to pick contained the real minimum. Luck, not a measurement.
+
+       So the RANKING comes from the ledger in band.mjs, which is recorded at n=2000 by
+       whoever ships the version, and this guard fine-measures the two the ledger names. It
+       is cheaper as well as better: 4,000 runs instead of 7,000, GUARD-6 satisfied rather
+       than argued with. And because one climber at n=2000 IS affordable to re-run — which
+       the band at n=3000 campaigns is not — the fine pass also refuses a recorded number it
+       cannot reproduce, so the ledger cannot be stale or invented where it matters. */
     const read = cmd => [...execSync(cmd, { encoding: 'utf8' })
       .matchAll(/\s([\d.]+)%\s+\d+/g)].map(m => Number(m[1]))
-    const FINE = 2000
-    const pcts = read('PROJECTS=0 node sim/run.mjs arch 600')
-    eq(pcts.length, E.ARCHETYPES.length, `read ${pcts.length} climbers, expected ${E.ARCHETYPES.length}`)
-    const hi = Math.max(...pcts)
-    const bottom = pcts.map((p, i) => [p, i]).sort((a, b) => a[0] - b[0]).slice(0, 2)
-    const fine = bottom.map(([, i]) => {
+    const FINE = ARCH_N
+    const ladder = BAND_LOG[BAND_LOG.length - 1].arch
+    ok(ladder, 'the newest ledger entry records no climber ladder — '
+      + `measure it (\`PROJECTS=0 node sim/run.mjs arch ${ARCH_N}\`) and add \`arch\` to the entry`)
+    const recorded = E.ARCHETYPES.map((a, i) => [ladder[a.id], i])
+    for (const [v, i] of recorded)
+      ok(typeof v === 'number' && v > 0 && v < 100,
+        `${E.ARCHETYPES[i].name} is not in the recorded ladder, so nothing here can rank it`)
+    const hi = Math.max(...recorded.map(([v]) => v))
+    const bottom = [...recorded].sort((a, b) => a[0] - b[0]).slice(0, 2)
+    const fine = bottom.map(([was, i]) => {
       const got = read(`PROJECTS=0 ARCH_ONLY=${i} node sim/run.mjs arch ${FINE}`)
       eq(got.length, 1, `ARCH_ONLY=${i} reported ${got.length} climbers`)
+      /* THE LEDGER HAS TO BE REPRODUCIBLE, and this is the assertion that makes recording it
+         worth anything. The harness is seed-fixed, so an honest entry measured on this code
+         comes back identical; anything outside ARCH_TOL means the ladder was written for a
+         different engine or was never measured at all. */
+      ok(Math.abs(got[0] - was) <= ARCH_TOL,
+        `${E.ARCHETYPES[i].name} measures ${got[0]}% against the ${was}% recorded in band.mjs — `
+        + 'the ladder is stale or was never measured; re-record it')
       return [got[0], i]
     })
     const [lo, worst] = fine.sort((a, b) => a[0] - b[0])[0]
@@ -2984,17 +3015,21 @@ if (SLOW) {
            number today) would move with the roster, so the one failure an absolute floor
            exists to catch — every climber sinking together — would stop firing.
        Revisit if the roster's floor moves under ~6.2, where the 2 SE margin runs out. */
-    ok(lo > 5, `${E.ARCHETYPES[worst].name} completes only ${lo}% of runs`)
+    ok(lo > ARCH_FLOOR, `${E.ARCHETYPES[worst].name} completes only ${lo}% of runs`)
     /* AND THE FLOOR HAS TO BE MEASURABLE. A margin inside the noise is not a property this
        guard can defend, and reporting that is more useful than flaking: at 5.8% the Comp
        Kid cleared a floor of 5 by 1.7 SE, which no sample this project can afford would
        turn into a real claim — so the CLIMBER was bought back (BAL-16, dPsyche) rather than
        the floor moved to meet it, which is the thing BAL-9 exists to forbid. */
     const se = 100 * Math.sqrt((lo / 100) * (1 - lo / 100) / FINE)
-    ok(lo - 5 > 2 * se,
-      `${E.ARCHETYPES[worst].name} clears the floor by only ${((lo - 5) / se).toFixed(1)} SE ` +
+    ok(lo - ARCH_FLOOR > 2 * se,
+      `${E.ARCHETYPES[worst].name} clears the floor by only ${((lo - ARCH_FLOOR) / se).toFixed(1)} SE ` +
       `(${lo}% at n=${FINE}) — that is a coin flip, not a measurement`)
-    ok(hi / lo < 2.2, `spread is ${(hi / lo).toFixed(1)}x — ${pcts.join(' / ')}`)
+    /* BAL-18: the spread reads the recorded ladder for its top and the FINE pass for its bottom.
+       Which is the right way round — the numerator is a mid-range number that does not need
+       resolution (the old comment above says so) and the denominator is the floor claim. */
+    ok(hi / lo < 2.2, `spread is ${(hi / lo).toFixed(1)}x — `
+      + E.ARCHETYPES.map(a => `${a.name.replace('The ', '')} ${ladder[a.id]}`).join(' / '))
   })
   test('the van is a decision, not the answer to every camp', () => {
     // BAL-11: a find is worth +28 to +42 points of send rate against +26 for

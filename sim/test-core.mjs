@@ -25,7 +25,7 @@ function test(name, fn) {
    there for what each of them refuses to do. `guardScan` is asserted at the bottom of
    this file, over this file. */
 import { ok, eq, region, declBody, appFn, cssRule, tail, guardScan, stripComments } from './guard.mjs'
-import { BAND_PIN, BAND_TOL, BAND_N, ENDING_N, BAND_LOG } from './band.mjs'
+import { BAND_PIN, BAND_TOL, BAND_N, ENDING_N, ARCH_N, ARCH_FLOOR, ARCH_TOL, BAND_LOG } from './band.mjs'
 /* GUARD-9: the kept injections. The table is data; the guard below checks it has not
    rotted. `node sim/mutants.mjs` is what actually runs them. */
 import { MUTANTS, applyPatch, touched } from './mutants.mjs'
@@ -3233,13 +3233,29 @@ test('BAL-16: a floor nobody can measure is not a floor', () => {
   const led = readFileSync('sim/test.mjs', 'utf8')
   const spread = region(led, "test('no climber is twice as good as another'", ["  test('"],
     { min: 800, what: 'the climber-spread guard' })
-  ok(/ok\(lo > 5,/.test(spread), 'the 5% floor has been moved — BAL-9 is about exactly that')
+  /* BAL-18: THE FLOOR IS A VALUE NOW, NOT A SPELLING. This used to assert that the string
+     `ok(lo > 5,` appeared in the guard, which checks how a number is written rather than what it
+     is — and NARR-22 is what two copies of one quantity cost: the band pin sat two versions stale
+     in test.mjs while a guard happily confirmed its two copies agreed with each other. The floor
+     lives in band.mjs and both sides read it. */
+  ok(ARCH_FLOOR === 5,
+    `the floor is ${ARCH_FLOOR} — it was lowered to 4 once at v9.32 to accommodate a drift instead `
+    + 'of fixing it, and BAL-9 exists to forbid exactly that')
+  ok(/ok\(lo > ARCH_FLOOR,/.test(spread),
+    'the guard no longer compares the lowest climber against the ledger floor')
   /* match the COMMAND, not the word: the prose in that guard explains why `ARCH_ONLY`
      exists, so the bare-name form stayed green when the flag was dropped from the call.
      Third time this project has had to make that correction (NARR-14, SIM-6, here). */
   ok(/ARCH_ONLY=\$\{i\} node sim\/run\.mjs arch \$\{FINE\}/.test(spread),
     'the guard no longer resolves the lowest climber finely')
-  ok(/lo - 5 > 2 \* se/.test(spread), 'the guard no longer checks its own margin is measurable')
+  /* BAL-18: and it must not go back to picking that climber off a pass that cannot rank the
+     roster. At v10.65 the n=600 pass named the FOURTH climber as the lowest. */
+  ok(!/run\.mjs arch 600/.test(spread),
+    'the coarse n=600 pass is back, and it cannot resolve a roster that sits inside 0.5 points')
+  ok(/BAND_LOG\[BAND_LOG\.length - 1\]\.arch/.test(spread),
+    'the guard no longer takes its ranking from the recorded ladder, so it is guessing again')
+  ok(/lo - ARCH_FLOOR > 2 \* se/.test(spread),
+    'the guard no longer checks its own margin is measurable')
   ok(/Math\.sqrt\(\(lo \/ 100\) \* \(1 - lo \/ 100\) \/ FINE\)/.test(spread),
     'the standard error is not computed from the proportion and the sample any more')
 })
@@ -3393,7 +3409,7 @@ test('SIM-8: the band measures a deck a player can actually hold', () => {
     { min: 800, what: 'the drift guard' })
   const band = /ok\(Math\.abs\(full - BAND_PIN\) < (\d+)/.exec(drift)
   ok(band, 'the drift guard no longer measures against BAND_PIN, so it can hold a stale pin again')
-  ok(/^import \{ BAND_PIN \} from '\.\/band\.mjs'$/m.test(led),
+  ok(/^import \{[^}]*\bBAND_PIN\b[^}]*\} from '\.\/band\.mjs'$/m.test(led),
     'test.mjs no longer imports the pin, so the number in the drift guard is a copy again')
   ok(!/full > \d+ && full < \d+/.test(drift),
     'the drift guard states a literal band beside the pin it reads — that is the copy that went stale')
@@ -7169,6 +7185,17 @@ test('GUARD-10: the band cannot drift a version at a time', () => {
   ok(typeof newest.ending === 'number' && newest.ending > 0 && newest.ending < 100,
     `${newest.version} records no known-ending rate — measure it `
     + `(\`TRIPS=8 node sim/run.mjs career ${ENDING_N} reads\`) and add \`ending\` to the entry`)
+  /* AND A COLUMN, ONCE STARTED, CANNOT BE DROPPED. Checking only the newest entry leaves a hole
+     you could reverse into: strip the column from the release before this one and the history
+     stops being comparable, which is the whole reason the column exists. It also gives the kept
+     injection over this a durable anchor — an older entry never changes again, where the newest
+     one is a different version every release. */
+  const firstEnding = BAND_LOG.findIndex(e => typeof e.ending === 'number')
+  ok(firstEnding >= 0, 'no entry records a known-ending rate at all')
+  for (const e of BAND_LOG.slice(firstEnding))
+    ok(typeof e.ending === 'number',
+      `${e.version} has had its known-ending rate removed — the column starts at `
+      + `${BAND_LOG[firstEnding].version} and cannot be dropped once started`)
   ok(ENDING_N >= 150,
     `the ending column is measured at n=${ENDING_N}, where the standard error is over 4 points — `
     + 'the old 60-career reading is exactly why that bar sat 18 points below its own pin')
@@ -7191,6 +7218,80 @@ test('GUARD-10: the band cannot drift a version at a time', () => {
      legible enough to see one: the widest span in it must be a real number somebody can read. */
   ok(Number.isFinite(worst.d),
     `the widest span in the ledger is unreadable: ${worst.from.version} → ${worst.to.version}`)
+})
+test('BAL-18: the climber ladder cannot move a version at a time either', () => {
+  /* THE THIRD QUANTITY IN THIS PROJECT WITH NO RECORD, and the one whose absence cost the most.
+     GUARD-10 caught the band after eight versions of drift; NARR-22 caught the known ending after
+     twenty-one, and paid a nine-measurement bisection to locate it. The climber ladder had NOTHING
+     — no number written down for any release — and the guard over it could not have caught a drift
+     if it had wanted to, for the two reasons the band.mjs note sets out with the measurements:
+     the coarse n=600 pass named the FOURTH climber as the lowest at v10.65, and the ladder moves
+     several points a release (Boulderer 11.1 → 12.9 → 7.7, Onsighter 8.6 → 14.0 → 10.0).
+
+     This half is arithmetic over a list somebody had to fill in, so it runs in the FAST suite on
+     every `npm run check`. The re-measurement that proves the list is not invented is in test.mjs,
+     where it costs 4,000 runs — three thousand FEWER than the coarse pass it replaced. */
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
+  ok(ARCH_N >= 1500,
+    `the ladder is recorded at n=${ARCH_N}, where the floor cannot be resolved in standard errors `
+    + '— that is the n=600 mistake in smaller print')
+  ok(ARCH_TOL > 0, `the reproduction tolerance is ${ARCH_TOL}, so nothing is reproduced`)
+
+  /* THE TEETH, the same shape GUARD-10 has: the newest entry is THIS version, so a release cannot
+     happen without somebody measuring the ladder. */
+  const newest = BAND_LOG[BAND_LOG.length - 1]
+  eq(newest.version, pkg.version,
+    `package.json is ${pkg.version} and the ledger stops at ${newest.version}`)
+  ok(newest.arch, `${newest.version} records no climber ladder — `
+    + `measure it (\`PROJECTS=0 node sim/run.mjs arch ${ARCH_N}\`) and add \`arch\` to the entry`)
+  /* EVERY climber, by id. Keyed rather than positional so adding a climber to the roster forces a
+     re-measure instead of silently shifting whose number is whose — which is ENG-26's failure
+     class, and the map screen already carries a warning about exactly it. */
+  for (const a of E.ARCHETYPES) {
+    const v = newest.arch[a.id]
+    ok(typeof v === 'number' && v > 0 && v < 100,
+      `${newest.version} records no completion for ${a.name} (${a.id})`)
+  }
+  /* AND, AS WITH THE ENDING COLUMN: once started it cannot be dropped, both because the history
+     stops being comparable and because it gives the injection over this a durable anchor. */
+  for (const e of BAND_LOG)
+    ok(e.arch, `${e.version} has had its climber ladder removed — the column is backfilled the `
+      + 'whole way and cannot be dropped once started')
+  eq(Object.keys(newest.arch).length, E.ARCHETYPES.length,
+    `the recorded ladder holds ${Object.keys(newest.arch).length} climbers and the roster has `
+    + `${E.ARCHETYPES.length} — one of them is named something this game does not have`)
+
+  /* AND THE RECORDED LADDER HAS TO SATISFY THE CLAIM, which is free here and costs 2,000 runs in
+     the slow suite. Same arithmetic as the spread guard, on the number somebody wrote down: a
+     ladder recorded below the floor fails on `npm run check` rather than twenty minutes later. */
+  const vals = E.ARCHETYPES.map(a => newest.arch[a.id])
+  const lo = Math.min(...vals), hi = Math.max(...vals)
+  const se = 100 * Math.sqrt((lo / 100) * (1 - lo / 100) / ARCH_N)
+  const worstAt = E.ARCHETYPES[vals.indexOf(lo)]
+  ok(lo - ARCH_FLOOR > 2 * se,
+    `${worstAt.name} is recorded at ${lo}% against a floor of ${ARCH_FLOOR}, clearing it by `
+    + `${((lo - ARCH_FLOOR) / se).toFixed(1)} SE at n=${ARCH_N} — that is a coin flip, not a floor`)
+  ok(hi / lo < 2.2,
+    `the recorded spread is ${(hi / lo).toFixed(1)}x — ${vals.join(' / ')}`)
+
+  /* THE TOLERANCE HAS TO BE ABLE TO SEE WHAT THE LEDGER ITSELF RECORDS, which is GUARD-10's rule
+     applied to this column: a reproduction window as wide as a real release-to-release step would
+     wave through a ladder measured on a different engine. The widest single step below is 4.0
+     points (the Boulderer, v10.60 → v10.62), so 1.5 has room. */
+  const withArch = BAND_LOG.filter(e => e.arch)
+  ok(withArch.length >= 2, 'the ladder column has no history to read a step out of')
+  let widest = 0, widestWho = null
+  for (let i = 1; i < withArch.length; i++)
+    for (const a of E.ARCHETYPES) {
+      const [x, y] = [withArch[i - 1].arch[a.id], withArch[i].arch[a.id]]
+      if (typeof x !== 'number' || typeof y !== 'number') continue
+      if (Math.abs(y - x) > widest) { widest = Math.abs(y - x); widestWho = a.name }
+    }
+  ok(widest > 0, 'no two consecutive ladders could be compared, so nothing here reads a step')
+  ok(ARCH_TOL < widest,
+    `the reproduction tolerance is ${ARCH_TOL} and the ledger's own widest single step is `
+    + `${widest.toFixed(1)} (${widestWho}) — a window that wide cannot tell a stale ladder from a `
+    + 'fresh one')
 })
 test('GUARD-8: no guard reads a window it cannot prove is the right one', () => {
   /* This is the ticket. GUARD-3 found and fixed unchecked-anchor windows; GUARD-8 found

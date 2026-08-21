@@ -37,6 +37,41 @@
  * HOW TO MEASURE IT: `TRIPS=8 node sim/run.mjs career 240 reads`, and take the line that says
  * "careers reaching the known ending". Careers, not wins — see the NARR-22 note in test.mjs for
  * why the wins ratio falls when the game gets better.
+ *
+ * BAL-18 ADDED THE THIRD COLUMN, and it is the one whose absence cost the most.
+ *
+ * The climber ladder was the only guarded quantity in the project with NO record at all, and the
+ * guard over it could not have caught a drift if it wanted to. It runs a coarse pass at n=600,
+ * takes the two lowest, and fine-measures those at n=2000 — on the stated grounds that "the other
+ * three climbers cannot hold the floor and there is no reason to pay for them". That was true
+ * when the roster spanned 3.3 to 29.8. It is not true now, and both halves fail:
+ *
+ *   THE COARSE PASS CANNOT RANK THE ROSTER IT IS RANKING. At v10.65 four of the five sit inside
+ *   0.5 points at n=600, where the standard error is about 1.0. It reported Boulderer 6.7, Comp
+ *   Kid 6.8, Alpinist 7.0, Trad Dad 7.2 and picked {Boulderer, Comp Kid} as the bottom two. At
+ *   n=2000 the truth is Comp Kid 6.8, Alpinist 7.0, Boulderer 7.7, Trad Dad 7.8 — so it named the
+ *   FOURTH climber as the lowest and left the second-lowest unmeasured. It passed anyway, because
+ *   the pair it happened to pick contained the real minimum. That is luck, not a measurement.
+ *
+ *   AND THE LADDER MOVES SEVERAL POINTS A RELEASE, which nobody knew because nobody wrote it
+ *   down. Backfilled below: the Boulderer runs 11.1 → 12.9 → 7.7, the Onsighter 8.6 → 14.0 →
+ *   10.0. A 5.4-point swing on a climber that has never once been fine-measured, because at 14.0
+ *   it is nowhere near last. LANE-1 (v10.60) lifted the whole roster 2–3 points in one version.
+ *   None of that was visible to anybody at the time, and finding the Alpinist's share of it cost
+ *   NARR-22 a five-measurement bisection.
+ *
+ * SO THE LEDGER RECORDS ALL FIVE, and the guard in test.mjs takes its RANKING from here instead
+ * of paying 3,000 runs for a worse one. That is cheaper as well as better: the slow suite drops
+ * from 7,000 runs (3,000 coarse + 4,000 fine) to 4,000, and the fine pass now lands on the two
+ * climbers the ledger says are lowest.
+ *
+ * AND UNLIKE THE BAND, THIS COLUMN IS CHECKABLE. The note above admits the guard cannot tell a
+ * real band from an invented one, because n=3000 campaigns is too dear to re-run. One climber at
+ * n=2000 is not: the fine pass re-measures the two the ledger names and refuses a number more
+ * than ARCH_TOL from what was written down, so a stale or invented ladder fails where it matters.
+ *
+ * HOW TO MEASURE IT: `PROJECTS=0 node sim/run.mjs arch 2000` — all five, about five minutes,
+ * in the order `ARCHETYPES` declares them.
  */
 
 /** The band the game is aimed at, in the CARD-15 sense: a number somebody chose, with a date. */
@@ -50,24 +85,49 @@ export const BAND_N = 3000
 /** NARR-22: the sample the `ending` column is measured at. Kept here rather than in the guard so
     the ledger and the band in test.mjs cannot quietly disagree about what the number means. */
 export const ENDING_N = 240
+/** BAL-18: the sample the climber ladder is recorded at, and the one the fine pass re-measures
+    at. The floor is asserted in standard errors, so the sample is part of the claim. */
+export const ARCH_N = 2000
+/** BAL-18: the floor every climber has to clear, which has been 5 since v9.35 and was lowered to
+    4 once at v9.32 to accommodate a drift instead of fixing it — the thing BAL-9 exists to
+    forbid. It lives HERE, not as a literal in the guard, because two places held the band pin and
+    one of them sat two versions stale (see the NARR-22 note in test.mjs). */
+export const ARCH_FLOOR = 5
+/** BAL-18: how far a fine re-measurement may sit from the recorded ladder before the entry is
+    called stale. About 2.7 SE at ARCH_N, so it tolerates nothing a release should not have
+    re-recorded, and catches a number that was never measured. */
+export const ARCH_TOL = 1.5
 
 /* Oldest first. `band` is the full-journal campaign completion at BAND_N; `ending` is the share
-   of `reads` careers that reach the known ending at ENDING_N.
+   of `reads` careers that reach the known ending at ENDING_N; `arch` is each climber's campaign
+   completion at ARCH_N, keyed by the id in ARCHETYPES.
    Only add an entry you have actually measured — the guard cannot tell a real number from an
    invented one, and an invented one is worse than no ledger at all.
+
+   `arch` is backfilled the whole way, because it is the column that had no history at all and a
+   swing rule needs one. Two things fall out of it immediately, and both are the point:
+     · v10.63 and v10.64 are IDENTICAL across all five. GUARD-10 touched no game rule and the
+       ledger says so, which is the shape a pure-instrument release should have.
+     · v10.65 (NARR-22) is about a point LOWER for four of the five — Boulderer 9.0 → 7.7, Comp
+       Kid 7.9 → 6.8, Trad Dad 8.0 → 7.8, Onsighter 11.4 → 10.0 — because closing RUN-14's leak
+       took back the camp inflation that had been helping everybody, not only the Alpinist. That
+       ticket measured the Alpinist, bought it back, and shipped without ever looking at the other
+       four. Nothing broke, the floor still cleared by 3.2 SE, and nobody would have known. This
+       column existing one version earlier is the whole argument for it.
 
    `ending` starts at v10.65 because that is the version that made it measurable in one line.
    For the record, and measured during NARR-22's bisection at the same sample: v10.51 read 61.3%,
    v10.52 (RUN-14) 52.1%, and v10.64 53.3%. The whole nine-point step is v10.52. */
 export const BAND_LOG = [
-  { version: '10.56.0', band: 43.5, note: 'COND-2 · windows can pass' },
-  { version: '10.57.0', band: 45.0, note: 'COND-3 · Contact read live; finale traded Bite for Contact' },
-  { version: '10.58.0', band: 44.9, note: 'COND-4 · forecast agrees with the skies' },
-  { version: '10.59.0', band: 44.5, note: 'COND-5 · forecast reads the rock' },
-  { version: '10.60.0', band: 42.8, note: 'LANE-1 · matched hands' },
-  { version: '10.61.0', band: 42.6, note: 'DECK-4 · the shape can be paid for' },
-  { version: '10.62.0', band: 42.1, note: 'SEQ-3 · a plan can be bought — the pin was 44.3 and this is where the slide became undeniable' },
-  { version: '10.63.0', band: 46.4, note: 'LANE-2 · builder family bonus removed; band re-pinned ~44 → ~45 with Evan' },
-  { version: '10.64.0', band: 46.4, note: 'GUARD-10 · this ledger and its guard; no game rule touched, and the band is identical, which is what that should look like' },
-  { version: '10.65.0', band: 45.2, ending: 62.9, note: 'NARR-22 · RUN-14 could thin the trail node, which is the journal\'s only tap; the ending guard re-pinned on careers, not wins' },
+  { version: '10.56.0', band: 43.5, arch: { boulderer: 11.1, comp: 7.5, trad: 8.8, alpine: 6.5, onsight: 8.6 }, note: 'COND-2 · windows can pass' },
+  { version: '10.57.0', band: 45.0, arch: { boulderer: 11.4, comp: 8.3, trad: 9.5, alpine: 7.8, onsight: 8.9 }, note: 'COND-3 · Contact read live; finale traded Bite for Contact' },
+  { version: '10.58.0', band: 44.9, arch: { boulderer: 10.7, comp: 8.1, trad: 9.3, alpine: 7.5, onsight: 8.9 }, note: 'COND-4 · forecast agrees with the skies' },
+  { version: '10.59.0', band: 44.5, arch: { boulderer: 9.9, comp: 8.6, trad: 9.4, alpine: 7.3, onsight: 9.1 }, note: 'COND-5 · forecast reads the rock' },
+  { version: '10.60.0', band: 42.8, arch: { boulderer: 12.9, comp: 10.6, trad: 11.3, alpine: 8.5, onsight: 14.0 }, note: 'LANE-1 · matched hands' },
+  { version: '10.61.0', band: 42.6, arch: { boulderer: 10.8, comp: 9.1, trad: 10.7, alpine: 7.6, onsight: 13.4 }, note: 'DECK-4 · the shape can be paid for' },
+  { version: '10.62.0', band: 42.1, arch: { boulderer: 8.9, comp: 7.5, trad: 9.3, alpine: 7.8, onsight: 12.9 }, note: 'SEQ-3 · a plan can be bought — the pin was 44.3 and this is where the slide became undeniable' },
+  { version: '10.63.0', band: 46.4, arch: { boulderer: 9.0, comp: 7.9, trad: 8.0, alpine: 6.5, onsight: 11.4 }, note: 'LANE-2 · builder family bonus removed; band re-pinned ~44 → ~45 with Evan' },
+  { version: '10.64.0', band: 46.4, arch: { boulderer: 9.0, comp: 7.9, trad: 8.0, alpine: 6.5, onsight: 11.4 }, note: 'GUARD-10 · this ledger and its guard; no game rule touched, and the band is identical, which is what that should look like' },
+  { version: '10.65.0', band: 45.2, ending: 62.9, arch: { boulderer: 7.7, comp: 6.8, trad: 7.8, alpine: 7.0, onsight: 10.0 }, note: 'NARR-22 · RUN-14 could thin the trail node, which is the journal\'s only tap; the ending guard re-pinned on careers, not wins' },
+  { version: '10.66.0', band: 45.2, ending: 62.9, arch: { boulderer: 7.7, comp: 6.8, trad: 7.8, alpine: 7.0, onsight: 10.0 }, note: 'BAL-18 · this column and its guards. src/ and sim/run.mjs are byte-identical to v10.65 (checkable with a diff, not asserted) and the harness is seed-fixed, so all three numbers are carried forward — and the ladder is the one column a stale entry cannot hide in, because the fine pass re-measures it' },
 ]
