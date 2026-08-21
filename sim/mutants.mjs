@@ -1711,13 +1711,38 @@ export const MUTANTS = [
   { id: 'SHIP-4/shown-version-goes-stale', suite: 'core',
     why: 'the splash and menu keep printing an old version after a bump. This is not hypothetical: v10.65 and v10.66 BOTH shipped saying v10.64, and both of them were tickets that added teeth to the band ledger\'s version check while the one number a player can see had none',
     catches: 'and package.json says',
-    patch: [['src/App.tsx', "<div className=\"sfoot\">v10.67 · RCJ Labs</div>",
-      "<div className=\"sfoot\">v10.64 · RCJ Labs</div>"]] },
+    /* ANCHORED OFF THE MARKUP, NOT THE NUMBER — and this injection rotted on the very first bump
+       after it was written, which is the same mistake GUARD-10's release anchor made twice. It
+       now leaves the real string in place behind a hidden div and prints a wrong one, so nothing
+       here names a version. */
+    patch: [['src/App.tsx', 'className="sfoot">v',
+      'className="sfoot">v0.0 · RCJ Labs</div><div hidden>v']] },
   { id: 'SHIP-4/a-screen-stops-saying-it', suite: 'core',
     why: 'a screen drops its version string entirely, which is the same bug from the other side — the guard would still find one matching string and pass if it did not count them',
     catches: 'a screen that stopped saying it',
-    patch: [['src/App.tsx', '<div className="center sub" style={{ marginTop: 14 }}>v10.67 · RCJ Labs</div>',
-      '<div className="center sub" style={{ marginTop: 14 }}>RCJ Labs</div>']] },
+    /* Also version-agnostic: dropping the leading v is enough to stop the screen matching, and
+       it cannot rot on a bump. */
+    patch: [['src/App.tsx', 'style={{ marginTop: 14 }}>v', 'style={{ marginTop: 14 }}>']] },
+
+  // ---- QA-1: one scroller, and nothing hides under the fixed bar ----
+  { id: 'QA-1/two-scrollers-again', suite: 'core',
+    why: 'the root goes back to overflow-x:hidden, which forces overflow-y from visible to auto and gives the document a SECOND scroll container. With DEV-3 containing the chain, a drag inside the page then reaches a box with nothing to scroll and cannot chain out to the viewport — measured in Chromium as [hidden auto]/[hidden auto] against [clip visible]/[visible visible], and reported from a Z Fold 6 as "scrolling only works on the COMMIT row"',
+    catches: 'gets a second scroller',
+    patch: [['src/App.tsx', 'html{overflow-x:clip;overscroll-behavior-y:contain}',
+      'html,body{overflow-x:hidden;overscroll-behavior-y:contain}']] },
+  { id: 'QA-1/hand-claims-both-axes', suite: 'core',
+    why: 'the hand strip stops saying which axis it owns, so a browser may claim a vertical drag that starts on a card for a scroller with overflow-y:hidden — the drag does nothing and the page under it does not move either',
+    catches: 'does not say which axis it owns',
+    patch: [['src/App.tsx', ' touch-action:pan-x}', '}']] },
+  { id: 'QA-1/spacer-back-in-the-middle', suite: 'core',
+    why: "THE BUG A PHONE FOUND: UX-19's spacer is rendered before the advisory stack and the log again, so the MATCHED box, COMING UP, FROM THE GROUND and the last three log lines sit under the fixed bar with no way to scroll them clear. UX-19's own hit-test could not catch it — none of those boxes exist on the first frame of a climb",
+    catches: 'rendered before the climb log again',
+    patch: [['src/App.tsx', "      <div className=\"log\">{st.log.slice(-3).map((l, i) => <div key={i}>{l}</div>)}</div>\n      {/* UX-19: reserves what the fixed bar occupies. Its height is measured, because the\n          bar grows a row when you carry kit; the clearance underneath is CSS, because it\n          has to include env(safe-area-inset-bottom) and JS cannot read that. Reserving\n          only the height left the bail row under the bar on a screen tall enough not to\n          scroll \u2014 found by hit-testing, not by looking at it.\n\n          QA-1: AND IT HAD TO MOVE. It sat here BEFORE the advisory stack and the log, so it\n          reserved the bar's height in the middle of the page and everything rendered after it\n          \u2014 the MATCHED box, COMING UP, FROM THE GROUND, and the last three log lines \u2014 sat\n          under the bar with no way to scroll it clear. Reported from a real phone, and the\n          hit-test that closed UX-19 could not have caught it: none of those boxes exist on the\n          first frame of a climb, so at the moment it was measured there was nothing after the\n          spacer to be hidden. It is now the LAST thing in the page; only fixed overlays follow\n          it, and a guard asserts that ordering. */}\n      <div aria-hidden=\"true\"\n        style={{ height: footH, marginBottom: 'calc(14px + env(safe-area-inset-bottom))' }} />\n",
+      "      {/* UX-19: reserves what the fixed bar occupies. Its height is measured, because the\n          bar grows a row when you carry kit; the clearance underneath is CSS, because it\n          has to include env(safe-area-inset-bottom) and JS cannot read that. Reserving\n          only the height left the bail row under the bar on a screen tall enough not to\n          scroll \u2014 found by hit-testing, not by looking at it.\n\n          QA-1: AND IT HAD TO MOVE. It sat here BEFORE the advisory stack and the log, so it\n          reserved the bar's height in the middle of the page and everything rendered after it\n          \u2014 the MATCHED box, COMING UP, FROM THE GROUND, and the last three log lines \u2014 sat\n          under the bar with no way to scroll it clear. Reported from a real phone, and the\n          hit-test that closed UX-19 could not have caught it: none of those boxes exist on the\n          first frame of a climb, so at the moment it was measured there was nothing after the\n          spacer to be hidden. It is now the LAST thing in the page; only fixed overlays follow\n          it, and a guard asserts that ordering. */}\n      <div aria-hidden=\"true\"\n        style={{ height: footH, marginBottom: 'calc(14px + env(safe-area-inset-bottom))' }} />\n      <div className=\"log\">{st.log.slice(-3).map((l, i) => <div key={i}>{l}</div>)}</div>\n"]] },
+  { id: 'QA-1/pull-to-refresh-comes-back', suite: 'core',
+    why: "DEV-3's vertical chain guard is dropped from the root while the clip fix stays, so an over-flick of the card strip or an open sheet reloads a standalone PWA mid-climb — and nothing is saved mid-climb by design, so it eats the boulder",
+    catches: 'still chains its overscroll',
+    patch: [['src/App.tsx', 'html{overflow-x:clip;overscroll-behavior-y:contain}', 'html{overflow-x:clip}']] },
 
   // ---- BAL-18: the climber ladder cannot move a version at a time either ----
   { id: 'BAL-18/release-without-a-ladder', suite: 'core',

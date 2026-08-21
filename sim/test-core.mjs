@@ -6731,7 +6731,11 @@ test('DEV-3: an endless run is written down, and the page cannot be pulled away'
   E.wipeSlot(9)
   // and the document must not chain its scroll into a browser refresh
   const app = readFileSync('src/App.tsx', 'utf8')
-  ok(/html,body\{[^}]*overscroll-behavior-y:contain/.test(app),
+  /* QA-1 moved this to the ROOT ONLY. It was on `html,body`, and the `overflow-x:hidden` beside
+     it made both of them scroll containers, which is what broke scrolling on a real phone. The
+     protection is unchanged and the assertion still has to see it — on html, because that is
+     where overscroll-behavior reaches the viewport from. */
+  ok(/html\{[^}]*overscroll-behavior-y:contain/.test(app),
     'the page still chains its overscroll, so pull-to-refresh can eat a climb')
   ok(/\.sheetin\{[^}]*overscroll-behavior:contain/.test(app),
     'an over-flicked sheet still chains its scroll to the document')
@@ -7218,6 +7222,71 @@ test('GUARD-10: the band cannot drift a version at a time', () => {
      legible enough to see one: the widest span in it must be a real number somebody can read. */
   ok(Number.isFinite(worst.d),
     `the widest span in the ledger is unreadable: ${worst.from.version} → ${worst.to.version}`)
+})
+test('QA-1: one scroller, and nothing hides under the fixed bar', () => {
+  /* BOTH HALVES OF THIS CAME OFF A REAL PHONE — a Z Fold 6 running the installed PWA — and
+     neither was reachable from this suite before, which is QA-1's whole point. The report was
+     "scrolling only works if I scroll on top of the COMMIT and TAKE IT BACK row".
+
+     ONE: TWO SCROLLERS. The sheet said `html,body{overflow-x:hidden}`, and hidden on one axis
+     forces the other from visible to AUTO (CSS Overflow: visible computes to auto when its
+     partner is hidden). So both html and body computed to `hidden auto` and the document had
+     two nested scroll containers — measured in Chromium, before and after: [hidden auto] /
+     [hidden auto] became [clip visible] / [visible visible]. DEV-3's `overscroll-behavior-y:
+     contain` then stops a drag in the inner box chaining out to the viewport, so on a layout
+     where the overflow lands on the viewport instead of on body, a drag anywhere in the page
+     does nothing while a drag on the FIXED bar — hit-tested against the viewport scroller —
+     scrolls fine. `clip` clips the axis WITHOUT making a scroll container, which is the entire
+     reason it exists.
+
+     TWO: THE SPACER WAS IN THE MIDDLE OF THE PAGE. UX-19 reserves the fixed bar's measured
+     height with a spacer, and it was rendered BEFORE the advisory stack and the log — so the
+     MATCHED box, COMING UP, FROM THE GROUND and the last three log lines sat under the bar
+     with no way to scroll them clear. UX-19's own comment says the overlap was "found by
+     hit-testing, not by looking at it", and that hit-test could not have caught this: none of
+     those boxes exist on the first frame of a climb, so at the moment it measured there was
+     nothing after the spacer to hide. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+
+  // 1. the root clips without becoming a scroll container, and nothing re-creates the second one
+  ok(!/(?:^|[,;{}\s])(?:html|body)[^{]*\{[^}]*overflow-x:hidden/.test(app),
+    'html or body sets overflow-x:hidden again — that forces overflow-y to auto and the document '
+    + 'gets a second scroller, which is the bug a phone found')
+  ok(/html\{overflow-x:clip/.test(app),
+    'the root no longer clips without a scroll container, so whichever property replaced clip may '
+    + 'have made html a scroll container again')
+  /* DEV-3 has to survive it: an over-flick that chains to the document reloads a standalone PWA
+     mid-climb, and nothing is saved mid-climb by design. On the ROOT, because that is where
+     overscroll-behavior reaches the viewport from. */
+  ok(/html\{[^}]*overscroll-behavior-y:contain/.test(app),
+    "DEV-3's vertical chain guard is gone from the root, so an over-flick can pull-to-refresh the climb away")
+
+  // 2. the hand strip owns the horizontal axis and leaves the vertical one to the page
+  const hand = cssRule(app, '.hand{')
+  ok(/touch-action:pan-x/.test(hand),
+    'the hand strip does not say which axis it owns, so a browser may claim a vertical drag for a '
+    + 'scroller that has overflow-y:hidden and cannot move')
+
+  // 3. the spacer that reserves the fixed bar is the LAST in-flow thing on the climb screen
+  const SPACER = 'style={{ height: footH, marginBottom:'
+  eq(app.split(SPACER).length - 1, 1, 'there is not exactly one bar spacer')
+  /* GUARD-8: the window is taken with region() and not off an indexOf — it caught the first cut
+     of this guard doing exactly that, which is the whole reason that rule exists. */
+  const climb = region(app, '<div className="climb-foot" ref={footRef}>', ['{legend ? ('],
+    { min: 800, what: 'the climb screen below the bar' })
+  const LOG = '<div className="log">{st.log.slice(-3)'
+  ok(climb.includes(LOG), 'the climb log is not rendered where this guard can find it')
+  ok(climb.includes(SPACER), 'the bar spacer is not in the climb screen any more')
+  ok(climb.indexOf(LOG) < climb.indexOf(SPACER),
+    'the bar spacer is rendered before the climb log again, so the log sits under the fixed bar '
+    + 'with no way to scroll it clear')
+  /* and none of the climb screen's OWN flow content may follow it. Restricted to `spot` and
+     `log`: everything else after the spacer is inside the sheet and legend overlays, which are
+     position:fixed and cannot hide behind anything. */
+  const tailAfter = region(climb, SPACER, ['{legend ? ('],
+    { min: 20, what: 'what follows the bar spacer', eof: true })
+  for (const m of tailAfter.matchAll(/className="(spot|log)"/g))
+    ok(false, `a ${m[1]} box renders after the bar spacer, so it can hide under the bar`)
 })
 test('SHIP-4: the version the player is shown is the version that shipped', () => {
   /* THIS FAILED TWICE BEFORE IT WAS WRITTEN. v10.65 and v10.66 both went out with `v10.64 · RCJ

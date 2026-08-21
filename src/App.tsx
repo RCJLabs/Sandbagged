@@ -2,10 +2,10 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.67 — LANE-3: a deck short of feet was inflating the bar it was judged against,
-//   so the deficiency made the fix harder to buy. The bar is measured on what cards are worth now,
-//   not on what the deck is missing. And the three version strings below are guarded, because
-//   v10.65 and v10.66 both shipped saying v10.64.
+// SANDBAGGED v10.68 — QA-1: overflow-x:hidden on html AND body made the document two nested
+//   scroll containers, and DEV-3's contain then stopped a drag in the inner one reaching the
+//   viewport — so on a real phone nothing scrolled except the fixed COMMIT bar. clip instead,
+//   on the root only. And the bar's spacer was in the middle of the page, hiding the log.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -238,7 +238,21 @@ const CSS = `
    the app mid-climb. Nothing is saved mid-climb by design, so that ate the
    boulder. Contain the chain at the document and inside the sheets.
    (No backticks in here: this comment lives inside a template literal.) */
-html,body{overflow-x:hidden;overscroll-behavior-y:contain}
+/* QA-1: CLIP, NOT HIDDEN, AND ON THE ROOT ONLY — and this is the one that was breaking
+   scrolling on a real phone. overflow-x:hidden on an element forces the OTHER axis from
+   visible to auto (CSS Overflow: visible computes to auto when its partner is hidden), so
+   this one line made BOTH html and body scroll containers: both computed to hidden auto.
+   Two nested scrollers, and the contain above stops a drag in the inner one from chaining
+   out to the viewport — so on a layout where the overflow lands on the viewport and not on
+   body, every drag inside the page does nothing while a drag on the FIXED control bar, which
+   is hit-tested against the viewport scroller instead, scrolls normally. Reported from a
+   Z Fold 6 running the installed PWA, where it is the difference between a game you can
+   read and one you cannot.
+   clip exists for exactly this: it clips the axis WITHOUT creating a scroll container, so
+   the other axis stays visible and there is one scroller in the document again. On the root
+   only, because that is where overscroll-behavior reaches the viewport from.
+   (No backticks in here: this comment lives inside a template literal.) */
+html{overflow-x:clip;overscroll-behavior-y:contain}
 body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',serif;color:var(--ink)}
 /* DEV-1: index.html sets viewport-fit=cover, which is an explicit opt-OUT of the
    browser insetting content for the notch and the home indicator — and nothing
@@ -350,7 +364,14 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
    card's lift so overflow-y:hidden does not clip it. */
 .hand{display:flex;margin:8px -12px 0;padding:14px 12px 6px;min-height:calc(146px + (var(--fs) - 1) * 95px);
  overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch;
- scroll-snap-type:x proximity;overscroll-behavior-x:contain}
+ scroll-snap-type:x proximity;overscroll-behavior-x:contain;
+ /* QA-1: the strip owns the horizontal axis and the PAGE owns the vertical one. Left at
+    auto, a browser is free to claim a vertical drag that starts on a card for this scroller
+    — which has overflow-y:hidden, so the drag does nothing at all and the page under it does
+    not move either. Chromium happens to pass it through; that is a choice it makes, not a
+    rule, and this says out loud which axis belongs to whom. (No backticks: this comment is
+    inside a template literal, the same trap the note at the top of the sheet warns about.) */
+ touch-action:pan-x}
 .hand::-webkit-scrollbar{display:none}
 .card{position:relative;width:calc(112px + (var(--fs) - 1) * 40px);min-width:calc(112px + (var(--fs) - 1) * 40px);height:calc(124px + (var(--fs) - 1) * 95px);border-radius:2px;
  background:var(--card);padding:6px 12px 6px 7px;display:flex;flex-direction:column;justify-content:space-between;
@@ -1547,7 +1568,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.67 · RCJ Labs</div>
+          <div className="sfoot">v10.68 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1776,7 +1797,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.67 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.68 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -4171,13 +4192,6 @@ export default function App() {
           })}
         </div>) : null}
       </div>
-      {/* UX-19: reserves what the fixed bar occupies. Its height is measured, because the
-          bar grows a row when you carry kit; the clearance underneath is CSS, because it
-          has to include env(safe-area-inset-bottom) and JS cannot read that. Reserving
-          only the height left the bail row under the bar on a screen tall enough not to
-          scroll — found by hit-testing, not by looking at it. */}
-      <div aria-hidden="true"
-        style={{ height: footH, marginBottom: 'calc(14px + env(safe-area-inset-bottom))' }} />
       {sheet ? (
         <div className="sheet" {...tap(() => setSheet(false), 'Close what is left')}>
           <div className="sheetin" ref={sheetRef} tabIndex={-1} role="dialog" aria-modal="true"
@@ -4330,6 +4344,22 @@ export default function App() {
       {tip && !spec.tutorial ? <div className="spot" role="status" aria-live="polite">
         <b>FROM THE GROUND</b>{tip}</div> : null}
       <div className="log">{st.log.slice(-3).map((l, i) => <div key={i}>{l}</div>)}</div>
+      {/* UX-19: reserves what the fixed bar occupies. Its height is measured, because the
+          bar grows a row when you carry kit; the clearance underneath is CSS, because it
+          has to include env(safe-area-inset-bottom) and JS cannot read that. Reserving
+          only the height left the bail row under the bar on a screen tall enough not to
+          scroll — found by hit-testing, not by looking at it.
+
+          QA-1: AND IT HAD TO MOVE. It sat here BEFORE the advisory stack and the log, so it
+          reserved the bar's height in the middle of the page and everything rendered after it
+          — the MATCHED box, COMING UP, FROM THE GROUND, and the last three log lines — sat
+          under the bar with no way to scroll it clear. Reported from a real phone, and the
+          hit-test that closed UX-19 could not have caught it: none of those boxes exist on the
+          first frame of a climb, so at the moment it was measured there was nothing after the
+          spacer to be hidden. It is now the LAST thing in the page; only fixed overlays follow
+          it, and a guard asserts that ordering. */}
+      <div aria-hidden="true"
+        style={{ height: footH, marginBottom: 'calc(14px + env(safe-area-inset-bottom))' }} />
       {/* UX-17: the marks key, opened from the climb header */}
       {legend ? (
         <div className="sheet" {...tap(() => setLegend(false), 'Close the key')}>
