@@ -6180,6 +6180,9 @@ export function buildLoadout(s: GameState, seed: string[], owned: string[]): str
       // once the slots left would not cover the hands a deck needs, only hands
       if (c.lane !== 'hand' && c.lane !== 'any' && hands + left <= MIN_HANDS) continue
       let v = cardValue(s, c, spawned)
+      /* LANE-3: this is the ONE feet urgency now. `cardValue` used to carry a second one and
+         the builder was applying both; the value function is intrinsic again and `needBonus` is
+         for offers, so the builder's own structural push stands alone. */
       if (c.lane === 'feet' && feet < WANT_FEET) v += 14
       if (c.shed > 0 && rests < WANT_RESTS) v += 12
       /* LANE-2: THERE USED TO BE A FAMILY BONUS HERE — `v += 3 + have * 2`, capped at
@@ -6216,7 +6219,25 @@ export function buildLoadout(s: GameState, seed: string[], owned: string[]): str
   return deck
 }
 
-export function cardValue(s: GameState, c: Card, deck: Card[]): number {
+/* LANE-3: what this deck NEEDS, as opposed to what a card is worth. Feet coverage is the single
+   biggest hidden lever in the game, so the urgency is real and it stays in `cardValue` — pulling
+   it out entirely is worth +16.9 points of completion and is not this ticket's call to make
+   (LANE-4). What this extraction buys is that the term can be SKIPPED, which is the whole fix:
+   `bestOffer` measures its candidates against the deck's mean, and that mean has to be about
+   what the cards are worth rather than about what the deck is missing.
+
+   Kept as a cliff rather than smoothed: a deck either has enough feet or it does not, and a
+   gradient would trade a sharp answer for a vague one on the one axis where being wrong loses
+   the run. */
+export const FEET_SHARE = 0.25
+export const FEET_URGENT = 7
+export const FEET_COVERED = 1
+export function needBonus(c: Card, deck: Card[]): number {
+  if (c.lane !== 'feet') return 0
+  const feet = deck.filter(x => x.lane === 'feet').length
+  return feet / Math.max(1, deck.length) < FEET_SHARE ? FEET_URGENT : FEET_COVERED
+}
+export function cardValue(s: GameState, c: Card, deck: Card[], bare = false): number {
   if (c.rarity === 'curse') return -20
   const arch = archOf(s)
   const gm = gearMods(s.gear)
@@ -6242,12 +6263,29 @@ export function cardValue(s: GameState, c: Card, deck: Card[]): number {
   if (bn.wideSupport && c.lane === 'feet') v += c.support * 1.5
   if (bn.settle && c.kind === 'move') v += 1.5
 
-  // feet coverage is the single biggest hidden lever in the game
-  const feet = deck.filter(x => x.lane === 'feet').length
-  if (c.lane === 'feet') {
-    v += feet / Math.max(1, deck.length) < 0.25 ? 7 : 1
-    v += gm.dPowerFeet * 2
-  } else v += gm.dPowerHand * 1.5
+  /* LANE-3: THE FEET URGENCY USED TO LIVE HERE AND IT DOES NOT BELONG IN A CARD'S VALUE.
+
+     It was `v += feetShare < 0.25 ? 7 : 1` — a SEVENFOLD cliff at a hard threshold — and it is
+     a statement about what the DECK NEEDS, not about what the card is worth. Two things went
+     wrong with it sitting here.
+
+     ONE: `bestOffer` computes the bar it declines against as the deck's own mean THROUGH this
+     function, so a deck short of feet inflated its own bar and declined more offers — the
+     deficiency made the deck look better and the fix harder to buy. Measured on the two decks
+     LANE-2 raced: the concentrated one holds 3 feet in 15 (share 0.20, under the threshold, so
+     every feet card in it scored +7) and rated 15.31, while the spread deck that beats it by
+     10.9 points holds 4 in 15 (share 0.27, over the threshold, +1 each) and rated 13.93. The
+     feet term alone accounts for 1.13 of that 1.38 gap — 82% of `cardValue` preferring the worse
+     deck was this cliff, and none of it was the family bias I had written down in the row.
+
+     TWO: `buildLoadout` carries its OWN feet urgency (`+14` under WANT_FEET), so the builder was
+     applying it twice.
+
+     So the urgency is `needBonus`, it is added to CANDIDATES only, and this function is back to
+     being about the card. The gear terms stay: they are intrinsic. */
+  if (c.lane === 'feet') v += gm.dPowerFeet * 2
+  else v += gm.dPowerHand * 1.5
+  if (!bare) v += needBonus(c, deck)
 
   // synergy runs both ways: a specialist gains from the deck, and a tagged
   // card feeds any specialist already in it
@@ -6294,14 +6332,40 @@ export function cardValue(s: GameState, c: Card, deck: Card[]): number {
   return v - deck.length * 0.12
 }
 /** Would this offer actually improve the deck? */
+/* LANE-3: the share of the deck's own mean an offer has to beat. Named rather than left as a
+   bare 0.8 because taking the urgency out of `cardValue` moves what it is a share OF, and the
+   next person needs to see that this number and that term are connected.
+
+   WHAT MOVED, AND THE CORRECTION I OWE THIS CONSTANT. Removing the urgency drops the deck's mean,
+   which drops the bar, so the drafter accepts offers it used to decline: reward acceptance 87.7%
+   → 92.7%, shop 50.5% → 57.5%, 1.4 more cards by the end, and the campaign +7.9 points. My first
+   reading was that this was the bar moving underneath the fix, so restoring acceptance would
+   restore the band — and I was going to re-tune the multiplier to do it. MEASURED, THAT WAS
+   WRONG: at 0.86 and 0.88 the band reads 52.2% and 53.7%, so putting acceptance back does not
+   put the band back, and the two are not the same lever. The value therefore STAYS AT 0.8, which
+   is what it has always been, and the correctness fix is measured as it lands rather than
+   massaged into looking neutral. The +7.9 is a real, separate question about how hard the game
+   should be; it is LANE-4's to ask rather than this ticket's to smuggle. */
+export const OFFER_BAR = 0.8
 export function bestOffer(s: GameState, offers: Card[], deck: Card[]): Card | null {
   if (!offers.length) return null
+  /* LANE-3: the candidate carries what the deck needs; the BAR does not. Scoring both through
+     one function meant a deck short of feet raised the bar it was judged against, which is
+     backwards — the deficiency should make the fix easier to buy, not harder. */
   const scored = offers.map(c => [c, cardValue(s, c, deck)] as [Card, number])
   scored.sort((a, b) => b[1] - a[1])
+  /* LANE-3: THE BAR IS COMPUTED BARE. A card's value may carry what the deck NEEDS — that is
+     what gets a feet card picked up when you have none — but the bar those candidates are
+     measured against must not, because a deck short of feet then inflates its own bar and
+     declines the very fix it needs. Measured on the two decks LANE-2 raced: the concentrated
+     one holds 3 feet in 15 (share 0.20, under the threshold, +7 on every feet card in it) and
+     rated 15.31; the spread deck that beats it by 10.9 points holds 4 in 15 (0.27, +1 each) and
+     rated 13.93. The urgency alone accounted for 1.13 of that 1.38 gap — 82% of `cardValue`
+     preferring the worse deck, and none of it the family bias the row had guessed at. */
   const mean = deck.length
-    ? deck.reduce((a, c) => a + cardValue(s, c, deck), 0) / deck.length : 0
+    ? deck.reduce((a, c) => a + cardValue(s, c, deck, true), 0) / deck.length : 0
   // decline anything that would drag the deck down
-  return scored[0][1] > mean * 0.8 ? scored[0][0] : null
+  return scored[0][1] > mean * OFFER_BAR ? scored[0][0] : null
 }
 
 /* ======================= THE PHASE GRAPH ===========================

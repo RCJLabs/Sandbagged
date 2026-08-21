@@ -643,6 +643,78 @@ test('DECK-4: the shape a deck commits to can be paid for', () => {
      70.8% of shelves for a crack deck, 1.0% for a crimp one, LANE-3). What this fixture is for
      is the randomness, which is the same either way. */
 })
+test('LANE-3: a deck short of feet must not raise the bar it is judged against', () => {
+  /* `cardValue` carries an urgency term — a feet card is worth +7 to a deck under a quarter feet
+     and +1 to one over it — and `bestOffer` was measuring its candidates against the deck's own
+     mean THROUGH the same function. So a deck short of feet inflated the bar it declined against:
+     the deficiency made the deck look better and the fix harder to buy, which is backwards.
+
+     Measured on the two decks LANE-2 raced: the concentrated one holds 3 feet in 15 (share 0.20,
+     under the threshold, so every feet card in it scored +7) and rated 15.31, while the spread
+     deck that beats it by 10.9 points holds 4 in 15 (0.27, +1 each) and rated 13.93. The urgency
+     alone accounts for 1.13 of that 1.38 gap — 82% of the valuation preferring the worse deck,
+     and none of it the family bias the row had guessed at.
+
+     The urgency itself STAYS: pulling it out of the valuation entirely measured +16.9 points of
+     completion, which is a question about how hard the game should be and not this ticket's to
+     answer (LANE-4). What is fixed is that the bar is computed bare. */
+  eq(E.needBonus(E.spawn('Lock Off'), []), 0, 'a hand card carries a feet urgency')
+  const feetCard = E.spawn('Smear')
+  eq(feetCard.lane, 'feet', 'the fixture card is not a feet card')
+  const shortDeck = [...Array(9)].map(() => E.spawn('Lock Off'))
+  const coveredDeck = [...shortDeck, ...[...Array(4)].map(() => E.spawn('Smear'))]
+  ok(shortDeck.filter(c => c.lane === 'feet').length / shortDeck.length < E.FEET_SHARE,
+    'the short fixture is not actually short of feet')
+  ok(coveredDeck.filter(c => c.lane === 'feet').length / coveredDeck.length >= E.FEET_SHARE,
+    'the covered fixture is not actually covered')
+  eq(E.needBonus(feetCard, shortDeck), E.FEET_URGENT, 'a deck with no feet is not urgent about them')
+  eq(E.needBonus(feetCard, coveredDeck), E.FEET_COVERED, 'a covered deck is still urgent about feet')
+
+  // the bare reading is the intrinsic one: it differs from the full reading by exactly the urgency
+  const st = { ...E.freshRun(8, 1, 7), inRun: true, act: 1 }
+  for (const [label, deck] of [['short', shortDeck], ['covered', coveredDeck]]) {
+    const full = E.cardValue(st, feetCard, deck)
+    const bare = E.cardValue(st, feetCard, deck, true)
+    eq(Number((full - bare).toFixed(6)), E.needBonus(feetCard, deck),
+      `on the ${label} deck the bare value does not differ from the full one by the urgency`)
+  }
+
+  /* THE FIX, ASSERTED WHERE IT BITES. A deck of feet cards is short of nothing else, so its
+     urgency-inflated mean is far above its intrinsic one — and the two bars have to disagree
+     about a real candidate for this to prove anything, which is checked before it is used. */
+  const inflated = [...Array(4)].map(() => E.spawn('Smear'))
+  ok(inflated.filter(c => c.lane === 'feet').length / inflated.length >= E.FEET_SHARE,
+    'the inflated fixture is not carrying the urgency at all')
+  const meanFull = inflated.reduce((a, c) => a + E.cardValue(st, c, inflated), 0) / inflated.length
+  const meanBare = inflated.reduce((a, c) => a + E.cardValue(st, c, inflated, true), 0) / inflated.length
+  ok(meanFull > meanBare,
+    `the urgency does not inflate this deck's mean (${meanFull.toFixed(2)} vs ${meanBare.toFixed(2)}), so nothing below is tested`)
+
+  /* And the bar the game uses is the bare one. Proved through `bestOffer` rather than by reading
+     the source: a candidate priced between the two bars must be ACCEPTED, and it is only the
+     bare bar that accepts it. */
+  const between = (meanBare * E.OFFER_BAR + meanFull * E.OFFER_BAR) / 2
+  const cand = Object.values(E.CARDS)
+    .filter(c => c.kind === 'move' && (c.rarity ?? 'common') !== 'curse')
+    .map(d => E.spawn(d.name))          // spawn takes a NAME; mapping defs into it yields undefined
+    .find(c => { const v = E.cardValue(st, c, inflated)
+      return v > meanBare * E.OFFER_BAR && v < meanFull * E.OFFER_BAR })
+  ok(cand,
+    `no card in the game prices between the bare bar (${(meanBare * E.OFFER_BAR).toFixed(2)}) and `
+    + `the inflated one (${(meanFull * E.OFFER_BAR).toFixed(2)}), so the two cannot be told apart`)
+  eq(E.bestOffer(st, [cand], inflated)?.name, cand.name,
+    `${cand.name} prices above the bare bar and was declined — the bar is inflated by the urgency again`)
+
+  // one source pin: the mean must be taken bare, which is the single character this rests on
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const body = region(eng, 'export function bestOffer', ['export function trailNote'],
+    { min: 200, what: 'bestOffer' })
+  ok(/cardValue\(s, c, deck, true\)/.test(body),
+    'bestOffer computes its bar through the full valuation again, urgency and all')
+  ok(!/needBonus/.test(body),
+    'bestOffer adds the urgency to its candidates by hand — it belongs inside cardValue, once')
+})
+
 test('LANE-2: the builder spreads, because concentrating cost three and a half points', () => {
   /* The loadout builder used to carry a family bonus — `v += 3 + have * 2`, capped at
      SYNERGY_PER — described as "build on what the player chose". It compounds: each card of a
@@ -3467,7 +3539,23 @@ if (SLOW) {
        GUARD-10's ledger is the instrument. */
     ok(Math.abs(full - BAND_PIN) < 6,
       `the campaign completes ${full}% with a full journal against a pin of ${BAND_PIN} — re-pinned at v10.23 (SIM-8) and again at v10.63 (LANE-2)`)
-    ok(pcts[0] < full - 5, `reading his journal is worth ${(full - pcts[0]).toFixed(1)} points`)
+    /* LANE-3 REMOVED A DUPLICATE FROM HERE, and it is worth saying what it was. This guard also
+       asserted `pcts[0] < full - 5` under the message "reading his journal is worth N points" —
+       word for word the same claim, and the same message, as the NARR-11 guard four tests up,
+       which measures it at n=600 where this reads n=300. Two copies of one claim, one of them at
+       half the sample: the ENG-26 class, and the same shape as the band pin sitting stale in two
+       places until NARR-22.
+
+       It failed on LANE-3 at 5.0 against a bar of more than 5 — failing by exactly nothing — and
+       the resolution is why the copy had to go rather than the bar move. The difference of two
+       n=300 arms carries about 4 points of noise, so a bar at 5 cannot see its own margin. Bought
+       properly at n=3000, both arms: v10.66 reads 36.8 empty against 45.2 full and v10.67 reads
+       37.0 against 45.2, so the journal is worth 8.4 and 8.2 points respectively — a 3.2-point
+       margin over the bar, and LANE-3 moves it by 0.2. The n=300 reading was a draw, and the
+       NARR-11 guard at n=600 saw the truth and stayed green throughout.
+
+       The claim is not weakened; it is asserted once, by the guard that owns it. This guard is
+       about the BAND. */
   })
   test('the acts get deadlier in order', () => {
     /* BAL-13 attempted and reverted here. Act 1 kills about 6% of runs across

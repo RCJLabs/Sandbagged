@@ -7219,6 +7219,29 @@ test('GUARD-10: the band cannot drift a version at a time', () => {
   ok(Number.isFinite(worst.d),
     `the widest span in the ledger is unreadable: ${worst.from.version} → ${worst.to.version}`)
 })
+test('SHIP-4: the version the player is shown is the version that shipped', () => {
+  /* THIS FAILED TWICE BEFORE IT WAS WRITTEN. v10.65 and v10.66 both went out with `v10.64 · RCJ
+     Labs` on the splash and in the menu, because `npm run ship` bumps package.json and nothing
+     ever compared it to what App.tsx PRINTS. The irony is on the record: both of those releases
+     were tickets that added teeth to the band ledger's version check, and the one number a player
+     can actually see had no check at all.
+
+     It is the cheapest possible guard — two string reads — and it belongs in the FAST suite for
+     the same reason GUARD-10's arithmetic does: a release cannot be cut without it running. */
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
+  const short = pkg.version.replace(/\.0$/, '')      // 10.67.0 on disk reads v10.67 on screen
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const shown = [...app.matchAll(/v(\d+\.\d+(?:\.\d+)?) · RCJ Labs/g)].map(m => m[1])
+  ok(shown.length >= 2,
+    `found ${shown.length} version strings in App.tsx and there are two screens that print one — `
+    + 'the splash and the menu; a screen that stopped saying it is the same bug from the other side')
+  for (const v of shown)
+    eq(v, short, `App.tsx shows v${v} and package.json says ${pkg.version}`)
+  /* the header comment names the version too, and it is what a reader trusts first */
+  const head = /^\/\/ SANDBAGGED v(\d+\.\d+)/m.exec(app)
+  ok(head, 'the file header no longer says which version it is')
+  eq(head[1], short, `the header says v${head[1]} and package.json says ${pkg.version}`)
+})
 test('BAL-18: the climber ladder cannot move a version at a time either', () => {
   /* THE THIRD QUANTITY IN THIS PROJECT WITH NO RECORD, and the one whose absence cost the most.
      GUARD-10 caught the band after eight versions of drift; NARR-22 caught the known ending after
