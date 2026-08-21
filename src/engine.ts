@@ -6230,7 +6230,42 @@ export function buildLoadout(s: GameState, seed: string[], owned: string[]): str
    gradient would trade a sharp answer for a vague one on the one axis where being wrong loses
    the run. */
 export const FEET_SHARE = 0.25
-export const FEET_URGENT = 7
+/* LANE-4. THE CLIFF WAS SEVENFOLD AND IT IS NOW DOUBLE, and the row this comes from had the
+   mechanism backwards.
+
+   The row said the urgency is worth +16.9 points of completion and framed the question as whether
+   to REMOVE it. Measured on v10.68 the removal is worth +14.8 (band 45.2% to 60.0% at n=3000) —
+   and it is not shippable, because it takes the Comp Kid to 5.0% and the Trad Dad to 5.5% against
+   a floor of 5, with the roster spread at 2.26x against a ceiling of 2.2. Two guardrails, not a
+   difficulty preference.
+
+   WHAT THE SWEEP FOUND, at n=2000 on the climber ladder, and it is the opposite of the row's
+   reading. The damage is the MAGNITUDE of the cliff; the flat +1 underneath it is load-bearing.
+
+       FEET_URGENT   lowest climber   floor margin   spread
+            7 (was)            7.0         3.5 SE     1.40x
+            5                  7.0         3.5 SE     1.39x
+            3                  6.3         2.4 SE     1.71x
+            2 (SHIPPED)        6.7         3.1 SE     1.55x
+            1                  5.5         0.98 SE    1.80x   <- a coin flip, not a floor
+            removed            5.0         fails      2.26x
+
+   At 1 the cliff is gone but the +1 remains, and the Comp Kid still clears the floor by one
+   standard error — which BAL-16 and BAL-17 exist to forbid. Delete the +1 as well and two
+   climbers lose two points each: the drafter needs SOME reason to value feet, just not a
+   sevenfold one. So the boundary is between 2 and 1, and 2 has the healthier margin of the two
+   values that pass (3 reads 6.3 and 2 reads 6.7; that dip is noise at ~0.5 SE, not a real one).
+
+   WHAT IT BUYS, AND WHAT IT DOES NOT. Band 45.2% to 48.4%, ending 63.8% to 68.8% of careers —
+   +3.2 and +5.0, both re-pinned deliberately with Evan. That is a FIFTH of the +14.8 the removal
+   offers. The rest is behind the floor, and reaching it is a two-climber buy-back pass (the
+   Alpinist alone took ten dial measurements in NARR-22), not a constant. Recorded here so the
+   next person does not re-derive the sweep to find that out.
+
+   AND LANE-3 SURVIVES BECAUSE THIS IS A SOFTENING. Had the term gone entirely, `needBonus`, the
+   `bare` parameter and the bare-bar fix would all have become vestigial — there would be nothing
+   left to strip out of the offer bar. Softening keeps every one of them doing its job. */
+export const FEET_URGENT = 2
 export const FEET_COVERED = 1
 export function needBonus(c: Card, deck: Card[]): number {
   if (c.lane !== 'feet') return 0

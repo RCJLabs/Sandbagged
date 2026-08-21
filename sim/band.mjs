@@ -74,8 +74,13 @@
  * in the order `ARCHETYPES` declares them.
  */
 
-/** The band the game is aimed at, in the CARD-15 sense: a number somebody chose, with a date. */
-export const BAND_PIN = 45
+/** The band the game is aimed at, in the CARD-15 sense: a number somebody chose, with a date.
+    LANE-4 re-pinned it 45 -> 48 on 2026-08-21, with Evan, because softening the feet urgency from
+    a sevenfold cliff to a double one is worth +3.2 points and there is no version of that change
+    that is band-neutral. The known-ending pin in test.mjs moved in the same breath (62.9 -> 68.8):
+    one lever moved both, and re-pinning one and not the other is the stale-copy failure NARR-22
+    and BAL-18 both had to clean up. */
+export const BAND_PIN = 48
 /** About 1.5 standard errors at n=3000. Tight enough to see the 2.2-point slide above; loose
     enough that one honest band-neutral ticket does not fail on noise. */
 export const BAND_TOL = 2.0
@@ -132,4 +137,5 @@ export const BAND_LOG = [
   { version: '10.66.0', band: 45.2, ending: 62.9, arch: { boulderer: 7.7, comp: 6.8, trad: 7.8, alpine: 7.0, onsight: 10.0 }, note: 'BAL-18 · this column and its guards. src/ and sim/run.mjs are byte-identical to v10.65 (checkable with a diff, not asserted) and the harness is seed-fixed, so all three numbers are carried forward — and the ladder is the one column a stale entry cannot hide in, because the fine pass re-measures it' },
   { version: '10.67.0', band: 45.2, ending: 63.8, arch: { boulderer: 7.7, comp: 7.1, trad: 7.7, alpine: 7.0, onsight: 9.8 }, note: 'LANE-3 · the offer bar is measured bare. Band identical at 45.2; the ending it was PARKED for costs nothing (+0.9, and the 2-3 points it was held back on were read off the wins ratio NARR-22 retired); ladder inside 0.3 everywhere' },
   { version: '10.68.0', band: 45.2, ending: 63.8, arch: { boulderer: 7.7, comp: 7.1, trad: 7.7, alpine: 7.0, onsight: 9.8 }, note: 'QA-1 · the page had two scroll containers and the bar spacer sat mid-page; both fixed in App.tsx and the CSS. src/engine.ts and sim/run.mjs byte-identical to v10.67, so all three columns carry forward' },
+  { version: '10.69.0', band: 48.4, ending: 68.8, arch: { boulderer: 9.3, comp: 6.7, trad: 10.1, alpine: 9.3, onsight: 10.4 }, note: 'LANE-4 · the feet cliff softened 7 -> 2. A DELIBERATE JOINT RE-PIN with Evan: band 45 -> 48, ending 62.9 -> 68.8. The removal the row asked for is worth +14.8 and breaks the floor and the spread; this is a fifth of it, with the roster intact' },
 ]

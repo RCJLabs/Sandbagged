@@ -1638,7 +1638,10 @@ export const MUTANTS = [
        working the moment v10.64 stopped being the newest entry — the guard polices the NEWEST
        band against the pin and deliberately leaves the history alone. Moving the pin is the
        same failure from the other side and does not rot. */
-    patch: [['sim/band.mjs', 'export const BAND_PIN = 45', 'export const BAND_PIN = 20']] },
+    /* AND THE ANCHOR NAMES NO NUMBER. It used to read `BAND_PIN = 45` and rotted the moment
+       LANE-4 re-pinned to 48 — the third value-pinned anchor to rot in one session, after
+       GUARD-10's release check and SHIP-4's two. It comments the real value out instead. */
+    patch: [['sim/band.mjs', 'export const BAND_PIN = ', 'export const BAND_PIN = 20 // was ']] },
   { id: 'GUARD-10/tolerance-opened-up', suite: 'core',
     why: 'the tolerance is widened until it cannot see the 2.2-point slide it was sized to catch, which is exactly how the old +-6 window missed it',
     catches: 'cannot see the drift it was written for',
@@ -1723,6 +1726,25 @@ export const MUTANTS = [
     /* Also version-agnostic: dropping the leading v is enough to stop the screen matching, and
        it cannot rot on a bump. */
     patch: [['src/App.tsx', 'style={{ marginTop: 14 }}>v', 'style={{ marginTop: 14 }}>']] },
+
+  // ---- LANE-4: the feet urgency is a preference, not a cliff ----
+  { id: 'LANE-4/acts-compared-unconditionally', suite: 'slow',
+    why: 'the act curve goes back to comparing shares of ALL runs, which is structurally biased against the last act — act 2 taking a quarter of every run leaves ~72% alive to reach act 3, so act 3 cannot post a bigger share unless it kills nearly everyone. It read green on v10.67 and v10.68 while the raw shares were already inverted at n=3000, and only tripped when LANE-4 nudged it',
+    catches: 'the last act is not the hardest',
+    patch: [['sim/test.mjs', '    const reach = [100, 100 - a1, 100 - a1 - a2]',
+      '    const reach = [100, 100, 100]']] },
+  { id: 'LANE-4/cliff-restored', suite: 'core',
+    why: 'the sevenfold cliff comes back. Measured by LANE-3: it was 1.13 of the 1.38 gap by which cardValue preferred a concentrated deck over a spread one that beats it by 10.9 points — 82% of the valuation backing the worse deck, on one hard threshold',
+    catches: 'that is a cliff, not a preference',
+    patch: [['src/engine.ts', 'export const FEET_URGENT = 2', 'export const FEET_URGENT = 7']] },
+  { id: 'LANE-4/urgency-flattened', suite: 'core',
+    why: 'an uncovered deck stops wanting feet any more than a covered one, which reads 5.5% on the lowest climber against a floor of 5 — 0.98 SE, the coin flip BAL-16 and BAL-17 exist to forbid',
+    catches: 'wants a feet card no more than a covered one',
+    patch: [['src/engine.ts', 'export const FEET_URGENT = 2', 'export const FEET_URGENT = 1']] },
+  { id: 'LANE-4/floor-removed', suite: 'core',
+    why: 'the flat bonus under the cliff goes, which is the load-bearing half the row missed: without it the drafter stops valuing feet at all and the Comp Kid drops 2.1 points, the Trad Dad 2.2, and the spread blows to 2.26x',
+    catches: 'delete that floor',
+    patch: [['src/engine.ts', 'export const FEET_COVERED = 1', 'export const FEET_COVERED = 0']] },
 
   // ---- QA-1: one scroller, and nothing hides under the fixed bar ----
   { id: 'QA-1/two-scrollers-again', suite: 'core',

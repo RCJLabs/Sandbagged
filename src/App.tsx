@@ -2,10 +2,9 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.68 — QA-1: overflow-x:hidden on html AND body made the document two nested
-//   scroll containers, and DEV-3's contain then stopped a drag in the inner one reaching the
-//   viewport — so on a real phone nothing scrolled except the fixed COMMIT bar. clip instead,
-//   on the root only. And the bar's spacer was in the middle of the page, hiding the log.
+// SANDBAGGED v10.69 — LANE-4: the feet urgency was a sevenfold cliff in the card valuation and
+//   is now a double one. A deliberate joint re-pin with Evan: the band 45 to 48, the known ending
+//   62.9 to 68.8. Removing the term outright is worth +14.8 and breaks two guardrails.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1568,7 +1567,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.68 · RCJ Labs</div>
+          <div className="sfoot">v10.69 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1797,7 +1796,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.68 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.69 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

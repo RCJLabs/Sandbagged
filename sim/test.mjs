@@ -3245,9 +3245,12 @@ if (SLOW) {
     const reads = career('reads', 240)
     /* THE BAND, with a date on it, in the shape BAL-14 established and GUARD-10 sharpened:
        what gets defended is the band, and the number here is what somebody last chose.
-       Set 2026-08-20 at 62.9% of careers / 11.0 pages, at 240 careers x 8 expeditions.
+       Set 2026-08-20 at 62.9% of careers / 11.0 pages, at 240 careers x 8 expeditions, and
+       RE-PINNED 2026-08-21 to 68.8% by LANE-4 — softening the feet urgency from a sevenfold
+       cliff to a double one moves this and the campaign band together, so both were re-pinned
+       in the same breath with Evan rather than one of them going stale.
        Re-pinning is allowed and expected — moving the number without saying so is not. */
-    const PIN = 62.9, TOL = 6
+    const PIN = 68.8, TOL = 6
     ok(Math.abs(reads.ending - PIN) <= TOL,
       `an informed player's story lands ${reads.ending}% of careers against a pin of ${PIN} — ` +
       `re-measure, pay it back, or re-pin here on purpose`)
@@ -3571,9 +3574,31 @@ if (SLOW) {
     const rows = [...out.matchAll(/act1 (\d+)% act2 (\d+)% act3 (\d+)%/g)]
     ok(rows.length >= 1, 'the harness stopped reporting where runs end')
     const [, a1, a2, a3] = rows[rows.length - 1].map(Number)
-    ok(a2 >= a1, `act 2 kills ${a2}% against act 1's ${a1}% — the curve is inverted`)
-    ok(a3 >= a2, `act 3 kills ${a3}% against act 2's ${a2}% — the last act is not the hardest`)
-    ok(a3 > 15, `act 3 kills only ${a3}% — nothing is at stake at the end`)
+    /* LANE-4: CONDITIONAL RATES, BECAUSE THE HARNESS REPORTS SHARES OF ALL RUNS AND THAT IS NOT
+       WHAT "DEADLIER" MEANS. `diedAct[i]/N` is the share of EVERY run that ended in act i, so a
+       later act is measured against a pool the earlier acts have already thinned — act 2 taking a
+       quarter of all runs leaves only about 72% alive to reach act 3, and act 3 then cannot post a
+       bigger share unless it kills nearly everyone. The comparison was structurally biased against
+       the last act.
+
+       It was passing on the draw. LANE-4 read 25% then 21% at n=300 and finally tripped it, but the
+       full-journal arm has been marginally inverted on the raw shares for at least three versions:
+       v10.67, v10.68 and v10.69 all read act2 25-26% against act3 24-25% at n=3000, and this guard
+       went green on each of them because n=300 happened to land the other way. That is the third
+       guard this session found passing on a coin flip, after NARR-21's bar and the coarse climber
+       pass.
+
+       Conditioned, the claim is true and comfortable: at v10.69, 3.1% of runs die in act 1, 25.8%
+       of those who reach act 2 die there, and 33.3% of those who reach act 3 die there. Strictly
+       increasing, and it is the number a player would recognise — the chance the act in front of
+       you ends the run. */
+    const reach = [100, 100 - a1, 100 - a1 - a2]
+    ok(reach[2] > 5, `only ${reach[2].toFixed(0)}% of runs reach act 3, so nothing below can be read`)
+    const rate = [a1 / reach[0], a2 / reach[1], a3 / reach[2]].map(x => 100 * x)
+    const [r1, r2, r3] = rate.map(x => Number(x.toFixed(1)))
+    ok(r2 >= r1, `act 2 kills ${r2}% of those who reach it against act 1's ${r1}% — the curve is inverted`)
+    ok(r3 >= r2, `act 3 kills ${r3}% of those who reach it against act 2's ${r2}% — the last act is not the hardest`)
+    ok(r3 > 15, `act 3 kills only ${r3}% of those who reach it — nothing is at stake at the end`)
   })
   test('SIM-7: the deck the game builds you beats the one it replaces', () => {
     /* THE GUARD THAT WAS MISSING. `buildLoadout` is what BUILD ME ONE calls, and nothing

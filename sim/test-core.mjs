@@ -7092,6 +7092,13 @@ test('GUARD-9: the kept injections still injure something', () => {
         `${m.id} patches ${JSON.stringify(file)}, which is not a source path`)
       ok(from !== to, `${m.id} patches ${file} to exactly what it already says`)
       ok(from.length > 12, `${m.id} has an anchor too short to be unique on purpose`)
+      /* LANE-4: AND IT MAY NOT NAME THIS VERSION. Four injections rotted on a version bump in
+         one session — GUARD-10's release check, SHIP-4's two, and the band pin next door — every
+         one of them because the anchor quoted a number that a release changes. The anchor-count
+         check above catches the rot after the fact; this catches the shape that guarantees it. */
+      ok(!from.includes(JSON.parse(readFileSync('package.json', 'utf8')).version),
+        `${m.id}'s anchor quotes the current version, so it will rot on the next bump — anchor it `
+        + 'on something a release does not change')
     }
   }
   /* and every ticket that has been negative-tested keeps its injections. A number rather
@@ -7222,6 +7229,38 @@ test('GUARD-10: the band cannot drift a version at a time', () => {
      legible enough to see one: the widest span in it must be a real number somebody can read. */
   ok(Number.isFinite(worst.d),
     `the widest span in the ledger is unreadable: ${worst.from.version} → ${worst.to.version}`)
+})
+test('LANE-4: the feet urgency is a preference, not a cliff', () => {
+  /* THE ROW ASKED THE WRONG QUESTION. It measured the urgency at +16.9 points of completion and
+     framed the choice as whether to REMOVE it. On v10.68 the removal is worth +14.8 (band 45.2%
+     to 60.0%, n=3000) and it is not shippable: the Comp Kid lands on 5.0% and the Trad Dad on
+     5.5% against a floor of 5, with the spread at 2.26x against a ceiling of 2.2.
+
+     Swept at n=2000 on the ladder, the damage is the MAGNITUDE, and the flat bonus underneath the
+     cliff is load-bearing:
+
+         FEET_URGENT   lowest   margin     spread
+              7           7.0   3.5 SE      1.40x
+              3           6.3   2.4 SE      1.71x
+              2           6.7   3.1 SE      1.55x   <- shipped
+              1           5.5   0.98 SE     1.80x   <- a coin flip, not a floor
+              removed     5.0   fails       2.26x
+
+     So three things have to stay true, and they are arithmetic rather than simulation. */
+  ok(E.FEET_COVERED >= 1,
+    `a covered deck values a feet card at ${E.FEET_COVERED} — delete that floor and the drafter `
+    + 'stops taking feet at all: the Comp Kid loses 2.1 points and the Trad Dad 2.2')
+  ok(E.FEET_URGENT > E.FEET_COVERED,
+    `an uncovered deck wants a feet card no more than a covered one (${E.FEET_URGENT} vs `
+    + `${E.FEET_COVERED}) — measured, that puts the lowest climber 0.98 SE over its floor`)
+  ok(E.FEET_URGENT <= E.FEET_COVERED * 2,
+    `the urgency is ${E.FEET_URGENT} against ${E.FEET_COVERED} for a covered deck — that is a `
+    + 'cliff, not a preference, and at sevenfold it was 82% of the valuation preferring a deck '
+    + 'that loses by 10.9 points')
+  /* and it is a share of the deck, not a count: a threshold on the count would push a 30-card
+     deck as hard as a 12-card one. */
+  ok(E.FEET_SHARE > 0 && E.FEET_SHARE < 1,
+    `the coverage threshold is ${E.FEET_SHARE}, which is not a share of the deck`)
 })
 test('QA-1: one scroller, and nothing hides under the fixed bar', () => {
   /* BOTH HALVES OF THIS CAME OFF A REAL PHONE — a Z Fold 6 running the installed PWA — and
