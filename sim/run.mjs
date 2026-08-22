@@ -12,9 +12,16 @@ await build({
 const E = await import('../' + out)
 unlinkSync(out)
 
+/* SIM-9: REST_AT overrides the policy's shake-out threshold — 99 never fires, which is the
+   pre-SIM-9 policy exactly. Kept the way SHARP_AT is: so old measurements can be reproduced,
+   and so the SIM-9 guard can measure the same game through both policies. */
+const REST_AT = process.env.REST_AT
+const PLAY = REST_AT === undefined ? E.autoPlay
+  : (s, rng) => E.autoPlay(s, rng, Number(REST_AT))
 const N = Number(process.argv[3] ?? 1200)
 const mode = process.argv[2] ?? 'ladder'
 
+let SHAKES = 0   // SIM-9: hand-lane rests the policy placed, read by the `policy` mode
 function session(routeIdx, tier, seed, force) {
   const rng = new E.RNG(seed)
   let s = E.freshRun(routeIdx, tier, seed)
@@ -23,7 +30,9 @@ function session(routeIdx, tier, seed, force) {
   let turns = 0
   for (let burn = 1; burn <= E.ATTEMPTS; burn++) {
     for (let guard = 0; guard < 40; guard++) {
-      s = E.autoPlay(s, rng)
+      const preP = s.boardP
+      s = PLAY(s, rng)
+      for (const i of [0, 1]) if (!preP[i] && (s.boardP[i]?.shed ?? 0) > 0) SHAKES++
       s = E.resolve(s, rng)
       turns++
       if (s.phase === 'burnEnd') break
@@ -127,6 +136,22 @@ if (mode === 'costing') {
   for (const c of cs) { const d = Math.abs(g['2:' + c] - tgt); if (d < bd) { bd = d; best = c } }
   console.log(`\nP2/C6 ${base.toFixed(0)}%  ·  P3/C6 ${tgt.toFixed(0)}%  ·  closest P2 match C${best} (${g['2:' + best].toFixed(0)}%)`)
   console.log(`=> 1 Power ~ ${best - 6} Contact` + (g['2:10'] < tgt ? '   (still unreachable at C10)' : ''))
+}
+
+/* SIM-9: the A/B the guard reads. Four mid-ladder routes, mid-tier deck, and the number of
+   shake-outs the policy actually placed — so the guard asserts the MECHANISM as well as its
+   worth (GUARD-1's rule: report the thing, not just its shadow). `REST_AT=99` is the arm
+   with the plan disabled. n=300 is 1,200 sessions an arm, ~30s. */
+if (mode === 'policy') {
+  const probe = [3, 4, 6, 8]
+  SHAKES = 0
+  let sent = 0, n = 0
+  const rng = new E.RNG(99)
+  for (const r of probe) for (let k = 0; k < N; k++) {
+    if (session(r, 1, Math.floor(rng.next() * 2 ** 31)).sent) sent++
+    n++
+  }
+  console.log(`policy: send ${(100 * sent / n).toFixed(1)}%   shakeouts/session ${(SHAKES / n).toFixed(2)}`)
 }
 
 const EVENT_BIAS = process.argv[4] === 'events'
@@ -349,7 +374,7 @@ function runOnce(seed, carry) {
         climbs++; continue
       }
       if (s.phase === 'climb') {
-        s = E.autoPlay(s, rng)
+        s = PLAY(s, rng)
         // on a rope, get a piece in when the runout is getting long
         const spec = E.ROUTES[s.routeIdx]
         if (spec?.roped && (s.runout >= 3 || s.lastPiece < 0)) {

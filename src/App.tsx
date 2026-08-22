@@ -2,9 +2,10 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.70 — LANE-5: the feet urgency is out of the card valuation for good, and the
-//   two climbers it had been propping up are paid for directly. A joint re-pin with Evan: the
-//   band 48 to 60, the known ending 68.8 to 82.5.
+// SANDBAGGED v10.71 — SIM-9: the policy can spend a turn on the plan. autoPlay shakes out a
+//   lane nothing in hand clears once the pump is worth banking (SHAKE_AT), which is where the
+//   burns were dying: 74.6% of failed burns died of pump while the clock never bound at all.
+//   The band cannot feel it (the built deck's rests are feet cards); the climber ladder can.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1567,7 +1568,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.70 · RCJ Labs</div>
+          <div className="sfoot">v10.71 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1796,7 +1797,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.70 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.71 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

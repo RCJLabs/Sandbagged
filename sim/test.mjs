@@ -3743,6 +3743,58 @@ if (SLOW) {
     ok(lift < 4,
       `a Second Wind is worth ${lift.toFixed(1)} pts of completion (${base.pct}% → ${wind.pct}%) — an extra burn is buying the campaign, not a leg-up`)
   })
+  test('SIM-9: the policy can spend a turn on the plan, and the plan pays', () => {
+    /* THE POLICY IS THE INSTRUMENT EVERY NUMBER IN THIS FILE IS MEASURED THROUGH, and until
+       this ticket it could not spend a turn on anything but the best card for this turn.
+       What that cost was measured before anything was designed: 74.6% of failed burns die of
+       pump while the 30-turn clock binds on 0.0% of 2,780 — the binding resource spent as if
+       it were the free one. The fix is ONE CLAUSE in `autoPlay` (rest a lane nothing in hand
+       clears, above SHAKE_AT pump); the sweep and the three smarter rules that measured WORSE
+       are on the constant in the engine.
+
+       WHAT THIS GUARD HOLDS. The same four mid-ladder routes on the same seeds, once with the
+       shipping policy and once with `REST_AT=99` — the knob run.mjs keeps, which never fires
+       the branch and is the pre-SIM-9 policy exactly. Three claims, in the order they fail:
+         · the policy actually shakes out — the MECHANISM, GUARD-1's rule, because a lift
+           whose mechanism is invisible is measuring something else;
+         · the knob still disables it — or the two arms below compare a thing to itself,
+           which is the instrument failure CARD-9 spent GUARD-1 escaping;
+         · the plan is worth DOUBLE DIGITS of session send rate. Measured 79.9% against 58.8%
+           (+21.1); the ticket's probes read +8.2 on V8-V9 and +13.6 on roped lines. The bar
+           is 10: room for content drift, while a dead branch reads ~0.
+
+       WHAT THIS GUARD DELIBERATELY DOES NOT HOLD: the campaign band. The built deck's two
+       rests are FEET cards (Knee Bar, No-Hands Rest), so a hand rest is in hand on 6 of
+       7,610 no-clear lane decisions and the band cannot feel this rule — measured 59.8%
+       against 59.9% at paired n=900. The LADDER can feel it (every climber loadout carries
+       Shake Out x2); the v10.71 ledger row records what moved, and the fine pass above
+       re-measures it. Cost: two arms x 1,200 sessions, ~1 minute (GUARD-6). */
+    const arm = env => {
+      const out = execSync(`${env} node sim/run.mjs policy 300`, { encoding: 'utf8' })
+      const m = /policy: send ([\d.]+)%\s+shakeouts\/session ([\d.]+)/.exec(out)
+      ok(m, 'the harness stopped reporting the policy A/B')
+      return { send: Number(m[1]), shakes: Number(m[2]) }
+    }
+    const plan = arm(''), greedy = arm('REST_AT=99')
+    /* THE LIFT COMES FIRST, and the order is load-bearing. Injections found that asserting the
+       instrument before the claim SHIELDS the claim: any mutation that equalises the two arms
+       (a dead branch, a severed knob, an inverted gate that drags REST_AT=99 along with it)
+       tripped the shake-out comparison below and the lift assertion had never once failed — the
+       LANE-3 shape, one failure guarded twice with one copy in front of the other. So the claim
+       is asserted first, where every arms-level failure lands, and the two assertions behind it
+       exist to say WHY a lift died: the mechanism went invisible, or the knob stopped severing. */
+    const lift = plan.send - greedy.send
+    ok(lift > 10,
+      `a policy that can shake out sends ${plan.send}% against ${greedy.send}% for one that cannot — `
+      + `+${lift.toFixed(1)} points against a measured +21.1; the plan is dead, fires at the wrong time, `
+      + 'or the greedy arm is not greedy')
+    ok(plan.shakes > 4,
+      `the policy reports ${plan.shakes} shake-outs a session against a measured 6.9 — the plan is `
+      + 'invisible to the instrument, so the lift above is not known to be the plan paying')
+    ok(greedy.shakes < plan.shakes * 0.6,
+      `REST_AT=99 still shakes out ${greedy.shakes}/session against the plan's ${plan.shakes} — `
+      + 'the knob no longer disables the plan')
+  })
 }
 
 /* ---- report ------------------------------------------------------------ */

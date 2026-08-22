@@ -3,8 +3,8 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.70.** `npm run check` is 197/197 core + 119/119 kept;
-`npm run check:slow` adds 12 balance guardrails for 131/131. Everything below is measured, and
+**State at the time of writing: v10.71.** `npm run check` is 197/197 core + 119/119 kept;
+`npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
 ---
@@ -50,11 +50,11 @@ where a number appears it is reproducible with the command next to it.
 
 ## The numbers, and how to buy them
 
-| what | command | at v10.70 |
+| what | command | at v10.71 |
 |---|---|---|
-| campaign band (the pin) | `PAGES=14 SHARP_AT=99 node sim/run.mjs campaign 3000` | **60.0%** |
-| known-ending rate | `TRIPS=8 node sim/run.mjs career 240 reads` | **82.5%** |
-| climber ladder | `PROJECTS=0 node sim/run.mjs arch 2000` | 9.8 / 8.0 / 9.7 / 11.3 / 8.6 |
+| campaign band (the pin) | `PAGES=14 SHARP_AT=99 node sim/run.mjs campaign 3000` | **60.3%** |
+| known-ending rate | `TRIPS=8 node sim/run.mjs career 240 reads` | **82.1%** |
+| climber ladder | `PROJECTS=0 node sim/run.mjs arch 2000` | 13.1 / 9.7 / 10.3 / 11.4 / 14.2 |
 
 All three go into `sim/band.mjs` for the version you ship; a release without them fails
 `npm run check`. The band takes ~20 minutes, the ending ~75 seconds, the ladder ~5 minutes.
@@ -97,17 +97,15 @@ the ledger row, update the ROADMAP row, commit, push to `main`.
 
 Read the ROADMAP rows for the full argument; this is the shape of it.
 
-- **SIM-9** (P2, the biggest piece left) — `autoPlay` is greedy: it plays the best card for this
-  turn and cannot plan two. Every measurement in the project is taken through that policy, which
-  makes it the shared root under INFO-2 and CARD-20. Expect to re-calibrate CARD-9 afterwards;
-  ENG-21 and SIM-6 both had to.
 - **CARD-20** (P2) — a combination that creates a plan rather than a bigger number. Ground moved
-  under it when LANE-1 added matched hands; re-read before starting.
+  under it when LANE-1 added matched hands, and again when SIM-9 measured that a placed hand
+  card stands 1.09 turns — re-read the row before starting.
 - **RUN-15** (P2) — the climbs are the same every run. RUN-14 deliberately varied only the
   support; varying which routes fill a stage needs a pool of interchangeable lines per act,
   which is authoring rather than a rule.
-- **INFO-2** (P3) — foreknowledge cannot be priced while the policy does not plan. Blocked on
-  SIM-9.
+- **INFO-2** (P3) — the policy plans now (SIM-9) and foreknowledge still priced at zero, oracle
+  included: reads buy certainty against the WOBBLE, and the sim reads exact grip. Blocked on an
+  uncertainty-limited policy, which is a bigger change than planning was — read the row.
 - **ROPE-2 second row**, **SHIP-3** (Play Store: account, signing key, device), **ART-3** (store
   art) — the last two need a human with a phone and an account.
 - **BAL-13** is parked with an answer: act 1 is frictionless and no dial fixes it.

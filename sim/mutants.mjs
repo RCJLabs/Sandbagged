@@ -1971,6 +1971,32 @@ export const MUTANTS = [
     catches: 'which pays for',
     patch: [['src/engine.ts', "    if (d.synergy === best && !held.has(name) && draftable.includes(d.rarity ?? 'common')) return name",
       "    if (d.synergy && !held.has(name) && draftable.includes(d.rarity ?? 'common')) return name"]] },
+
+  // ---- SIM-9: the policy can spend a turn on the plan ---------------------------
+  { id: 'SIM-9/plan-dead', suite: 'slow',
+    why: 'the shake-out branch is gone, so the policy is greedy again and every number is measured through a player who cannot pace a burn',
+    catches: 'or the greedy arm is not greedy',
+    patch: [['src/engine.ts',
+      '      if (!clears.length && rests.length && st.pump >= shakeAt) {',
+      '      if (false) {']] },
+  { id: 'SIM-9/rests-at-the-wrong-time', suite: 'slow',
+    why: 'the pump gate inverts — the policy shakes out only when there is nothing worth shedding and never when the burn is dying (plan arm 58.9 against the shipped 79.9, 4.6 shake-outs still visible). Two earlier cuts of this injection taught two things worth keeping: inverting the CLEAR condition is not caught because the property is robust to WHICH rest rule (rest-when-you-could-clear pays +12.9, always-rest-one-lane +23) — only resting at the wrong PUMP kills it; and this same inversion drags REST_AT=99 along with it (pump < 99 is always true), which is what exposed the assertion order the guard now documents',
+    catches: 'or the greedy arm is not greedy',
+    patch: [['src/engine.ts',
+      '      if (!clears.length && rests.length && st.pump >= shakeAt) {',
+      '      if (!clears.length && rests.length && st.pump < shakeAt) {']] },
+  { id: 'SIM-9/knob-broken', suite: 'slow',
+    why: 'REST_AT stops reaching the policy, so the "greedy" arm quietly plays the plan and the A/B compares a thing to itself — the instrument failure CARD-9 spent GUARD-1 escaping. Lands on the lift assertion (both arms read 79.9), which is the point of its order',
+    catches: 'or the greedy arm is not greedy',
+    patch: [['sim/run.mjs',
+      'const PLAY = REST_AT === undefined ? E.autoPlay\n  : (s, rng) => E.autoPlay(s, rng, Number(REST_AT))',
+      'const PLAY = E.autoPlay']] },
+  { id: 'SIM-9/counter-lies', suite: 'slow',
+    why: 'the shake-out counter stops counting, so the mechanism goes invisible — a lift with no visible mechanism is the assertion the guard must refuse to trust',
+    catches: 'invisible to the instrument',
+    patch: [['sim/run.mjs',
+      '      for (const i of [0, 1]) if (!preP[i] && (s.boardP[i]?.shed ?? 0) > 0) SHAKES++',
+      '      for (const i of [0, 1]) if (false) SHAKES++']] },
 ]
 
 

@@ -5641,7 +5641,42 @@ export function playBonusStep(s: GameState, c: Card, lane: number, rng: RNG): Ga
    certain thing is worth a little more than the point that might pay — that is the whole
    content of this number, and it is measured rather than reasoned (see the ledger). */
 export const FOOT_CLEAR_VALUE = 3
-export function autoPlay(s: GameState, rng: RNG): GameState {
+/* SIM-9. The pump at which a lane nothing in hand clears is worth a shake-out instead of a
+   burned card. The ROADMAP row said the policy cannot plan, and the cost was measured before
+   the design: 74.6% of failed burns die of pump while the 30-turn clock NEVER binds (0% of
+   2,780 burns), so the binding resource was being spent as if it were the free one. A rest
+   placed on a lane sheds every turn it stands and soaks the hold's bite into its own Contact,
+   so on a hold the hand cannot clear it buys exactly the thing that ends burns.
+
+   Swept at n=1200 paired sessions on the four conditions-mode routes: threshold 0 reads 77.2%,
+   2 reads 79.3, 3 reads 79.6, 4 reads 79.9, 5 reads 77.8, 6 reads 75.8, 7 reads 73.4, against
+   58.8 for the policy that never plans. So 4, and the gate is deliberately the ONLY clause —
+   every smarter version measured worse or flat on the same seeds:
+     · rest only when the best card is 3+ Power short: 72.8. Grinding a near-miss converts next
+       turn, but the sweep says pacing the far ones matters more.
+     · rest only while a card that clears this hold still exists in the burn's cycle: 60.5.
+       Backwards — the gain comes precisely from pacing the holds nothing in the deck clears,
+       interleaving cheap grinds with recovery instead of feeding cards to the wall.
+     · stop resting at dusk so the shrinking hand is not stretched further: 79.8, nothing.
+   Where it pays, sessions, same seeds: mid routes 58.8 to 79.9, V8-V9 12.3 to 20.5, roped
+   21.0 to 34.6 — the roped gain is the largest, because a caught fall costs the pitch.
+
+   AND THE ROW'S OTHER TWO CLAIMS MEASURED WRONG, which is why this is one clause and not a
+   planner. "Hold a card for next turn" is not a thing this economy contains: a placed hand
+   card stands 1.09 turns and 83.7% blow the turn they land, so there is no second turn to
+   hold it for. And "value knowing what is coming" priced at ZERO even with the rest rule in
+   place: making the threshold read the holds ahead — rest deeper before a known-hard hold —
+   moved nothing at readAhead depth (79.8) or with an oracle handed the whole hold deck
+   (79.4). Holds arrive only when the one in front of you clears, so the policy always SEES
+   the hold it is choosing for; foreknowledge of the ORDER is not where a plan can live. What
+   a read buys a human is certainty against the WOBBLE span, and the sim already reads exact
+   grip — so reads stay unpriceable until somebody makes the policy uncertainty-limited, which
+   is INFO-2's ground and a bigger change than this one. */
+export const SHAKE_AT = 4
+/** `shakeAt` is a parameter so the harness can measure the policy with the plan disabled
+    (`REST_AT=99 node sim/run.mjs policy ...` is the pre-SIM-9 policy exactly); the game and
+    every default caller get SHAKE_AT. */
+export function autoPlay(s: GameState, rng: RNG, shakeAt: number = SHAKE_AT): GameState {
   let st = { ...s, boardP: s.boardP.slice(), piles: { ...s.piles, hand: s.piles.hand.slice() } }
   const feet = st.piles.hand.filter(c => c.kind === 'move' && c.lane === 'feet')
   if (!st.boardP[2] && feet.length) {
@@ -5708,6 +5743,13 @@ export function autoPlay(s: GameState, rng: RNG): GameState {
         return powerAgainst(st, c, hold, i)
       }
       const clears = real.filter(c => scorePow(c) >= target)
+      /* SIM-9: when nothing in hand clears this hold and there is pump worth shedding, shake
+         out instead of burning a card — the one deliberate multi-turn move the policy makes.
+         The rest stands on the lane, sheds every turn it holds on, and soaks the bite the
+         hold would otherwise put straight into the pump. See SHAKE_AT for every number. */
+      if (!clears.length && rests.length && st.pump >= shakeAt) {
+        pick = rests.reduce((a, b) => (b.shed > a.shed ? b : a))
+      } else
       pick = (clears.length ? clears : real).reduce((a, b) =>
         (scorePow(b) > scorePow(a) ? b : a))
     } else pick = rests[0]
