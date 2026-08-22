@@ -13,19 +13,19 @@
   "navigationDividerColorDark": "#e8e1d0",
   "backgroundColor": "#e8e1d0",
   "enableNotifications": false,
-  "startUrl": "/sandbagged/",
-  "iconUrl": "https://rcjlabs.github.io/sandbagged/icon-512.png",
-  "maskableIconUrl": "https://rcjlabs.github.io/sandbagged/icon-maskable-512.png",
+  "startUrl": "/Sandbagged/",
+  "iconUrl": "https://rcjlabs.github.io/Sandbagged/icon-512.png",
+  "maskableIconUrl": "https://rcjlabs.github.io/Sandbagged/icon-maskable-512.png",
   "splashScreenFadeOutDuration": 300,
   "signingKey": {
     "path": "./android.keystore",
     "alias": "sandbagged"
   },
-  "appVersionName": "10.48.0",
+  "appVersionName": "10.76.0",
   "appVersionCode": 1,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
-  "webManifestUrl": "https://rcjlabs.github.io/sandbagged/manifest.webmanifest",
+  "webManifestUrl": "https://rcjlabs.github.io/Sandbagged/manifest.webmanifest",
   "fallbackType": "customtabs",
   "features": {},
   "alphaDependencies": {
@@ -34,7 +34,7 @@
   "enableSiteSettingsShortcut": true,
   "isChromeOSOnly": false,
   "isMetaQuest": false,
-  "fullScopeUrl": "https://rcjlabs.github.io/sandbagged/",
+  "fullScopeUrl": "https://rcjlabs.github.io/Sandbagged/",
   "minSdkVersion": 21,
   "orientationLock": true
 }

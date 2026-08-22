@@ -3,7 +3,7 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.75.** `npm run check` is 201/201 core + 119/119 kept;
+**State at the time of writing: v10.76.** `npm run check` is 201/201 core + 119/119 kept;
 `npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
@@ -100,6 +100,11 @@ Read the ROADMAP rows for the full argument; this is the shape of it.
 
 - **SHIP-3** (Play Store: account, signing key, device) and **ART-3** (store art) — both need a
   human with a phone and an account. Nothing else on the board is blocked on measurement.
+  **Audited at v10.76** and two things had rotted since v10.34: the packaging pointed at
+  `/sandbagged/` where the repo is `Sandbagged` (Pages is case-sensitive), and the version Play
+  shows was twenty-seven releases stale. Both fixed and guarded; the site address is stated once,
+  in `package.json`'s `homepage`, and the packaging derives from it. **Confirm the address before
+  the first upload** — it could not be checked against the live site from here.
 - **BAL-13** is parked with an answer, and v10.75 added a sixth screened lever: act-1 LENGTH does
   not make act 1 bite, because shortening scales the cost and the slack together. It is the only
   lever tried that does not break the roster, so it stays live as a PACE change if anybody wants

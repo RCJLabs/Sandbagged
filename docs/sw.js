@@ -1,4 +1,4 @@
-const CACHE = 'sandbagged-v10.75.0'
+const CACHE = 'sandbagged-v10.76.0'
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png']
 self.addEventListener('install', e => {
   // DEV-2: {cache:'reload'} bypasses the HTTP cache. Without it, an install that

@@ -5808,7 +5808,54 @@ test('SHIP-3: the site is packageable, and the claims about it are true', () => 
   for (const want of ['ship/*.keystore', 'ship/*.jks'])
     ok(rules.includes(want),
       `${want} is not an active gitignore rule, and ship/README.md tells Evan the signing key is ignored`)
+  /* SHIP-3 (v10.76). THE SITE'S ADDRESS IS STATED ONCE, and the packaging derives from it.
+     Found by auditing the account-independent half of this row forty-two releases after it was
+     written: the repository is `RCJLabs/Sandbagged` and `package.json` says the site lives at
+     `.../Sandbagged/`, while every packaging file said `/sandbagged/` — the TWA's startUrl, its
+     fullScopeUrl, both icon URLs, the web manifest URL, the manifest `id` and the checklist.
+     GitHub Pages paths are case-sensitive, so on the reading the repo itself supports that is a
+     TWA that opens a 404 and a scope that covers nothing — and the asset-link check the whole
+     `.nojekyll` note exists to protect is scoped to a URL that is not the site.
+     NOT VERIFIED AGAINST THE LIVE SITE: this environment cannot reach github.io, so the fix
+     follows the repository name and `homepage`, which are the only statements of the address in
+     the project. If the site is really served lower-case, or moves to a custom domain, change
+     `homepage` — everything below follows it, and nothing else needs editing. */
   const rd = readFileSync('ship/README.md', 'utf8')
+  const pkgHome = JSON.parse(readFileSync('package.json', 'utf8')).homepage.replace(/\/?$/, '/')
+  const pagesPath = '/' + pkgHome.split('.io/')[1]
+  for (const [field, val] of [['startUrl', twa.startUrl], ['fullScopeUrl', twa.fullScopeUrl],
+    ['iconUrl', twa.iconUrl], ['maskableIconUrl', twa.maskableIconUrl],
+    ['webManifestUrl', twa.webManifestUrl]]) {
+    const want = field === 'startUrl' ? pagesPath : pkgHome
+    ok(String(val).startsWith(want),
+      `the TWA config's ${field} is "${val}" and the site is "${pkgHome}" — the packaging and the address disagree, `
+      + 'which is a TWA that opens somewhere the site is not')
+  }
+  eq(mf.id, pagesPath,
+    `the web manifest's id is "${mf.id}" and the site is served from "${pagesPath}" — that is the app's identity to Play`)
+  /* THE EMITTED FILE AND THE THING THAT EMITS IT, both — the artifact above is what ships and
+     the source below is what writes the next one, and an injection that edits only the
+     generator passes an artifact-only check (found exactly that way). */
+  ok(/id: PAGES_PATH/.test(gen),
+    'the build types the manifest id instead of deriving it from the address, which is how it came to disagree with the repository name in the first place')
+  /* EVERY address in the checklist, not merely one — `includes` passed while a second, correct
+     URL elsewhere in the file masked a broken one, which the injection caught. */
+  const rdUrls = [...rd.matchAll(/https:\/\/[a-z0-9.-]+\.github\.io\/[^\s`)"']*/gi)].map(x => x[0])
+  ok(rdUrls.length > 0, 'the checklist gives Evan no URL at all')
+  for (const u of rdUrls)
+    ok(u.startsWith(pkgHome), `the checklist gives Evan the URL ${u}, and the site is ${pkgHome}`)
+
+  /* AND THE VERSION Play SHOWS CANNOT ROT. Measured, it had: `appVersionName` sat at 10.48.0
+     against a shipped 10.75.0 — twenty-seven releases — which is SHIP-4's failure one layer out.
+     The build syncs it now. The VALUE is deliberately not asserted here: `npm run ship` runs
+     this suite BEFORE the build that does the syncing, so an equality check would fail every
+     release in the window between the bump and the build waiting on it. The MECHANISM is what
+     is guarded, which is the same shape as the privacy-policy emission check above. */
+  ok(/twa\.appVersionName = VERSION/.test(gen),
+    'the build no longer syncs the packaging version, and it is the one field Play shows that nothing else touches')
+  ok(/appVersionName/.test(readFileSync('ship/twa-manifest.json', 'utf8')),
+    'the TWA config has no version field for the build to sync')
+
   ok(rd.includes(twa.packageId), 'the checklist and the TWA config name different packages')
   ok(rd.includes('privacy.html'), 'the checklist no longer tells Evan the privacy URL Play asks for')
   ok(/\.nojekyll/.test(rd), 'the checklist no longer records why .nojekyll is load-bearing')

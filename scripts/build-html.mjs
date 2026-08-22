@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, readdirSync, unlinkSync, copyFileSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, readdirSync, unlinkSync, copyFileSync, mkdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { execSync } from 'node:child_process'
 
@@ -59,13 +59,20 @@ if (/<script[^>]*src=/.test(html) || /<link[^>]*stylesheet/.test(html)) {
 // inlined — so this is the one place the build emits more than the HTML.
 // index.html stays fully self-contained and still works on its own.
 const VERSION = JSON.parse(readFileSync('package.json', 'utf8')).version
+/* SHIP-3: where GitHub Pages actually serves this, taken from the one place that states it. */
+const PAGES_URL = JSON.parse(readFileSync('package.json', 'utf8')).homepage.replace(/\/?$/, '/')
+const PAGES_PATH = '/' + PAGES_URL.split('.io/')[1]
 
 /* SHIP-3: Bubblewrap reads this manifest to generate the Android project, and Play reads
    what Bubblewrap generates, so the fields below are not decoration — a missing `id`
    changes the app's identity if `start_url` ever moves, and a maskable icon that is not
    really maskable gets its edges cropped into whatever shape the launcher uses. */
 const manifest = {
-  id: '/sandbagged/',
+  /* SHIP-3 (v10.76): the id is the app's identity to Play, and it has to be the path the site
+     is actually served from — GitHub Pages is case-sensitive and this repo is `Sandbagged`.
+     Derived from package.json's `homepage` rather than typed, because it was typed once in
+     lower case and disagreed with the repo for forty-two releases. */
+  id: PAGES_PATH,
   name: 'Sandbagged', short_name: 'Sandbagged',
   description: 'A climbing card battler. The route is the opponent.',
   lang: 'en-GB', dir: 'ltr',
@@ -238,6 +245,22 @@ if (/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(FP)) {
 } else if (FP) {
   throw new Error('SANDBAGGED_SHA256 is set but is not 32 colon-separated hex pairs — refusing '
     + 'to write an assetlinks.json that would fail verification silently')
+}
+
+/* SHIP-3 (v10.76). THE PACKAGING CONFIG'S VERSION IS SYNCED HERE, and the reason is a measured
+   rot rather than tidiness: `appVersionName` sat at 10.48.0 while the game shipped 10.75.0 —
+   twenty-seven releases, on the one field Play shows next to the app. That is SHIP-4's failure
+   one layer out, and SHIP-4 exists because the same thing happened to the splash screen twice.
+   The VALUE is not asserted in the suite on purpose: `npm run ship` runs `check:slow` BEFORE
+   this file executes, so a guard on equality would fail every release between the bump and the
+   build it is waiting for. The suite guards this MECHANISM instead — see the SHIP-3 guard. */
+const twaPath = join('ship', 'twa-manifest.json')
+if (existsSync(twaPath)) {
+  const twa = JSON.parse(readFileSync(twaPath, 'utf8'))
+  if (twa.appVersionName !== VERSION) {
+    twa.appVersionName = VERSION
+    writeFileSync(twaPath, JSON.stringify(twa, null, 2) + '\n')
+  }
 }
 
 console.log('build:html ok ->', (html.length / 1024).toFixed(0),
