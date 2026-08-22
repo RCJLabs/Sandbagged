@@ -3,7 +3,7 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.79.** `npm run check` is 204/204 core + 119/119 kept;
+**State at the time of writing: v10.80.** `npm run check` is 205/205 core + 119/119 kept;
 `npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
@@ -52,9 +52,9 @@ where a number appears it is reproducible with the command next to it.
 
 | what | command | at v10.75 |
 |---|---|---|
-| campaign band (the pin) | `PAGES=14 SHARP_AT=99 node sim/run.mjs campaign 3000` | **61.8%** |
-| known-ending rate | `TRIPS=8 node sim/run.mjs career 720 reads` | **81.5%** |
-| climber ladder | `PROJECTS=0 node sim/run.mjs arch 2000` | 14.6 / 13.6 / 10.8 / 13.1 / 13.4 |
+| campaign band (the pin) | `PAGES=14 SHARP_AT=99 node sim/run.mjs campaign 3000` | **61.9%** |
+| known-ending rate | `TRIPS=8 node sim/run.mjs career 720 reads` | **81.4%** |
+| climber ladder | `PROJECTS=0 node sim/run.mjs arch 2000` | 14.6 / 13.6 / 10.7 / 12.8 / 13.3 |
 
 All three go into `sim/band.mjs` for the version you ship; a release without them fails
 `npm run check`. The band takes ~20 minutes, the ending ~4 minutes (CARD-20 bought its resolution — the old
@@ -96,11 +96,13 @@ the ledger row, update the ROADMAP row, commit, push to `main`.
 
 ## Read this before the next roster-wide change
 
-**v10.79 (ARCH-1) put both the band and the ending at the edge of their tolerances** — band 61.8
-against a pin of 60 (±2), ending 81.5 against 76.7 (±5). Nothing is re-pinned and nothing is
-outside, but an ability handed to *every* climber lifts the whole game, and there is now about
-0.2 of band headroom left. The next roster-wide addition should have its re-pin agreed with Evan
-**before** it is built rather than discovered afterwards.
+**THE BAND IS 1.9 FROM ITS PIN AND THE TOLERANCE IS 2.0.** Band 61.9 against 60 (±2), ending
+81.4 against 76.7 (±5). ARCH-1 put it there (+3.0, an ability handed to every climber lifts the
+whole game) and INFO-3 did not bring it back (+0.1 — it was designed to be band-negative and
+measured neutral, because its population is small). **The next change that raises the band at
+all fails GUARD-10**, so the next ticket starts with a re-pin decision — agreed with Evan, dated,
+and moving the ending pin in the same breath, which is the lever those two share (LANE-4/LANE-5
+had to do exactly this). Do not discover it afterwards.
 
 ## What is open
 
