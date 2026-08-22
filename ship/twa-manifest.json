@@ -21,7 +21,7 @@
     "path": "./android.keystore",
     "alias": "sandbagged"
   },
-  "appVersionName": "10.78.0",
+  "appVersionName": "10.79.0",
   "appVersionCode": 1,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
