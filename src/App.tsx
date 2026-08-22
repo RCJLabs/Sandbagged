@@ -2,10 +2,10 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.80 — INFO-3: you cannot read what nobody has read. An unclimbed line is
-//   unreadable whole — there is no beta on a first ascent, which is what makes it one — and two
-//   named features, The Mirage and The Whiteout, never read exact however much beta you carry.
-//   INFO-2 made the policy see a span; this is the half that decides when you get one.
+// SANDBAGGED v10.81 — the band is re-pinned 60 -> 62 and the known ending 76.7 -> 81, agreed
+//   with Evan on 2026-08-22 and moved together because they share a lever. ARCH-1 is the whole
+//   move: five signature moves lifted the game +3.0 while TIGHTENING the roster (floor 8.3 to
+//   10.8, spread 1.60x to 1.35x), so it is a game that got better, not a leak. No rule changed.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1572,7 +1572,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.80 · RCJ Labs</div>
+          <div className="sfoot">v10.81 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1801,7 +1801,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.80 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.81 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

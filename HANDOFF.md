@@ -3,7 +3,7 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.80.** `npm run check` is 205/205 core + 119/119 kept;
+**State at the time of writing: v10.81.** `npm run check` is 205/205 core + 119/119 kept;
 `npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
@@ -94,15 +94,21 @@ slow suite. Then: bump `package.json`, update the three version strings in `src/
 (SHIP-4 enforces this — two releases shipped showing the wrong version before it existed), add
 the ledger row, update the ROADMAP row, commit, push to `main`.
 
-## Read this before the next roster-wide change
+## The pins were re-set on 2026-08-22
 
-**THE BAND IS 1.9 FROM ITS PIN AND THE TOLERANCE IS 2.0.** Band 61.9 against 60 (±2), ending
-81.4 against 76.7 (±5). ARCH-1 put it there (+3.0, an ability handed to every climber lifts the
-whole game) and INFO-3 did not bring it back (+0.1 — it was designed to be band-negative and
-measured neutral, because its population is small). **The next change that raises the band at
-all fails GUARD-10**, so the next ticket starts with a re-pin decision — agreed with Evan, dated,
-and moving the ending pin in the same breath, which is the lever those two share (LANE-4/LANE-5
-had to do exactly this). Do not discover it afterwards.
+**Band 60 → 62 and the known ending 76.7 → 81**, agreed with Evan and moved together because
+they share a lever — anything that makes the campaign easier lands more expeditions, and more
+expeditions carry more pages. Moving one and not the other is the stale copy NARR-22, BAL-18 and
+SIM-8 each had to repair, and LANE-4 and LANE-5 each moved this pair together.
+
+**ARCH-1 is the whole move.** Of the four gameplay tickets that session, HOLD-2 and CARD-21
+measured band-neutral at n=3000 and INFO-3 read +0.1; ARCH-1's five signature moves are the
++3.0, because an ability handed to *every* climber lifts the game rather than tilting it. It was
+re-pinned rather than paid back because the same ticket left the roster **healthier** — floor
+8.3 → 10.8, spread 1.60x → 1.35x — so buying the points back would have meant weakening the five
+moves that produced the tightest roster this project has measured.
+
+Margins now: band 0.1 of 2.0, ending 0.4 of 5.0.
 
 ## What is open
 

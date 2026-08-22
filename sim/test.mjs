@@ -3259,7 +3259,14 @@ if (SLOW) {
        reading at that sample. TOL 5 is ~2.3 SE of a cross-engine comparison at n=720 — tighter
        as a claim than the old +-6 at 240 ever was — and still catches RUN-14's nine-point
        step with four points to spare. */
-    const PIN = 76.7, TOL = 5
+    /* RE-PINNED 76.7 -> 81 on 2026-08-22, with Evan, IN THE SAME BREATH as the campaign band
+       (60 -> 62 in band.mjs). These two share a lever — anything that makes the campaign easier
+       lands more expeditions, and more expeditions carry more pages — so moving one and not the
+       other is exactly the stale copy NARR-22 was written after and BAL-18 and SIM-8 both had
+       to repair. LANE-4 and LANE-5 each moved this pair together for the same reason.
+       WHAT MOVED IT: ARCH-1 (v10.79), five signature moves, +3.3 on this measure and +3.0 on
+       the band. The three tickets around it measured neutral here. */
+    const PIN = 81, TOL = 5
     ok(Math.abs(reads.ending - PIN) <= TOL,
       `an informed player's story lands ${reads.ending}% of careers against a pin of ${PIN} — ` +
       `re-measure, pay it back, or re-pin here on purpose`)

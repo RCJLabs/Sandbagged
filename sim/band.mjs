@@ -82,7 +82,21 @@
     it is worth +14.8 with the roster intact. The known-ending pin in test.mjs moved in the same breath (62.9 -> 68.8):
     one lever moved both, and re-pinning one and not the other is the stale-copy failure NARR-22
     and BAL-18 both had to clean up. */
-export const BAND_PIN = 60
+/* RE-PINNED 60 -> 62 on 2026-08-22, with Evan, and the ending moved 76.7 -> 81 in the same
+   breath — see the NARR-22 guard in test.mjs, because those two share a lever and re-pinning
+   one without the other is the stale-copy failure NARR-22, BAL-18 and SIM-8 each had to clean
+   up after.
+   WHAT MOVED THE BAND: four gameplay tickets in one session (HOLD-2, CARD-21, ARCH-1, INFO-3),
+   of which exactly one is responsible. HOLD-2 measured band-neutral at n=3000 (58.9 / 59.0 /
+   59.1 across three arms), CARD-21 likewise (59.1 / 58.1 / 59.4, every gap under one SE), and
+   INFO-3 read +0.1. ARCH-1 is the whole +3.0: five signature moves, one per climber, and an
+   ability handed to EVERY climber lifts the whole game rather than tilting it.
+   WHY RE-PIN RATHER THAN PAY IT BACK: the roster came out of ARCH-1 healthier than it went in
+   — floor 8.3 -> 10.8, spread 1.60x -> 1.35x — so the +3.0 is not a leak to be plugged but a
+   game that got better at the same time as easier. Buying it back would have meant weakening
+   the five moves that produced the tightest roster this project has measured. Evan's call,
+   made with the numbers in front of him rather than discovered afterwards. */
+export const BAND_PIN = 62
 /** About 1.5 standard errors at n=3000. Tight enough to see the 2.2-point slide above; loose
     enough that one honest band-neutral ticket does not fail on noise. */
 export const BAND_TOL = 2.0
@@ -158,4 +172,5 @@ export const BAND_LOG = [
   { version: '10.78.0', band: 58.8, ending: 78.2, arch: { boulderer: 12.0, comp: 8.3, trad: 9.6, alpine: 10.7, onsight: 13.3 }, note: 'CARD-21 · Setup: the lane remembers a worked hold, so the next one there arrives 1 Grip easier. Band-neutral at n=3000 — 59.1 baseline, 58.1 with the mechanism stripped, 59.4 with it, all gaps under one SE, and the shipped tree reads 58.8 after the drafter was re-priced. THE PRICE WAS THE FINDING: it was set from how often a cleared lane is carded on the very NEXT turn (27.9%), which is the wrong window because the discounted hold sits there until it is worked — measured on the mechanic itself, 86.7%, so the drafter had been told it was worth a third of what it pays. Worth +1.9 and +1.7 on its two carriers in the shell probe. Ladder inside 0.9 everywhere' },
   { version: '10.79.0', band: 61.8, ending: 81.5, arch: { boulderer: 14.6, comp: 13.6, trad: 10.8, alpine: 13.1, onsight: 13.4 }, note: 'ARCH-1 · five signature MOVES, one a burn. THE ROSTER IS THE HEADLINE AND IT IS GOOD: every climber gained, the floor rose 8.3 -> 10.8 and the spread TIGHTENED 1.60x -> 1.35x, which is what a roster-wide ability has to do or it is a spread problem wearing a feature. BOTH OTHER PINS NOW SIT AT THE EDGE OF TOLERANCE AND THAT IS THE THING TO READ HERE: band 58.8 -> 61.8 against a pin of 60 with a tolerance of 2.0 (margin 1.8), ending 78.2 -> 81.5 against 76.7 with a tolerance of 5 (margin 4.8). Neither is re-pinned, because neither is outside — but an ability handed to EVERY climber lifts the whole game, so the next roster-wide addition needs a joint re-pin with Evan before it is built, not after'  },
   { version: '10.80.0', band: 61.9, ending: 81.4, arch: { boulderer: 14.6, comp: 13.6, trad: 10.7, alpine: 12.8, onsight: 13.3 }, note: 'INFO-3 · an unclimbed line cannot be read, and two named features never read exact. Band-neutral at +0.1 — AND THAT RETRACTS THE REASON IT WAS CHOSEN: it was designed to be band-NEGATIVE, on the argument that denying information makes the uncertainty-limited policy conservative, and it is not, because the population is tiny (FA nodes are rare in a campaign and the two Blank signatures sit on 2 of 37 routes). The mechanism is sound and the reach is small. THE BAND NOW SITS 1.9 FROM THE PIN WITH A TOLERANCE OF 2.0 — the next change that raises it AT ALL breaks GUARD-10, so the next ticket starts with a re-pin decision rather than ending with one' },
+  { version: '10.81.0', band: 61.9, ending: 81.4, arch: { boulderer: 14.6, comp: 13.6, trad: 10.7, alpine: 12.8, onsight: 13.3 }, note: 'THE RE-PIN ITSELF, and nothing else: band 60 -> 62 and the known ending 76.7 -> 81, agreed with Evan on 2026-08-22 and moved in the same breath because those two share a lever. NO GAME RULE TOUCHED — src/engine.ts is byte-identical to v10.80, not merely close (the version string lives in App.tsx; checkable with a diff, not asserted) and the harness is seed-fixed, so all three columns are carried forward rather than re-measured: re-running would be the same seeds through the same rules. The v10.64 and v10.66 precedent for an instrument-only release. Margins after: band 0.1 of 2.0, ending 0.4 of 5.0 — the headroom this session spent is back' },
 ]
