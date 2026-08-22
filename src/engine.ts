@@ -1259,10 +1259,16 @@ for (const c of [
   mv('Gaston', 3, 5, 'common', { opposes: true, text: 'Shoulders complain. Opposition.' }),
   mv('Sloper Slap', 2, 6, 'common', { fx: 'friction', text: 'Friction · ignores Greasy.' }),
   mv('Pinch Grip', 3, 6, 'common', { fx: 'balance', text: 'Balance · prevents Squeeze.' }),
-  mv('Mantle', 4, 4, 'common', { text: 'Press down. Commit.' }),
+  mv('Mantle', 4, 4, 'common', { fx: 'setup',
+    text: 'Setup · work it and the next hold in this lane comes 1 Grip easier. Press down, and stand up.' }),
   mv('Deadpoint', 4, 3, 'common', { fx: 'snap', text: 'Snap · clears Grip 3 or less outright.' }),
   mv('Jug Haul', 1, 8, 'common', { text: 'Nothing to it but pulling.' }),
-  mv('Match', 2, 6, 'common', { text: 'Both hands, one hold.' }),
+  /* CARD-21: two vanilla commons carry Setup, chosen because their names already describe
+     working a hold and moving off it — you match on it, you mantle onto it, and the next move
+     in that lane is the easier for it. Re-purposed rather than added: CARD-18 measured a new
+     card at +0.9 of band from pool reshuffle alone, before its mechanic does anything. */
+  mv('Match', 2, 6, 'common', { fx: 'setup',
+    text: 'Setup · work it and the next hold in this lane comes 1 Grip easier. Both hands, one hold.' }),
   mv('Bump', 3, 5, 'common', { fx: 'launch',
     text: 'Launch · +2 Power while your other hand has held a turn. Small hand, then the good one.' }),
   mv('Layback', 3, 6, 'common', { opposes: true, text: 'Lean and walk the feet. Opposition.' }),
@@ -4608,7 +4614,7 @@ export function endSession(s0: GameState, rng: RNG): GameState {
   return gate({ ...s, beta, offers: rollOffers(rng, 2, true, s.act, s.runDeck, s), phase: 'reward' })
 }
 
-function refillAndDraw(s: GameState, rng: RNG): GameState {
+function refillAndDraw(s: GameState, rng: RNG, setupLanes?: boolean[]): GameState {
   const boardH = s.boardH.slice()
   const holdDeck = s.holdDeck.slice(), feetDeck = s.feetDeck.slice()
   const ph = phaseOf(s)
@@ -4622,7 +4628,13 @@ function refillAndDraw(s: GameState, rng: RNG): GameState {
          `drawn` is that count, so this hold was read if the read reached this far. */
       const known = drawn < s.readAhead
       drawn++
-      const arrived = known ? { ...h, read: true } : h
+      let arrived = known ? { ...h, read: true } : h
+      /* CARD-21: the lane was left worked, so this hold arrives part-done. Applied HERE, where
+         the hold enters the lane, so it is a property of the hold the player is shown rather
+         than a number applied later — `gripShown`, `previewLane` and `resolve` all read the
+         hold, so none of them needs to know this rule exists. */
+      if (setupLanes?.[i] && arrived.grip > 1)
+        arrived = { ...arrived, grip: Math.max(1, arrived.grip - SETUP_GIVE) }
       boardH[i] = ph?.allCrux && !arrived.crux
         ? { ...arrived, crux: true, grip: arrived.grip + 2 } : arrived
     }
@@ -4913,6 +4925,23 @@ export function matched(boardH: (Hold | null)[], boardP: (Card | null)[]): boole
    roll, so the preview would have to guess, and UX-4's 100%-accurate preview is a stated
    pillar this project has broken twice and guards in three places. Order is known at commit
    time, so `resolve` and `previewLane` read the same array and cannot diverge. */
+/* CARD-21. SETUP — the combination that spans a turn, carried by the LANE because nothing else
+   in this game lasts. A placed hand card stands 1.09 turns and 83.7% of them blow the turn they
+   land (SIM-9), so a combo held on the CARD has almost no board to pay on; CARD-20 shipped
+   Launch sideways across lanes for exactly that reason. What persists is the lane: measured over
+   45,488 campaign turns, a hand lane clears 1.18 times a turn and the lane is carded again the
+   next turn on 27.9% of those clears. So a Setup move leaves the lane worked — the hold that
+   arrives there next comes SETUP_GIVE Grip easier — and the player collects it by choosing to
+   climb back into the same lane.
+
+   NOT ON EVERY CLEAR, which is the trap this ticket was written after: HOLD-2 measured that
+   "a lane cleared" happens on 97.7% of turns, so a handoff on every clear is a flat discount on
+   the whole wall wearing a combination's clothes. It rides two CARDS instead, so the rate is
+   what the player built. */
+export const SETUP_GIVE = 1
+/** CARD-21: how often a lane that was left worked is climbed back into next turn — measured
+    over 45,488 campaign turns. An expectation for pricing, never a rule (see WEIGHT_BOARD). */
+export const SETUP_RATE = 0.28
 export const CHAIN_GIVE = 2
 export const OPPOSE_ALONE = -2
 export const OPPOSE_PAIR = 2
@@ -5440,6 +5469,7 @@ export function resolve(s: GameState, rng: RNG): GameState {
   /* HOLD-2: where each lane sits in the order, so a Chained hold can ask whether the other
      hand went first. Built once from the same array the loop walks. */
   const laneAt = new Map(laneOrder.map((l, k) => [l, k]))
+  const setupLanes = [false, false, false]   // CARD-21: lanes a Setup move left worked
   for (const i of laneOrder) {
     const hold = boardH[i], card = boardP[i]
     if (!hold) continue
@@ -5473,6 +5503,8 @@ export function resolve(s: GameState, rng: RNG): GameState {
     }
     if (g <= 0) {
       cleared++; clearedThis++
+      // CARD-21: it worked this hold, so the next one in this lane comes easier
+      if (card.fx === 'setup') setupLanes[i] = true
       if (!worked.includes(hold.name)) worked.push(hold.name)
       if (ab === 'Rest') { pump = Math.max(0, pump - 1); log.push(`${card.name} works the jug. Shed 1.`) }
       else log.push(`${card.name} works the ${hold.name}.`)
@@ -5714,7 +5746,7 @@ export function resolve(s: GameState, rng: RNG): GameState {
   const endPiles = mutMods(out.mutators).retain
     ? out.piles
     : pileDiscard(out.piles, out.piles.hand)
-  return refillAndDraw({ ...out, piles: endPiles, selected: null }, rng)
+  return refillAndDraw({ ...out, piles: endPiles, selected: null }, rng, setupLanes)
 }
 
 /* SIM-5. Playing a technique card was implemented twice — once in the screen's
@@ -5936,8 +5968,16 @@ export function autoPlay(s: GameState, rng: RNG, shakeAt: number = SHAKE_AT,
       if (!maybes.length && rests.length && st.pump >= shakeAt) {
         pick = rests.reduce((a, b) => (b.shed > a.shed ? b : a))
       } else
-      pick = (maybes.length ? maybes : real).reduce((a, b) =>
-        (scorePow(b) > scorePow(a) ? b : a))
+      /* CARD-21: among cards that clear this hold equally well, take the one that leaves the
+         lane worked. A TIE-BREAK and nothing more — the greedy comparison still decides which
+         cards are in the running, so this cannot spend Power on a future. Without it the
+         policy is blind to Setup and the mechanic measures as dead, which is ENG-25's failure
+         and has now happened six times in this project. */
+      pick = (maybes.length ? maybes : real).reduce((a, b) => {
+        const d = scorePow(b) - scorePow(a)
+        if (d !== 0) return d > 0 ? b : a
+        return (b.fx === 'setup') && (a.fx !== 'setup') ? b : a
+      })
     } else pick = rests[0]
     st.boardP[i] = pick; st.piles = pileFromHand(st.piles, pick.uid)
   }
@@ -6620,6 +6660,11 @@ export function cardValue(s: GameState, c: Card, deck: Card[]): number {
      that can see the term will run higher (it prefers the launch when the state exists); the
      drafter is told the unconditional truth, not the optimised one. */
   if (c.fx === 'launch') v += LAUNCH_SET * 2 * LAUNCH_RATE
+  /* CARD-21: priced at what it actually pays — SETUP_GIVE of Grip, collected on the 27.9% of
+     clears where the player climbs back into the same lane, through the same coefficient `chip`
+     uses for a point of Grip off a hold (2.5). The same shape as `weight` at WEIGHT_BOARD and
+     `launch` at LAUNCH_RATE: the drafter is told the unconditional truth, not the best case. */
+  if (c.fx === 'setup') v += SETUP_GIVE * 2.5 * SETUP_RATE
   if (c.fx === 'echo') v += 3
   if (c.fx === 'settle2') v += settleCap
   if (c.chip) v += c.chip * 2.5
@@ -7160,6 +7205,9 @@ export const KEYWORDS: { name: string; text: string }[] = [
   { name: 'Snap', text: 'Outright clears any hold at Grip 3 or less.' },
   { name: 'Commit', text: 'A dyno. Roll to stick it — better fresh, worse pumped, better with feet on. Stick it and you skip the next hold as well. Miss and you are off it.' },
   { name: 'Guard', text: 'While it survives, the other hand lane takes 1 less Bite.' },
+  { name: 'Setup', text: 'Work a hold with a Setup move and you are established there: the next '
+    + 'hold that comes up in that lane arrives 1 Grip easier. The lane remembers it, not the '
+    + 'card — so you collect it by climbing back into the same lane.' },
   { name: 'Chained', text: 'A flake gives ground to whoever lets the other hand go first: '
     + 'resolve it second and it is 2 Grip easier. The catch is the rule that already exists — '
     + 'a hand that comes off stops holding for the other one, so the lane you send first may '

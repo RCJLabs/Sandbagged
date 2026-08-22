@@ -28,6 +28,8 @@ export type Fx = '' | 'precise' | 'friction' | 'static' | 'snap' | 'commit' | 'b
   | 'tough' | 'settle2' | 'greedy' | 'guard' | 'momentum' | 'weight' | 'echo' | 'peel' | 'cycle'
   /** CARD-20: fires off the OTHER hand having held a turn — the cross-lane sibling of Settle. */
   | 'launch'
+  /** CARD-21: clearing with it leaves the LANE easier for the hold that arrives next. */
+  | 'setup'
 export type Rarity = 'starter' | 'common' | 'uncommon' | 'rare' | 'curse' | 'gear' | 'beta'
 export type Tag = '' | 'crimp' | 'sloper' | 'pinch' | 'pocket' | 'dyno' | 'crack'
   | 'feet' | 'rest' | 'mental'
