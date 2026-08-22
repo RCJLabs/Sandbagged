@@ -1023,7 +1023,11 @@ export const SIGNATURES: Signature[] = [
     note: 'South-facing and warm past midnight; the one good hold sweats you off it.' },
   { id: 'squeezechim', name: 'The Squeeze', base: 'pinch', dGrip: 2, ability: 'Squeeze', read: 2,
     note: 'You do not climb it so much as refuse, for a while, to fall out of it.' },
-  { id: 'themirage', name: 'The Mirage', base: 'sloper', dGrip: 3, read: 1,
+  /* INFO-3: the two named blanks. Both were already lines about not being able to SEE — the
+     sun in your eyes, and nothing to see at all — and both sat on a `read: 1` that told you
+     what was coming next while the hold under your hand stayed a mystery only in the prose.
+     `Blank` makes the prose true: this one hold never reads exact, whatever beta you carry. */
+  { id: 'themirage', name: 'The Mirage', base: 'sloper', dGrip: 3, read: 1, ability: 'Blank',
     note: 'Nothing to hold, and the sun straight in your eyes for the one hard move.' },
   { id: 'thespit', name: 'The Spit', base: 'pocket', dGrip: 2, dBite: 1, read: 1,
     note: 'It turns you slowly over the drop while you work out where the pocket went.' },
@@ -1031,7 +1035,7 @@ export const SIGNATURES: Signature[] = [
     note: 'A slot in the arete, and the weather turning over while you read it.' },
   { id: 'numbcrimp', name: 'The Numb Crimp', base: 'crimp', dGrip: 2, ability: 'Sharp', read: 1,
     note: 'Your fingers stop reporting back somewhere around this one.' },
-  { id: 'thewhiteout', name: 'The Whiteout', base: 'sloper', dGrip: 3, read: 1,
+  { id: 'thewhiteout', name: 'The Whiteout', base: 'sloper', dGrip: 3, read: 1, ability: 'Blank',
     note: 'Nothing to see and nothing to hold. Stand up on it anyway.' },
   { id: 'thenose', name: 'The Nose', base: 'crimp', dGrip: 3, read: 2,
     note: 'The pitch people come for, and the hard move exactly where you are most tired.' },
@@ -5227,7 +5231,29 @@ export function afterMove(s: GameState): { s: GameState; noRestLane: number } {
 /** Only beta makes a hold readable. Anything else would let you tell the
     wobbled holds from the flat ones by whether they showed a span at all. */
 // INFO-1: `|| h.read` — a hold you read arrives known, so the preview is exact on it
-export const holdKnown = (s: GameState, h: Hold) => s.beta.includes(h.name) || !!h.read
+/* INFO-3. AND SOME THINGS CANNOT BE READ AT ALL. INFO-2 made the policy see what the player
+   sees — a span, not the truth — and measured that 60% of open lanes are span-limited while the
+   actual gamble, where your best card clears the low edge and not the high, is only 5.0% of
+   them (and lands 57.6% of the time). So the game HAS uncertainty and the player almost never
+   gets to engage with it: you are either sure or you are guessing blind.
+
+   Two carriers of one idea, and the idea is the honest one: YOU CANNOT READ WHAT NOBODY HAS
+   READ. An unclimbed line is unread by construction — that is what `fa` MEANS, and until now a
+   first ascent differed from a guidebook route only by a grip of dirt. And a `Blank` feature is
+   the named version of it, for a line in the book with one move nobody can call.
+
+   BEATS THE ALTERNATIVES ON THE ONE CONSTRAINT THAT MATTERED. ARCH-1 left about 0.2 points of
+   band headroom against the pin, so a mechanic that PAYS for taking a gamble was unaffordable
+   however good it read. Denying information is band-NEGATIVE by construction — the
+   uncertainty-limited policy plays a span more conservatively than a number — which is the
+   direction the pins can absorb. It is also free of content: no new hold type, no pool
+   reshuffle, and nothing for the drafter to price. */
+export const holdKnown = (s: GameState, h: Hold) =>
+  !unreadable(s, h) && (s.beta.includes(h.name) || !!h.read)
+/** INFO-3: is this hold beyond reading? One function, because `gripShown` and `holdKnown` are
+    the two things the player's certainty is made of and they must not disagree. */
+export const unreadable = (s: GameState, h: Hold) =>
+  abilityOf(h) === 'Blank' || specOf(s).fa === true
 /** What the player may read off a hold: a number once worked, a span before.
     The span is always WOBBLE wide, so it gives away nothing about which side
     of it this particular hold sits on. */
@@ -7381,6 +7407,10 @@ export const KEYWORDS: { name: string; text: string }[] = [
   { name: 'Snap', text: 'Outright clears any hold at Grip 3 or less.' },
   { name: 'Commit', text: 'A dyno. Roll to stick it — better fresh, worse pumped, better with feet on. Stick it and you skip the next hold as well. Miss and you are off it.' },
   { name: 'Guard', text: 'While it survives, the other hand lane takes 1 less Bite.' },
+  { name: 'Blank', text: 'Some things cannot be read. A blank feature never shows you an exact '
+    + 'number however much beta you carry, and neither does any hold on a line nobody has '
+    + 'climbed — there is no beta on a first ascent, which is what makes it one. You commit on '
+    + 'a range, and the range is the climb.' },
   { name: 'Setup', text: 'Work a hold with a Setup move and you are established there: the next '
     + 'hold that comes up in that lane arrives 1 Grip easier. The lane remembers it, not the '
     + 'card — so you collect it by climbing back into the same lane.' },

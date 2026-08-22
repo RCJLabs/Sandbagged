@@ -5258,6 +5258,62 @@ test('ARCH-1: every climber has a verb, and the policy spends it', () => {
     'a fresh burn does not hand the signature move back')
 })
 
+test('INFO-3: you cannot read what nobody has read', () => {
+  /* INFO-2 MADE THE POLICY SEE A SPAN INSTEAD OF THE TRUTH, and this is the other half: the
+     game had uncertainty and the player almost never got to ENGAGE with it. Measured on the
+     v10.79 tree over 60,578 open lanes: 60.0% are span-limited, but the actual gamble — your
+     best card clears the span's LOW edge and not its high one — is only 5.0% of them, and it
+     lands 57.6% of the time. You are either sure, or you are guessing blind.
+
+     TWO CARRIERS OF ONE IDEA. An unclimbed line is unread BY CONSTRUCTION — that is what `fa`
+     means, and until now a first ascent differed from a guidebook route by a grip of dirt and
+     nothing else — and a `Blank` feature is the named version, on the two signatures whose
+     prose already said you could not see (The Mirage, The Whiteout).
+
+     AND IT WAS CHOSEN FOR THE PIN. ARCH-1 left ~0.2 points of band headroom, so a mechanic
+     that PAYS for gambling was unaffordable however well it read. Denying information is
+     band-NEGATIVE by construction, because the uncertainty-limited policy plays a span more
+     conservatively than a number — the one direction the pins could absorb. */
+  const blanks = E.SIGNATURES.filter(s => s.ability === 'Blank')
+  ok(blanks.length >= 1, 'no signature is Blank, so the named half of this is gone')
+  const base = { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null, gear: [], boons: [],
+    mutators: [], assist: false }
+  const plain = { uid: 80, name: 'crimp', grip: 6, bite: 3, crux: false, clean: false }
+  const blank = { ...plain, uid: 81, sig: blanks[0].id }
+
+  // beta makes an ordinary hold exact and does nothing for a blank
+  const withBeta = { ...base, beta: ['crimp'] }
+  ok(E.holdKnown(withBeta, plain), 'beta no longer makes an ordinary hold exact')
+  ok(!E.holdKnown(withBeta, blank), 'a blank feature reads exact once you have beta — it is not blank')
+  ok(!E.gripShown(withBeta, blank).sure && E.gripShown(withBeta, plain).sure,
+    'the board shows a blank as a number, so nothing about it is uncertain where the player looks')
+  // and a read does not open it either
+  ok(!E.holdKnown({ ...base, beta: [] }, { ...blank, read: true }),
+    'reading a blank makes it exact, so the one hold the game says cannot be read can be read')
+
+  /* AN UNCLIMBED LINE IS UNREADABLE WHOLE, which is the half that carries the weight — a
+     signature is one hold and an FA is every hold on it. */
+  const fa = E.faRoute(0, new E.RNG(11))
+  ok(fa && fa.fa === true, 'faRoute no longer marks its line as unclimbed, so nothing below is tested')
+  const onFa = { ...base, skirmish: fa, beta: ['crimp'] }
+  ok(!E.holdKnown(onFa, plain),
+    'a hold on an unclimbed line reads exact from beta — there is no beta on a first ascent, which is what makes it one')
+  ok(!E.gripShown(onFa, plain).sure, 'the board shows an exact number on a line nobody has climbed')
+  // ...and the same hold on a route in the book still reads
+  ok(E.holdKnown({ ...base, skirmish: null, beta: ['crimp'] }, plain),
+    'the rule leaked off the unclimbed line onto every route in the book')
+
+  /* ONE FUNCTION, because certainty is made of two things the player sees — whether the hold
+     reads exact, and what the board prints — and they must not disagree. */
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const known = region(eng, 'export const holdKnown', ['export function gripShown'],
+    { min: 60, what: 'holdKnown' })
+  ok(/unreadable\(s, h\)/.test(known),
+    'holdKnown no longer asks whether the hold is readable at all, so a blank is exact again')
+  ok(E.KEYWORDS.some(k => k.name === 'Blank' && /first ascent/.test(k.text)),
+    'Blank is not in the glossary, and it is the one rule that takes information AWAY from the player')
+})
+
 test('ROUTE-16: no line is another line wearing a different name', () => {
   /* THE CORNICE AND THE HANGING SLAB WERE THE SAME ROUTE. Identical grade, style, clear,
      crux, feet, roped and pitches — and signatures with identical stats as well
