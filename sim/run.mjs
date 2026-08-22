@@ -16,12 +16,22 @@ unlinkSync(out)
    pre-SIM-9 policy exactly. Kept the way SHARP_AT is: so old measurements can be reproduced,
    and so the SIM-9 guard can measure the same game through both policies. */
 const REST_AT = process.env.REST_AT
-const PLAY = REST_AT === undefined ? E.autoPlay
-  : (s, rng) => E.autoPlay(s, rng, Number(REST_AT))
+/* INFO-2: KNOW=all plays the clairvoyant policy — exact grip on every hold, reads unplayable —
+   which is every measurement before v10.74. Kept the way REST_AT and SHARP_AT are. */
+const KNOW = process.env.KNOW === 'all'
+const PLAY = (REST_AT === undefined && !KNOW) ? E.autoPlay
+  : (s, rng) => E.autoPlay(s, rng, REST_AT === undefined ? E.SHAKE_AT : Number(REST_AT), KNOW)
 const N = Number(process.argv[3] ?? 1200)
 const mode = process.argv[2] ?? 'ladder'
 
 let SHAKES = 0   // SIM-9: hand-lane rests the policy placed, read by the `policy` mode
+// TEMP INFO-2 premise probe
+const IT = { lanes: 0, known: 0, unknown: 0, pivotal: 0, feet: 0, feetUnknown: 0 }
+if (process.env.STATS === '1') process.on('exit', () => {
+  const pc = (a, b) => (100 * a / Math.max(1, b)).toFixed(1) + '%'
+  console.error(`[info] open hand lanes ${IT.lanes}  known ${pc(IT.known, IT.lanes)}  unknown ${pc(IT.unknown, IT.lanes)}  pivotal(cand at lo) ${pc(IT.pivotal, IT.unknown)} of unknown = ${pc(IT.pivotal, IT.lanes)} of all`)
+  console.error(`[info] open feet lanes ${IT.feet}  unknown ${pc(IT.feetUnknown, IT.feet)}`)
+})
 function session(routeIdx, tier, seed, force) {
   const rng = new E.RNG(seed)
   let s = E.freshRun(routeIdx, tier, seed)
@@ -374,6 +384,22 @@ function runOnce(seed, carry) {
         climbs++; continue
       }
       if (s.phase === 'climb') {
+        // TEMP INFO-2 premise probe (STATS=1): how information-limited is a real decision
+        if (process.env.STATS === '1') {
+          for (const i of [0, 1]) {
+            const h = s.boardH[i]
+            if (!h || s.boardP[i]) continue
+            IT.lanes++
+            const shown = E.gripShown(s, h)
+            if (shown.sure) { IT.known++; continue }
+            IT.unknown++
+            const cands = s.piles.hand.filter(c => c.kind === 'move'
+              && (c.lane === 'hand' || c.lane === 'any') && c.shed === 0)
+            if (cands.some(c => E.powerAgainst(s, c, h, i) === shown.lo)) IT.pivotal++
+          }
+          const h2 = s.boardH[2]
+          if (h2 && !s.boardP[2]) { IT.feet++; if (!E.gripShown(s, h2).sure) IT.feetUnknown++ }
+        }
         s = PLAY(s, rng)
         // on a rope, get a piece in when the runout is getting long
         const spec = E.ROUTES[s.routeIdx]

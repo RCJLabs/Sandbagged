@@ -1368,7 +1368,15 @@ for (const c of [
      card; this reads twice as far and hands you nothing, off the clock instead. Both
      are pure information — resolution never consults readAhead — so this is the one
      part of the ticket that cannot touch the band whatever it costs. */
-  bn('Take It All In', 1, 'uncommon', { read: 4, text: 'Read the next 4 holds off the wall.' }),
+  /* INFO-2: the CARD-18 trade this card carried — depth instead of draw, at a cost — was
+     measured broken the day depth became priceable: reading is worth ~3 points FLAT, +0.1
+     between read 2 and read 4, because refill brings up two holds a turn and a read is a
+     maximum you top up when it empties. So the depth stays as identity and the card buys a
+     real body on the axis its own name describes: taking it all in is stopping to look and
+     BREATHE. Not draw — the CARD-18 guard forbids it, rightly, or Sight the Line has
+     nothing left. Values at 10.9 against a 7.97 take-line, out of the dead set honestly. */
+  bn('Take It All In', 1, 'uncommon', { read: 4, shed: 2,
+    text: 'Read the next 4 holds off the wall, and breathe. Shed 2.' }),
   /* CARD-18: skin was a currency exactly one card ever charged, and that card was a
      rare that bought Power with it. This buys the CLOCK with it, at uncommon: the
      route goes, and the trip is a fall shorter for it. */
@@ -5761,8 +5769,24 @@ export const SHAKE_AT = 4
 /** `shakeAt` is a parameter so the harness can measure the policy with the plan disabled
     (`REST_AT=99 node sim/run.mjs policy ...` is the pre-SIM-9 policy exactly); the game and
     every default caller get SHAKE_AT. */
-export function autoPlay(s: GameState, rng: RNG, shakeAt: number = SHAKE_AT): GameState {
+export function autoPlay(s: GameState, rng: RNG, shakeAt: number = SHAKE_AT,
+  clairvoyant = false): GameState {
   let st = { ...s, boardP: s.boardP.slice(), piles: { ...s.piles, hand: s.piles.hand.slice() } }
+  /* INFO-2. THE POLICY SEES WHAT THE PLAYER SEES, and until this ticket it did not: every
+     decision below read `gripFor` — the true grip, wobble included — while the screen shows
+     an unworked, unread hold as a WOBBLE-wide span that gives away nothing about which side
+     the truth sits on. Measured over 60,010 open-lane decisions of the real campaign, the
+     policy was clairvoyant on 72.2% of them (beta covers 27.8%), and on 10.9% of ALL
+     decisions a candidate sat exactly on the span's low edge, where knowing the truth is the
+     whole decision. That is why `read` was unpriceable for eleven tickets: the policy already
+     knew everything a read could tell it. `seen` is `gripShown` — the SAME function the
+     screen prints, so the policy and the display cannot disagree about what is known — and
+     `clairvoyant` reproduces the old all-knowing policy for the guard's A/B and for old
+     measurements (KNOW=all in run.mjs). The RULES are untouched: resolve still reads the
+     true grip; what changed is what the modelled player knows while choosing. */
+  const seen = (h: Hold) => clairvoyant
+    ? { lo: gripFor(st, h), hi: gripFor(st, h), sure: true }
+    : gripShown(st, h)
   const feet = st.piles.hand.filter(c => c.kind === 'move' && c.lane === 'feet')
   if (!st.boardP[2] && feet.length) {
     /* SIM-6: the policy used to take the most Support in hand and nothing else, which
@@ -5789,8 +5813,11 @@ export function autoPlay(s: GameState, rng: RNG, shakeAt: number = SHAKE_AT): Ga
     const footValue = (c: Card) => {
       const now = supWith(c, false)
       if (!h2) return now + supWith(c, true)    // nothing under you; it can only stand there
-      const clears = powerAgainst(st, c, h2, 2) >= gripFor(st, h2)
-      return clears ? now + FOOT_CLEAR_VALUE : now + supWith(c, true)
+      /* INFO-2: the clear is priced at what the span makes it — certain over the high edge,
+         a coin flip in between (the wobble prior is an even one), nothing below. */
+      const g = seen(h2), pow = powerAgainst(st, c, h2, 2)
+      const p = pow >= g.hi ? 1 : pow >= g.lo ? 0.5 : 0
+      return now + p * FOOT_CLEAR_VALUE + (1 - p) * supWith(c, true)
     }
     const pick = feet.reduce((a, b) => (footValue(b) > footValue(a) ? b : a))
     st.boardP[2] = pick; st.piles = pileFromHand(st.piles, pick.uid)
@@ -5807,7 +5834,7 @@ export function autoPlay(s: GameState, rng: RNG, shakeAt: number = SHAKE_AT): Ga
     let pick: Card
     if (rests.length && st.pump >= PUMP_MAX - 4 && real.length === 0) pick = rests[0]
     else if (real.length) {
-      const target = gripFor(st, hold)
+      const shown = seen(hold)
       /* ENG-25: opposition pays +2 only with a hand partner pulling the other
          way, and −2 alone. The greedy fill placed one hand lane at a time
          against an empty partner, so every opposition card was scored at its
@@ -5827,15 +5854,21 @@ export function autoPlay(s: GameState, rng: RNG, shakeAt: number = SHAKE_AT): Ga
         }
         return powerAgainst(st, c, hold, i)
       }
-      const clears = real.filter(c => scorePow(c) >= target)
+      /* INFO-2: what "clears" means depends on what you can see. Over the span's high edge
+         it clears whatever the wobble hides; over only the low edge it is a coin flip. A sure
+         thing beats a gamble of any size, so the tiers are strict — and a KNOWN hold (beta,
+         a read, or the clairvoyant knob) collapses both tiers to the old exact filter. */
+      const sure = real.filter(c => scorePow(c) >= shown.hi)
+      const maybes = sure.length ? sure : real.filter(c => scorePow(c) >= shown.lo)
       /* SIM-9: when nothing in hand clears this hold and there is pump worth shedding, shake
          out instead of burning a card — the one deliberate multi-turn move the policy makes.
          The rest stands on the lane, sheds every turn it holds on, and soaks the bite the
-         hold would otherwise put straight into the pump. See SHAKE_AT for every number. */
-      if (!clears.length && rests.length && st.pump >= shakeAt) {
+         hold would otherwise put straight into the pump. See SHAKE_AT for every number.
+         INFO-2 gates it on the MAYBES: a coin-flip clear is still a reason to try. */
+      if (!maybes.length && rests.length && st.pump >= shakeAt) {
         pick = rests.reduce((a, b) => (b.shed > a.shed ? b : a))
       } else
-      pick = (clears.length ? clears : real).reduce((a, b) =>
+      pick = (maybes.length ? maybes : real).reduce((a, b) =>
         (scorePow(b) > scorePow(a) ? b : a))
     } else pick = rests[0]
     st.boardP[i] = pick; st.piles = pileFromHand(st.piles, pick.uid)
@@ -5865,12 +5898,14 @@ export function autoPlay(s: GameState, rng: RNG, shakeAt: number = SHAKE_AT): Ga
       }
       return bestScore > -Infinity ? at : -1
     }
+    /* INFO-2: targeting reads the span's midpoint — the believed grip — not the truth. */
+    const believed = (h: Hold) => { const g = seen(h); return (g.lo + g.hi) / 2 }
     const lane = !c.targeted ? -1
-      : c.gripCut ? best(i => (st.boardH[i] ? gripFor(st, st.boardH[i]!) : -Infinity))
+      : c.gripCut ? best(i => (st.boardH[i] ? believed(st.boardH[i]!) : -Infinity))
       : best(i => {
           const card = st.boardP[i], hold = st.boardH[i]
           if (!card || !hold) return -Infinity
-          const short = gripFor(st, hold) - powerAgainst(st, card, hold, i, st.boardP)
+          const short = believed(hold) - powerAgainst(st, card, hold, i, st.boardP)
           // closest to clearing without being there already
           return short > 0 && short <= c.power ? 100 - short : -short
         })
@@ -5880,10 +5915,16 @@ export function autoPlay(s: GameState, rng: RNG, shakeAt: number = SHAKE_AT): Ga
       || (c.shed > 0 && st.pump >= Math.min(c.shed, 2))
       || (c.clip === true && specOf(st).roped)
       || (!!c.seq && !st.seq)
-      /* INFO-1 taught the policy to spend a read here and then took it back out: with the grip
-         half retracted a read buys information the greedy policy cannot use, so playing one for
-         it would spend a pump on nothing. `Take It All In` is therefore still unplayable by the
-         policy, which is the honest state of a card whose whole effect is knowledge. */
+      /* INFO-1 taught the policy to spend a read here, took it back out because a greedy
+         clairvoyant policy cannot use information — and INFO-2 puts it back for good, because
+         the policy is uncertainty-limited now: it scores a hold at the span the screen shows,
+         and what a read buys — the next holds arriving KNOWN — is finally something it can
+         spend. Gated on holding NO read at all — the first cut gated on coverage
+         (holdDeck.length > readAhead) and re-bought overlapping reads every time one was in
+         hand, which is INFO-1's own warning about a read being a maximum you top up the
+         moment it empties: measured in the shell probe it cost 16.6 and 30.7 points. Off
+         under the clairvoyant knob, which reproduces the old world exactly. */
+      || (c.read > 0 && !clairvoyant && st.readAhead === 0 && st.holdDeck.length > 0)
       || (c.powerAll > 0 && st.boardP.some(Boolean))
       || ((c.power > 0 || c.gripCut > 0) && lane >= 0)
       /* CARD-17: writing a curse off buys HAND QUALITY, not progress, so it wants more
@@ -6119,12 +6160,22 @@ export function previewPump(s0: GameState, lanes?: LanePreview[]): number {
 const BONUS_WEIGHT = 3.2
 function bonusValue(c: Card, deck: Card[]): number {
   // only the benefits scale — a pump cost is a pump cost, not a scaled benefit
-  /* INFO-1 gave `read` a term here and took it back out with it. The term was justified by a
-     read granting beta on the holds it covered; that half was retracted (see `effGrip`), so
-     there is nothing for a valuation to price again and `read` stays situational in the
-     dead-card guard for the reason CARD-18 gave. */
+  /* INFO-1 gave `read` a term here and took it back out; INFO-2 puts one back, and this time
+     there is something to price: the policy is uncertainty-limited (autoPlay scores a hold at
+     the span `gripShown` shows), so a read's holds arriving KNOWN is spendable at last.
+     Priced from the per-card probe against the card's own class, the way restChip was priced
+     against anchor: Sight the Line (read 2, draw 1) beats Coffee (draw 2) by +3.0 points and
+     Take It All In (read 4, one pump) beats it by +3.1 net of cost — READING IS WORTH ~3
+     POINTS AND IT IS FLAT IN DEPTH, within 0.1 between read 2 and read 4, which is INFO-1's
+     structural note made a price: refill brings up at most two holds a turn and a read is a
+     maximum you top up when it empties, so coverage saturates and depth buys almost nothing.
+     So the term is FLAT — a card either reads or it does not — at 1, which lands +3.2 through
+     BONUS_WEIGHT, the same neighbourhood anchor's measured +2.6 is priced at. A consequence
+     the dead-card guard now states honestly: Take It All In still prices under the take-line,
+     because its ONLY effect past read 2 is depth and depth is structurally worthless — that
+     is a finding about the CARD, recorded on the INFO-2 row for a card ticket to take up. */
   const good = c.shed * 1.4 + c.draw * 2.2 + c.gripCut * 1.6 + c.powerAll * 4.5
-    + c.power * 1.8 + c.restore * 1.8 + (c.cleans ? 1.6 : 0)
+    + c.power * 1.8 + c.restore * 1.8 + (c.cleans ? 1.6 : 0) + (c.read > 0 ? 1 : 0)
   const share = deck.length ? deck.filter(x => x.kind === 'bonus').length / deck.length : 0
   // full value up to about a fifth of the deck, then away sharply
   const saturation = share <= 0.2 ? 1 : Math.max(0.25, 1 - (share - 0.2) * 3)

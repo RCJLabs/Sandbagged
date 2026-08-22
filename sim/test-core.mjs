@@ -2716,6 +2716,69 @@ test('RUN-15: which line fills a stage is a property of the run', () => {
   }
 })
 
+test('INFO-2: the policy sees what the player sees, and a read is worth spending', () => {
+  /* THE POLICY WAS CLAIRVOYANT AND NOBODY HAD SAID SO. Every decision in `autoPlay` read
+     `gripFor` — the true grip, wobble included — while the screen shows an unworked, unread
+     hold as a WOBBLE-wide span that gives away nothing. Measured over 60,010 open-lane
+     decisions of the real campaign: the policy knew the truth on 72.2% of them (beta covers
+     27.8%), and on 10.9% of ALL decisions a candidate sat exactly on the span's low edge,
+     where knowing is the whole decision. That is the real reason `read` was unpriceable for
+     eleven tickets — SIM-9 measured that an oracle handed the whole hold deck gains nothing,
+     because holds arrive only when the one in front clears; what a read buys is CERTAINTY
+     against the span, and a policy that already knows everything cannot want it. So the
+     policy now scores a hold through `gripShown` — the SAME function the screen prints — a
+     sure clear beats a coin-flip clear beats a grind, and the `clairvoyant` parameter
+     (KNOW=all in run.mjs) reproduces every measurement before v10.74. The rules never
+     changed: resolve still reads true grip. */
+  const base = { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null,
+    gear: [], boons: [], mutators: [], pump: E.SHAKE_AT, beta: [], assist: false }
+  const mover = E.synth(3, 6)
+  const rest = E.spawn('Shake Out')
+  const probe = { uid: 91, name: 'jug', bite: 1, grip: 9, crux: false, clean: false }
+  const pow = E.powerAgainst({ ...base, boardH: [probe, null, null] }, mover, probe, 0)
+  // the span's low edge sits exactly on the card: grip = pow + 1 with a wobble of 1 shows
+  // [pow, pow + 1], and the truth is the high side — a coin flip the card loses
+  const hold = { uid: 92, name: 'jug', bite: 1, grip: pow + 1, wobble: 1, crux: false, clean: false }
+  const st = { ...base, boardH: [hold, null, null],
+    piles: { ...base.piles, hand: [mover, rest] } }
+  const span = E.autoPlay(st, new E.RNG(3))
+  const clair = E.autoPlay(st, new E.RNG(3), E.SHAKE_AT, true)
+  eq(span.boardP[0]?.uid, mover.uid,
+    'shown a coin-flip clear, the span policy rests instead of trying — a maybe is still a reason')
+  eq(clair.boardP[0]?.uid, rest.uid,
+    'the clairvoyant policy gambles on a hold it can see the truth of — the policy still knows the wobble')
+  // a read collapses the span: the read hold plays exactly like the clairvoyant one
+  const read = { ...st, boardH: [{ ...hold, read: true }, null, null] }
+  eq(E.autoPlay(read, new E.RNG(3)).boardP[0]?.uid, rest.uid,
+    'a hold that arrived read still plays as a gamble — a read no longer buys certainty')
+  // one formula: the policy's knowledge IS the display's
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const auto = region(eng, 'export function autoPlay', ['const order = [0, 1]'],
+    { min: 300, what: 'the policy head' })
+  ok(/: gripShown\(st, h\)/.test(auto),
+    'the policy reads its own idea of a hold instead of gripShown — the screen and the policy can now disagree about what is known')
+  /* the read is SPENT: holding no read, with holds still to come, the policy plays one.
+     Take It All In on purpose, at pump 0: its draw is 0 and its shed clause needs pump, so
+     the READ clause is the only way it gets played — Sight the Line would be played for its
+     draw under either knob and prove nothing about reads. */
+  const tiai = E.spawn('Take It All In')
+  const spendSt = { ...base, pump: 0, readAhead: 0,
+    holdDeck: [probe, { ...probe, uid: 93 }],
+    boardH: [hold, null, null], piles: { ...base.piles, hand: [tiai] } }
+  ok(E.autoPlay(spendSt, new E.RNG(3)).readAhead > 0,
+    'holding no read with holds still to come, the policy leaves the read in hand — a read is never spent')
+  eq(E.autoPlay(spendSt, new E.RNG(3), E.SHAKE_AT, true).readAhead, 0,
+    'the clairvoyant policy spends reads — the old world is no longer reproducible')
+  // and the drafter prices reading FLAT, because depth measured worthless (+0.1 from 2 to 4)
+  const val = c => E.cardValue(base, c, [])
+  const sight = E.spawn('Sight the Line')
+  const dSight = val(sight) - val({ ...sight, read: 0 })
+  const dTiai = val(tiai) - val({ ...tiai, read: 0 })
+  ok(dSight > 0, 'the drafter prices a read at nothing, though the policy can spend one now')
+  ok(Math.abs(dSight - dTiai) < 1e-9,
+    `read 2 prices at ${dSight.toFixed(2)} and read 4 at ${dTiai.toFixed(2)} — priced by a depth the game measures as worthless`)
+})
+
 test('BAL-13: the early bosses are fights, not flat routes', () => {
   /* The fourth audit found The Priest (act 1) and The Hourglass (act 2) were
      single-phase — a slightly harder route — against the two- and three-phase
@@ -3939,7 +4002,10 @@ test('FEET-1: the wall can make your feet matter, and every foothold says what i
   /* THE EXACT LINE, not the pattern. `supWith(c, true)` appears twice in this window — the
      other is the nothing-under-you branch — so the loose form passed while the injection that
      blanks the staying branch went straight through it. Found by that injection. */
-  ok(/clears \? now \+ FOOT_CLEAR_VALUE : now \+ supWith\(c, true\)/.test(pick),
+  /* INFO-2 moved the line under this window: the clear is a probability over the shown span
+     now, and the staying branch is the (1 - p) side of the same expression. The claim is
+     unchanged — a foot that stays is scored on what it pays once bedded in. */
+  ok(/return now \+ p \* FOOT_CLEAR_VALUE \+ \(1 - p\) \* supWith\(c, true\)/.test(pick),
     'the policy no longer scores a staying foot on what it will pay once settled, so Solid is invisible to it')
 
   /* SOLID IS A CHARACTERISTIC OF THE ROCK, NOT THE DEFAULT. It was 5 of the 10 weight on every
@@ -6213,7 +6279,8 @@ test('CARD-18: the four mechanics nobody could meet twice', () => {
     const card = E.spawn(name)
     const out = E.playBonusStep({ ...s0, pump: 8 }, card, 0, new E.RNG(3))
     eq(out.readAhead, Math.min(s0.holdDeck.length, card.read), `${name} read a different depth`)
-    eq(out.pump, 8 + card.cost, `${name} did not cost what it says`)
+    // INFO-2 gave Take It All In a shed body, so the arithmetic reads the whole card
+    eq(out.pump, Math.max(0, 8 + card.cost - card.shed), `${name} did not cost what it says`)
   }
   /* AND READING IS STILL INFORMATION (RUN-9/ENG-24), which is what makes it band-safe and what
      makes `read` situational in the dead-card guard. INFO-1 tried making a read hold worth full

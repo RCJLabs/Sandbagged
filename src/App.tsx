@@ -2,10 +2,10 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.73 — RUN-15: which line fills a stage is a property of the run. A climb slot
-//   deals per run from its act's exact-grade pool (derived from the map itself), under RUN-14's
-//   own rule that a swap only takes what it can give back — so the ramp, the bosses and the
-//   projects never move, and the stage you plan on is still the stage you get.
+// SANDBAGGED v10.74 — INFO-2: the policy sees what the player sees. autoPlay scores a hold at
+//   the span the screen shows (gripShown) instead of the true grip it was quietly reading on
+//   72% of its decisions, a read finally buys something the sim can spend, and the read cards
+//   are priced flat — depth measured worthless. Take It All In gets the body its trade owed.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1572,7 +1572,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.73 · RCJ Labs</div>
+          <div className="sfoot">v10.74 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1801,7 +1801,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.73 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.74 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

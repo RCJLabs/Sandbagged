@@ -1232,13 +1232,18 @@ test('INFO-1: a hold you read arrives known, and that is all it arrives with', (
   const known = region(eng, 'export const holdKnown', ['export function gripShown'],
     { min: 40, what: 'holdKnown' })
   ok(/h\.read/.test(known), 'a hold you read no longer reads as known, so reading does nothing at all')
-  /* and the valuation must not price a read while reading buys information: a term there with no
-     mechanical effect behind it is the ENG-25 failure inverted — the policy told a card is worth
-     something it cannot spend. This is what the retracted half added, so it is what a
-     re-addition would put back first. */
+  /* INFO-2 INVERTED THIS ASSERTION, and the reason is the same principle pointing the other
+     way. It used to forbid a read term in the valuation, because a greedy clairvoyant policy
+     cannot spend information and pricing it would be ENG-25 run backwards. The policy is
+     uncertainty-limited now — autoPlay scores a hold at the span `gripShown` shows and spends
+     reads to collapse it — so the term is OWED, and what is forbidden is pricing it by DEPTH:
+     measured, reading is worth ~3 points whether it reads 2 or 4 (+0.1 between them), because
+     refill brings up two holds a turn and a read tops up when it empties. Flat term only. */
   const bv = region(eng, 'function bonusValue', ['function seqValue'], { min: 200, what: 'bonusValue' })
-  ok(!/c\.read/.test(bv),
-    'the valuation prices a read again, though a read buys information a greedy policy cannot spend')
+  ok(/c\.read > 0 \?/.test(bv),
+    'the valuation no longer prices a read, though the policy can spend one now — ENG-25, forwards this time')
+  ok(!/c\.read \*/.test(bv),
+    'the valuation prices a read by its depth, which measures worthless — the term must be flat')
 
   /* the board says it, because the pips silently stopping being a span is otherwise the game
      looking inconsistent (A11Y-8: the same fact in the accessibility tree). */
@@ -2380,25 +2385,28 @@ test('the pool does not fill up with cards nobody would take', () => {
      asserted there, in the SEQ-2 guard, against such a deck. */
   ok(dead.length / vals.length < 0.05,
     `${dead.length} of ${vals.length} cards would never be taken`)
-  /* INFO-1 TOOK `read` OUT OF THE EXCUSED SET AND PUT IT BACK. Making a read grant beta on the
-     holds it covered did lift both cards out of the dead set — `Sight the Line` 5.2 to 12.9 and
-     `Take It All In` −3.0 to 12.4 — and it also put the pinned band up 1.8 points in a way four
-     separate dials could not touch, because a read covers whatever arrives next and so amounts to
-     a flat discount on the whole wall. That half is retracted; see `effGrip` in engine.ts for the
-     numbers. `read` is situational again, and for exactly CARD-18's reason. */
-  const filler = dead.filter(([n]) => !E.CARDS[n].read && !E.CARDS[n].seq && !E.CARDS[n].clip)
+  /* INFO-1 TOOK `read` OUT OF THE EXCUSED SET, PUT IT BACK, AND INFO-2 TOOK IT OUT FOR GOOD —
+     from the other side. INFO-1 tried to make reads priceable by giving them a mechanical
+     effect and retracted it (+1.8 band no dial could touch; see `effGrip`). INFO-2 made the
+     POLICY able to spend information instead: autoPlay is uncertainty-limited now, scoring a
+     hold at the span `gripShown` shows, so a read's holds arriving known is worth real play
+     and `read` carries a measured, depth-flat term in `bonusValue`. The excuse is gone from
+     the filler filter below. What that states honestly: `Sight the Line` prices out of the
+     dead set on its merits, and `Take It All In` does NOT — its only effect past read 2 is
+     depth, and depth measures worthless (+0.1 between read 2 and read 4), so it sits in the
+     dead set as a true statement about the card rather than an excuse about the policy. The
+     INFO-2 row records it for a card ticket. */
+  const filler = dead.filter(([n]) => !E.CARDS[n].seq && !E.CARDS[n].clip)
   ok(filler.length <= 6,
     `${filler.length} dead cards the valuation CAN price and still would not take: ${filler.map(([n]) => n).join(', ')}`)
-  // the derivation behind counting `read` as situational: the policy cannot spend it
+  // the derivation, inverted by INFO-2: the policy CAN spend a read now, so the term is owed
   const eng = readFileSync('src/engine.ts', 'utf8')
-  /* comments stripped: INFO-1's note inside `autoPlay` explains why the policy does NOT spend a
-     read, and the un-stripped window matched the word in that explanation — ART-4's class. */
   const auto = stripComments(region(eng, 'export function autoPlay', ['export function coach',
     '\nexport function ', '\nexport const '], { min: 600, what: 'autoPlay' }))
-  ok(!/readAhead/.test(auto),
-    'the policy reads ahead now, so `read` is priceable and must not be excused as situational')
+  ok(/readAhead/.test(auto),
+    'the policy no longer consults readAhead, so the read term in bonusValue prices something the sim cannot spend — ENG-25 run backwards')
   ok(E.CARDS['Sight the Line'].read > 0 && E.CARDS['Take It All In'].read > 0,
-    'the read cards are gone, so this exclusion covers nothing')
+    'the read cards are gone, so nothing above tests the pricing')
 })
 test('a technique card is worth a deck slot', () => {
   // measured: two of fifteen moves swapped for techniques took a mid Act 1
