@@ -2558,6 +2558,42 @@ export function tierNodes(s: GameState, tier = s.tier): MapNode[] {
   return [...kept, { type: fresh[rng.int(fresh.length)], routeIdx: -1 }]
 }
 
+/* ROPE-2, second row. IS THERE ROPE ON THIS TRIP — asked of the RUN's map, not the table.
+   Three places wanted this answer and all three read `ACTS[act]` directly: the post's rack
+   (stockShop), the clip term in `cardValue`, and the hint the card prints at you. The comment
+   on the rack states the intent exactly — "offered only where ropes exist, DERIVED from the
+   act's own map, so adding a roped line to another act provisions it without anybody
+   remembering to" — and RUN-15 broke the mechanism under it: which line fills a climb slot is
+   a property of the run now, so the static table is no longer what the player will meet.
+
+   MEASURED BEFORE FIXING, because the row deserves the truth rather than a dramatic bug: the
+   divergence is LATENT, not live. `MAP_SWAP_IN` is camps and shops only, so act 3's two roped
+   PROJECTS never move, and 0.0% of 3,000 seeded runs have no roped node. What does vary is the
+   roped CLIMBS: 4.7% of runs are offered none, and the share of the act that is roped swings
+   run to run where the static table says a fixed 0.286. So today this changes what a clip card
+   is WORTH to a run rather than whether the rack appears — and the moment anybody adds a roped
+   climb to an act with no roped project, it is the difference between provisioning that works
+   and a hint that lies.
+
+   Cached per (run, act) because `cardValue` is called thousands of times inside `buildLoadout`
+   and this walks a whole act; the key is exactly what `tierNodes` reads, so the cache cannot
+   answer for a map it did not see. */
+const ropeCache = new Map<string, { any: boolean; share: number }>()
+export function ropeOnTrip(s: GameState): { any: boolean; share: number } {
+  const key = `${s.runSeed ?? 0}:${s.act}`
+  const hit = ropeCache.get(key)
+  if (hit) return hit
+  const map = ACTS[s.act] ?? []
+  let roped = 0, total = 0
+  for (let t = 0; t < map.length; t++)
+    for (const n of tierNodes(s, t))
+      if (n.routeIdx >= 0) { total++; if (ROUTES[n.routeIdx]?.roped) roped++ }
+  const out = { any: roped > 0, share: total ? roped / total : 0 }
+  if (ropeCache.size > 64) ropeCache.clear()
+  ropeCache.set(key, out)
+  return out
+}
+
 export function forecastFor(s: GameState): { weather: number; rock: number }[] {
   const nodes = tierNodes(s)
   const wp = ACT_WEATHER[s.act], rp = ACT_ROCK[s.act]
@@ -2703,7 +2739,7 @@ export function stockShop(s: GameState, rng: RNG): GameState {
      from the shared stream would shift every downstream roll and move the balance guards for
      nothing. And offered only where ropes exist, DERIVED from the act's own map, so adding a
      roped line to another act provisions it without anybody remembering to. */
-  const roped = ACTS[s.act]?.flat().some(n => n.routeIdx >= 0 && ROUTES[n.routeIdx]?.roped)
+  const roped = ropeOnTrip(s).any   // ROPE-2: this run's map, not the table
   const rack = roped ? [spawn(CLIP_STOCK[s.tier % CLIP_STOCK.length])] : []
   /* SEQ-3: and a plan, when this deck could run one. See `shelfPlan` — stage-picked, so it
      perturbs no roll, and gated on the deck, so it is an option rather than a tax on the shelf. */
@@ -6446,10 +6482,8 @@ export function cardValue(s: GameState, c: Card, deck: Card[]): number {
     : c.power * 2 + c.contact * (contactRate * 2)
   // protection does nothing at all on a boulder, and a great deal on a rope
   if (c.clip) {
-    const act = ACTS[s.act] ?? []
-    const idx = act.flat().map(n => n.routeIdx).filter(i => i >= 0)
-    const share = idx.length ? idx.filter(i => ROUTES[i]?.roped).length / idx.length : 0
-    v += specOf(s).roped ? 6 : s.circuit ? 1.5 : share * 7
+    // ROPE-2: what share of THIS run's act is roped — the rack is worth what it will be used on
+    v += specOf(s).roped ? 6 : s.circuit ? 1.5 : ropeOnTrip(s).share * 7
   }
   // boons change what a card is worth: a free technique, a rest that chips,
   // feet that count double
@@ -6638,7 +6672,7 @@ export function cardHints(s: GameState, c: Card, deck: Card[]): string[] {
     ? `a curse — pay ${c.cost + CURSE_TAX} pump mid-climb to write it off for the burn`
     : 'a curse — it does nothing good')
   if (c.clip) sharp.push(
-    specOf(s).roped || ACTS[s.act]?.flat().some(x => ROUTES[x.routeIdx]?.roped)
+    specOf(s).roped || ropeOnTrip(s).any
       ? 'there is rope on this trip' : 'nothing to clip on a boulder')
   if (c.seq) {
     const q = seqById(c.seq)

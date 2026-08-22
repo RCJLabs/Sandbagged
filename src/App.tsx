@@ -2,10 +2,10 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.74 — INFO-2: the policy sees what the player sees. autoPlay scores a hold at
-//   the span the screen shows (gripShown) instead of the true grip it was quietly reading on
-//   72% of its decisions, a read finally buys something the sim can spend, and the read cards
-//   are priced flat — depth measured worthless. Take It All In gets the body its trade owed.
+// SANDBAGGED v10.75 — ROPE-2 second row answered: the rope is provisioned off the trip you
+//   are on, not off the table — the rack, the price and the hint all read the run's own map
+//   now that RUN-15 deals the climbs. Half the row had already shipped at v10.48, and a rope
+//   is worth +0.1 without a rack and +8.4 with one. BAL-13 gains a sixth screened lever.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1572,7 +1572,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.74 · RCJ Labs</div>
+          <div className="sfoot">v10.75 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1801,7 +1801,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.74 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.75 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

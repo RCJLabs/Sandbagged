@@ -3,7 +3,7 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.74.** `npm run check` is 200/200 core + 119/119 kept;
+**State at the time of writing: v10.75.** `npm run check` is 201/201 core + 119/119 kept;
 `npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
@@ -50,11 +50,11 @@ where a number appears it is reproducible with the command next to it.
 
 ## The numbers, and how to buy them
 
-| what | command | at v10.74 |
+| what | command | at v10.75 |
 |---|---|---|
-| campaign band (the pin) | `PAGES=14 SHARP_AT=99 node sim/run.mjs campaign 3000` | **59.0%** |
+| campaign band (the pin) | `PAGES=14 SHARP_AT=99 node sim/run.mjs campaign 3000` | **58.9%** |
 | known-ending rate | `TRIPS=8 node sim/run.mjs career 720 reads` | **80.0%** |
-| climber ladder | `PROJECTS=0 node sim/run.mjs arch 2000` | 13.1 / 9.0 / 10.2 / 10.7 / 13.7 |
+| climber ladder | `PROJECTS=0 node sim/run.mjs arch 2000` | 13.3 / 9.1 / 10.3 / 10.7 / 13.5 |
 
 All three go into `sim/band.mjs` for the version you ship; a release without them fails
 `npm run check`. The band takes ~20 minutes, the ending ~4 minutes (CARD-20 bought its resolution — the old
@@ -98,9 +98,16 @@ the ledger row, update the ROADMAP row, commit, push to `main`.
 
 Read the ROADMAP rows for the full argument; this is the shape of it.
 
-- **ROPE-2 second row**, **SHIP-3** (Play Store: account, signing key, device), **ART-3** (store
-  art) — the last two need a human with a phone and an account.
-- **BAL-13** is parked with an answer: act 1 is frictionless and no dial fixes it.
+- **SHIP-3** (Play Store: account, signing key, device) and **ART-3** (store art) — both need a
+  human with a phone and an account. Nothing else on the board is blocked on measurement.
+- **BAL-13** is parked with an answer, and v10.75 added a sixth screened lever: act-1 LENGTH does
+  not make act 1 bite, because shortening scales the cost and the slack together. It is the only
+  lever tried that does not break the roster, so it stays live as a PACE change if anybody wants
+  two minutes back — at the price of a band re-pin. What is untried is a cost charged in
+  something the roster differs on less than skin, grip and attempts.
+- **A rope-first act, if anybody wants one, is a DECK-CONSTRUCTION act** (ROPE-2's second row): a
+  rope is worth +0.1 without a rack and +8.4 with one, so it would force a rack rather than
+  change the difficulty. The provisioning to support one already follows the run.
 
 ## A prompt to start from
 

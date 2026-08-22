@@ -4940,6 +4940,89 @@ test('ROPE-2: the rack ROPE-1 built can actually be got', () => {
   }
 
 })
+test('ROPE-2 second row: the rope is provisioned off the trip you are on', () => {
+  /* THE ROW ASKED FOR TWO THINGS AND ONE OF THEM HAD ALREADY SHIPPED. "A rope-first campaign
+     act or a multi-pitch finale variant is still open" — the finale variant went out at v10.48
+     (`specOf`: the finale you roped is three pitches), so half the row was stale for twenty-six
+     versions. It is asserted here rather than re-argued.
+
+     WHAT A ROPE IS WORTH, which nobody had measured and a rope-first act needs before anybody
+     authors one. Four act-3 lines that are not roped as authored, roped by hand, same seeds,
+     same fourteen-card deck, 1,600 sessions an arm:
+
+         as authored, no rack .......  8.2%
+         roped, no rack .............  8.3%     the rope alone: +0.1
+         unroped, carrying a rack ...  1.8%
+         roped, carrying a rack ..... 10.2%     the rope, with a rack: +8.4
+
+     So the belays are worth NOTHING on their own and the whole value is in the CLIPPING —
+     runout reset and CLIPPED_POWER — which is why a third pitch adds +0.1 over a second. A
+     rope-first act is therefore not a difficulty change, it is a DECK-CONSTRUCTION act: it
+     would force a rack, and the rack is what pays. (The 6.4 between the two no-rope arms is
+     the fixture displacing a rest, not the rack's true price — read it as "carrying a rack you
+     cannot use costs you the cards it replaced", which is ROPE-1's whole point.)
+
+     AND THE PROVISIONING HAD TO FOLLOW THE RUN. Three places asked "is there rope on this
+     trip" and all three read the static table, while RUN-15 made which line fills a climb slot
+     a property of the run. Measured: the divergence is latent rather than live — MAP_SWAP_IN
+     is camps and shops, so act 3 keeps its two roped projects and 0.0% of runs have no roped
+     node — but 4.7% are offered no roped CLIMB, the roped share swings run to run against a
+     static 0.286, and the moment a roped climb lands in an act with no roped project the rack
+     appears for ropes that are not there and the card tells the player so. */
+  const finale = E.ROUTES.findIndex(r => r.finale)
+  ok(finale >= 0, 'there is no finale, so the variant below cannot be checked')
+  const solo = E.specOf({ ...E.freshRun(finale, 0, 1), routeIdx: finale, ropedUp: false })
+  const roped = E.specOf({ ...E.freshRun(finale, 0, 1), routeIdx: finale, ropedUp: true })
+  ok(!solo.roped && roped.roped,
+    'the finale no longer changes shape when you rope up — that is ROPE-2 §3, and the second row calls it open')
+  ok((roped.pitches ?? 0) > 1,
+    `the roped finale is ${roped.pitches} pitch — the multi-pitch variant the row asks for is what shipped at v10.48`)
+
+  /* THE DERIVATION READS THE RUN. Asserted by finding a run whose own map disagrees with the
+     table — if none exists inside a bounded search, the derivation is not reading the run. */
+  const staticShare = (act) => {
+    const idx = E.ACTS[act].flat().map(n => n.routeIdx).filter(i => i >= 0)
+    return idx.length ? idx.filter(i => E.ROUTES[i]?.roped).length / idx.length : 0
+  }
+  const ropedAct = E.ACTS.findIndex((_, a) => staticShare(a) > 0)
+  ok(ropedAct >= 0, 'no act carries a rope, so nothing below is asserting anything')
+  /* FIFTY SEEDS, AND THE BOUND IS LOAD-BEARING: `ropeOnTrip` evicts its cache past 64 entries,
+     so a longer loop clears the very entry the cache-key injection needs the bare act below to
+     collide with — measured, at 200 seeds that injection reads green while the key is broken.
+     Raise this and you retire an injection without noticing. */
+  let differs = 0, seenShares = new Set()
+  for (let seed = 1; seed <= 50; seed++) {
+    const s = { ...E.freshRun(0, 0, 1), act: ropedAct, runSeed: seed }
+    const got = E.ropeOnTrip(s)
+    seenShares.add(got.share.toFixed(4))
+    if (Math.abs(got.share - staticShare(ropedAct)) > 1e-9) differs++
+    eq(got.share, E.ropeOnTrip(s).share, `ropeOnTrip disagreed with itself on seed ${seed} — the cache is answering for a map it did not see`)
+  }
+  ok(differs > 0,
+    'every run reports the table\'s own roped share, so the rack and the valuation are still reading the static map and RUN-15 is invisible to them')
+  ok(seenShares.size > 1, `the roped share is the same ${seenShares.size} value in every run — the derivation is not reading the run`)
+  // an act with no rope on it says so, whatever the run
+  const bare = E.ACTS.findIndex((_, a) => staticShare(a) === 0)
+  if (bare >= 0) ok(!E.ropeOnTrip({ ...E.freshRun(0, 0, 1), act: bare, runSeed: 7 }).any,
+    `act ${bare + 1} has no roped line and the trip says it has rope — the rack would be sold for nothing`)
+
+  /* AND ALL THREE CONSUMERS GO THROUGH IT, because the failure this fixes is three copies of
+     one question drifting apart — the ENG-26 class, and the reason RUN-14 had to move the
+     harness onto `tierNodes` in the first place. */
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const shop = region(eng, 'export function stockShop', ['export function priceOf',
+    '\nexport function ', '\nexport const '], { min: 200, what: 'stockShop' })
+  ok(/ropeOnTrip\(s\)/.test(shop), 'the post stocks its rack off the static table again')
+  const value = region(eng, 'export function cardValue', ['export function cardHints'],
+    { min: 400, what: 'cardValue' })
+  ok(/ropeOnTrip\(s\)\.share/.test(value),
+    'the valuation prices protection off the static table again, so a run with no rope on it still pays for a rack')
+  const hints = region(eng, 'export function cardHints', ['\nexport function ', '\nexport const '],
+    { min: 200, what: 'cardHints' })
+  ok(/ropeOnTrip\(s\)\.any/.test(hints),
+    'the card still tells the player "there is rope on this trip" off the static table — the one place it is a lie rather than a mispricing')
+})
+
 test('ROUTE-16: no line is another line wearing a different name', () => {
   /* THE CORNICE AND THE HANGING SLAB WERE THE SAME ROUTE. Identical grade, style, clear,
      crux, feet, roped and pitches — and signatures with identical stats as well
