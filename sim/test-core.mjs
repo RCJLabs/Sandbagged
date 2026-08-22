@@ -1561,7 +1561,14 @@ group('boundary')
 test('the engine knows nothing about a screen', () => {
   // ENG-8. The whole point of the split: if the rules can reach the DOM, the
   // boundary is decorative and the next state-shape bug hides in the seam.
-  const src = readFileSync('src/engine.ts', 'utf8')
+  /* CARD-21: COMMENTS STRIPPED, and it is a real defect rather than tidiness. This read the raw
+     file, so `\bwindow\.` matched any comment whose sentence ENDED on the word window — and
+     ROUTE-6's whole mechanic is called the window, so the prose here says it constantly. It
+     fired on a CARD-21 comment reading "the next turn is not the window." That is ART-4's class,
+     which this suite already strips comments for in three other places. The claim is about what
+     the CODE reaches for, so stripping cannot weaken it — and the comment that caught it is
+     still in engine.ts, so a revert of this line fails here rather than silently. */
+  const src = stripComments(readFileSync('src/engine.ts', 'utf8'))
   const forbidden = [
     [/className=/, 'JSX className'],
     [/<\/[A-Za-z]/, 'a closing JSX tag'],
@@ -5091,6 +5098,81 @@ test('HOLD-2: a flake gives to whoever lets the other hand go first', () => {
     `the flake is weighted ${Math.max(...flakeW)} on some style — FEET-1 measured what happens when a characterful hold becomes the default`)
   ok(E.KEYWORDS.some(k => k.name === 'Chained' && /other hand/.test(k.text)),
     'Chained is not in the glossary, so the one rule on the board about ORDER is unexplained')
+})
+
+test('CARD-21: the lane carries the combination, because nothing else lasts', () => {
+  /* WHY THE LANE AND NOT THE CARD. SIM-9 measured that a placed hand card stands 1.09 turns and
+     83.7% of them blow the turn they land, so a combination held on the CARD has almost no board
+     to pay on — CARD-20 went sideways across lanes for that reason. The lane persists: over
+     45,488 turns a hand lane clears 1.18 times a turn, and the discount a Setup move leaves is
+     collected 86.7% of the time. Not on every clear, which HOLD-2 measured at 97.7% of turns —
+     a flat discount wearing a combination's clothes — so it rides two cards and the rate is what
+     the player built (a Setup move is out on 18.4% of turns, leaving the lane worked on 9.9%).
+
+     APPLIED WHERE THE HOLD ENTERS THE LANE, in `refillAndDraw`, which is the whole reason this
+     needed no GameState field and no save migration: `gripShown`, `previewLane` and `resolve`
+     read the hold, so none of them has to know the rule exists. */
+  const carriers = Object.entries(E.CARDS).filter(([, c]) => c.fx === 'setup')
+  ok(carriers.length >= 2, `only ${carriers.length} card carries Setup — a singleton mechanic is CARD-18's complaint`)
+  for (const [n, c] of carriers) {
+    eq(c.kind, 'move', `${n} carries Setup and is not a move, so it can never clear a hold to leave one`)
+    ok(c.text.includes('Setup') && c.text.includes(`${E.SETUP_GIVE} Grip`),
+      `${n} leaves the lane worked and its text does not say so — CARD-17's rule`)
+  }
+
+  /* THE HOLD THAT ARRIVES NEXT COMES EASIER, AND ONLY AFTER A SETUP MOVE CLEARS. Two runs of
+     the same fixture, differing only in the card, so the hold deck and every draw match. */
+  const setupCard = E.spawn(carriers[0][0])
+  const plain = Object.keys(E.CARDS).find(n => {
+    const c = E.CARDS[n]
+    return c.kind === 'move' && !c.fx && (c.lane === 'hand' || c.lane === 'any')
+      && c.power >= setupCard.power && c.contact >= setupCard.contact
+  })
+  ok(plain, 'no plain control move at least as strong as the Setup carrier, so the comparison below is confounded')
+  const soft = { uid: 61, name: 'jug', grip: 1, bite: 1, crux: false, clean: false }
+  const next = { uid: 62, name: 'crimp', grip: 6, bite: 2, crux: false, clean: false }
+  const base = { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null, gear: [], boons: [],
+    mutators: [], pump: 0, beta: [], assist: true, holdDeck: [next], feetDeck: [],
+    boardH: [soft, null, null], order: [0] }
+  const after = c => {
+    const st = { ...base, boardP: [E.spawn(c), null, null],
+      piles: { draw: [], discard: [], exhaust: [], hand: [] } }
+    return E.resolve(st, new E.RNG(5)).boardH[0]
+  }
+  const viaSetup = after(carriers[0][0]), viaPlain = after(plain)
+  ok(viaSetup && viaPlain && viaSetup.uid === next.uid && viaPlain.uid === next.uid,
+    'the fixture did not bring the next hold up in that lane, so nothing below is tested')
+  eq(viaPlain.grip - viaSetup.grip, E.SETUP_GIVE,
+    'clearing with a Setup move leaves the lane no easier than clearing with a plain one — the mechanic is dead')
+  // and it cannot drive a hold to nothing
+  const tiny = { ...next, grip: 1 }
+  const st1 = { ...base, holdDeck: [tiny], boardP: [E.spawn(carriers[0][0]), null, null],
+    piles: { draw: [], discard: [], exhaust: [], hand: [] } }
+  ok((E.resolve(st1, new E.RNG(5)).boardH[0]?.grip ?? 0) >= 1,
+    'a Setup move can hand you a hold at zero Grip, which is a hold that is not there')
+
+  /* THE POLICY CAN SEE IT — a TIE-BREAK among cards that already clear, never a preference, or
+     it would spend present Power on a future. ENG-25 has caught six mechanics the policy could
+     not use; this asserts the clause exists and that it does not outrank the clear. */
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const pick = region(eng, 'export function autoPlay', ['const ab = boonMods'],
+    { min: 600, what: 'the hand pick' })
+  ok(/b\.fx === 'setup'/.test(pick),
+    'the policy no longer prefers a Setup move, so every number is measured by a player who cannot use it')
+  ok(/const d = scorePow\(b\) - scorePow\(a\)/.test(pick),
+    'the Setup preference no longer sits behind the Power comparison — the policy is spending the turn on a future')
+
+  /* AND THE DRAFTER PRICES WHAT IT PAYS. The first cut priced it at 0.28 — how often a cleared
+     lane is carded on the VERY NEXT turn — which is the wrong window, because the discounted
+     hold sits there until it is worked. Measured on the mechanic itself: 86.7%. */
+  const stV = { ...E.freshRun(4, 0, 1), inRun: true, gear: [], boons: [], mutators: [] }
+  const term = E.cardValue(stV, setupCard, []) - E.cardValue(stV, { ...setupCard, fx: '' }, [])
+  ok(Math.abs(term - E.SETUP_GIVE * 2.5 * E.SETUP_RATE) < 1e-9,
+    `the drafter prices Setup at ${term.toFixed(2)} rather than at what it pays`)
+  ok(E.SETUP_RATE > 0.5,
+    `Setup is priced at a ${E.SETUP_RATE} collection rate against a measured 0.867 — the drafter is being told it is worth a fraction of what it is`)
+  ok(E.KEYWORDS.some(k => k.name === 'Setup' && /lane/.test(k.text)),
+    'Setup is not in the glossary, so the only rule in the game the LANE remembers is unexplained')
 })
 
 test('ROUTE-16: no line is another line wearing a different name', () => {

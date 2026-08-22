@@ -2,10 +2,10 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.77 — HOLD-2: the first rule that pays for the ORDER you resolve in. A flake
-//   gives 2 Grip to whoever lets the other hand go first, and the cost is the rule that already
-//   existed — the lane you send first may blow before the second one goes. Keyed on the order
-//   rather than on the clear, so the preview can still promise exactly what will happen.
+// SANDBAGGED v10.78 — CARD-21: the LANE carries the combination, because nothing else here
+//   lasts — a placed card stands 1.09 turns. Work a hold with a Setup move and the next hold in
+//   that lane arrives 1 Grip easier; you collect it by climbing back into the same lane. Match
+//   and Mantle carry it, and the discount it leaves is collected 86.7% of the time.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1572,7 +1572,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.77 · RCJ Labs</div>
+          <div className="sfoot">v10.78 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1801,7 +1801,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.77 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.78 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

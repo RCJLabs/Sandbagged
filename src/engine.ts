@@ -4939,9 +4939,16 @@ export function matched(boardH: (Hold | null)[], boardP: (Card | null)[]): boole
    the whole wall wearing a combination's clothes. It rides two CARDS instead, so the rate is
    what the player built. */
 export const SETUP_GIVE = 1
-/** CARD-21: how often a lane that was left worked is climbed back into next turn — measured
-    over 45,488 campaign turns. An expectation for pricing, never a rule (see WEIGHT_BOARD). */
-export const SETUP_RATE = 0.28
+/** CARD-21: how often the Grip a Setup move left in the lane is actually collected — 86.7%,
+    measured over 45,698 campaign turns on the shipped mechanic (a Setup move is out on 18.4% of
+    turns and leaves the lane worked on 9.9%). An expectation for pricing, never a rule, the same
+    shape as WEIGHT_BOARD and LAUNCH_RATE.
+    THE FIRST NUMBER HERE WAS 0.28 AND IT WAS THE WRONG QUESTION. The design probe measured how
+    often a cleared lane is carded ON THE VERY NEXT TURN, which is 27.9% — but the discounted
+    hold SITS THERE until it is worked, so the next turn is not the window. Priced at 0.28 the
+    drafter valued Setup at a third of what it pays. Measured on the mechanic itself rather than
+    on a proxy for it. */
+export const SETUP_RATE = 0.87
 export const CHAIN_GIVE = 2
 export const OPPOSE_ALONE = -2
 export const OPPOSE_PAIR = 2

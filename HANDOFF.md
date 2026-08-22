@@ -3,7 +3,7 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.77.** `npm run check` is 202/202 core + 119/119 kept;
+**State at the time of writing: v10.78.** `npm run check` is 203/203 core + 119/119 kept;
 `npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
@@ -52,9 +52,9 @@ where a number appears it is reproducible with the command next to it.
 
 | what | command | at v10.75 |
 |---|---|---|
-| campaign band (the pin) | `PAGES=14 SHARP_AT=99 node sim/run.mjs campaign 3000` | **59.1%** |
-| known-ending rate | `TRIPS=8 node sim/run.mjs career 720 reads` | **78.3%** |
-| climber ladder | `PROJECTS=0 node sim/run.mjs arch 2000` | 12.5 / 8.3 / 10.5 / 10.6 / 13.3 |
+| campaign band (the pin) | `PAGES=14 SHARP_AT=99 node sim/run.mjs campaign 3000` | **58.8%** |
+| known-ending rate | `TRIPS=8 node sim/run.mjs career 720 reads` | **78.2%** |
+| climber ladder | `PROJECTS=0 node sim/run.mjs arch 2000` | 12.0 / 8.3 / 9.6 / 10.7 / 13.3 |
 
 All three go into `sim/band.mjs` for the version you ship; a release without them fails
 `npm run check`. The band takes ~20 minutes, the ending ~4 minutes (CARD-20 bought its resolution — the old
