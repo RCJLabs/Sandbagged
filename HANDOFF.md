@@ -3,7 +3,7 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.72.** `npm run check` is 198/198 core + 119/119 kept;
+**State at the time of writing: v10.73.** `npm run check` is 199/199 core + 119/119 kept;
 `npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
@@ -50,11 +50,11 @@ where a number appears it is reproducible with the command next to it.
 
 ## The numbers, and how to buy them
 
-| what | command | at v10.72 |
+| what | command | at v10.73 |
 |---|---|---|
-| campaign band (the pin) | `PAGES=14 SHARP_AT=99 node sim/run.mjs campaign 3000` | **59.0%** |
-| known-ending rate | `TRIPS=8 node sim/run.mjs career 720 reads` | **76.7%** |
-| climber ladder | `PROJECTS=0 node sim/run.mjs arch 2000` | 12.5 / 9.2 / 9.5 / 11.4 / 14.7 |
+| campaign band (the pin) | `PAGES=14 SHARP_AT=99 node sim/run.mjs campaign 3000` | **58.4%** |
+| known-ending rate | `TRIPS=8 node sim/run.mjs career 720 reads` | **79.6%** |
+| climber ladder | `PROJECTS=0 node sim/run.mjs arch 2000` | 12.3 / 9.3 / 9.8 / 10.5 / 14.0 |
 
 All three go into `sim/band.mjs` for the version you ship; a release without them fails
 `npm run check`. The band takes ~20 minutes, the ending ~4 minutes (CARD-20 bought its resolution — the old
@@ -98,9 +98,6 @@ the ledger row, update the ROADMAP row, commit, push to `main`.
 
 Read the ROADMAP rows for the full argument; this is the shape of it.
 
-- **RUN-15** (P2) — the climbs are the same every run. RUN-14 deliberately varied only the
-  support; varying which routes fill a stage needs a pool of interchangeable lines per act,
-  which is authoring rather than a rule.
 - **INFO-2** (P3) — the policy plans now (SIM-9) and foreknowledge still priced at zero, oracle
   included: reads buy certainty against the WOBBLE, and the sim reads exact grip. Blocked on an
   uncertainty-limited policy, which is a bigger change than planning was — read the row.

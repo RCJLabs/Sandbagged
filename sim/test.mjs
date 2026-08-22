@@ -3705,9 +3705,19 @@ if (SLOW) {
        so it now also runs `dClear +1` (the long way is longer), a real
        endurance-vs-power trade. The band the drift guard pins is the GUIDE line
        (default `line:0`), untouched by any of this. */
+    /* RUN-15: THE ARMS ARE n=1500 NOW, AND THE CEILING IS WHY. This guard's own comment has
+       said since SIM-8 that n=500 resolves the -8 floor and NOT the +3 ceiling — and at
+       v10.73 the ceiling finally fired on exactly that under-resolution: the traverse read
+       +4.4 over the guide at n=500 while the n=1500 truth is -0.6 (guide 57.3, traverse 56.7,
+       direct 58.2). Route pooling had not moved the crux density the traverse trades against
+       (offers read 1.27 / 1.31 / 3.00 cruxes per climb against 1.15 / 1.33 / 3.00 static) —
+       the n=500 slice had simply resampled. A guard that fires on a draw gets its resolution
+       bought, not its bar widened: 4,500 runs an act instead of 1,500, ~+9 minutes of slow
+       suite (GUARD-6 says state the cost), and the difference SE drops ~3.1 to ~1.8, which
+       resolves the ceiling the floor never needed help with. */
     const full = line => {
       // GUARD-6: one band, not three — this guard reads only the full journal
-      const out = execSync(`PAGES=14 LINE=${line} SHARP_AT=99 node sim/run.mjs campaign 500`, { encoding: 'utf8' })
+      const out = execSync(`PAGES=14 LINE=${line} SHARP_AT=99 node sim/run.mjs campaign 1500`, { encoding: 'utf8' })
       const pcts = [...out.matchAll(/completion\s+([\d.]+)%/g)].map(m => Number(m[1]))
       return pcts[pcts.length - 1]
     }

@@ -2666,6 +2666,56 @@ test('CARD-20: a launch fires off the hand that held, and only that hand', () =>
       `${n} launches and its text does not say so — the card undersells itself (CARD-17's rule)`)
 })
 
+test('RUN-15: which line fills a stage is a property of the run', () => {
+  /* THE ROW SAID THIS NEEDS AUTHORING, NOT A RULE, AND THE MEASURED MAP DISAGREED TWICE.
+     "36 routes cover 26 stages, nearly all used once": all 35 non-tutorial lines are ALREADY
+     in ACTS, nine of them double-slotted — there was no unused pool waiting to be authored.
+     And "interchangeable" is already the map's own idiom: its double-slotted same-grade pairs
+     sit 18-21 points of send rate apart, and one act-2 stage statically menus a 44-point
+     spread (Rattlesnake 66% / Kiln 22% / Blowhole 47% at the mid deck), resolved by the
+     forecast rather than by difficulty. So RUN-15 is RUN-14's lever pointed at the one node
+     kind it deliberately skipped: a climb slot draws per run from its act's exact-grade pool
+     (CLIMB_POOLS, derived from ACTS so there is no second table to drift), under NARR-22's
+     rule that a swap may only take what it can give back. What this guard holds, in order:
+     the variety exists at all; the grade ramp is untouched; the spine (bosses, projects)
+     never moves; no line fills two slots of one stage; every dealt line belongs to its act
+     (so the account-scoped logbook tick stays reachable); and the map is deterministic per
+     run, because the stage you plan on has to be the stage you get. */
+  const runFor = (seed, act) => ({ ...E.freshRun(0, 0, 1), act, runSeed: seed })
+  // the three stages the static map pins to exactly ONE climb — one per act
+  for (const [act, tier] of [[0, 2], [1, 1], [2, 1]]) {
+    const seen = new Set()
+    for (let seed = 1; seed <= 60; seed++)
+      for (const n of E.tierNodes(runFor(seed, act), tier))
+        if (n.type === 'climb') seen.add(n.routeIdx)
+    ok(seen.size >= 2,
+      `act ${act + 1}'s single-climb stage offered ${seen.size} line(s) across 60 seeds — the climbs are the same every run again`)
+  }
+  for (let seed = 1; seed <= 20; seed++) for (let act = 0; act < E.ACTS.length; act++) {
+    const s = runFor(seed, act)
+    E.ACTS[act].forEach((st, t) => {
+      const got = E.tierNodes(s, t)
+      eq(JSON.stringify(got.map(n => n.routeIdx)),
+        JSON.stringify(E.tierNodes(s, t).map(n => n.routeIdx)),
+        `tierNodes is not deterministic at act ${act + 1} stage ${t + 1} — the map a player plans on is not the map they get`)
+      const grades = ns => ns.filter(n => n.type === 'climb')
+        .map(n => E.ROUTES[n.routeIdx].grade).sort((a, b) => a - b).join(',')
+      eq(grades(got), grades(st),
+        `act ${act + 1} stage ${t + 1} changed its grades under the swap — the ramp is not preserved`)
+      const spine = ns => ns.filter(n => n.type === 'boss' || n.type === 'project')
+        .map(n => `${n.type}:${n.routeIdx}`).join(' ')
+      eq(spine(got), spine(st),
+        `act ${act + 1} stage ${t + 1} swapped a boss or a project — only climbs may move`)
+      const climbs = got.filter(n => n.type === 'climb').map(n => n.routeIdx)
+      ok(new Set(climbs).size === climbs.length,
+        `act ${act + 1} stage ${t + 1} offers one line twice: ${climbs.join(', ')}`)
+      for (const n of got) if (n.type === 'climb')
+        ok(E.ACT_OF_ROUTE[n.routeIdx] === act,
+          `act ${act + 1} stage ${t + 1} dealt a line from another act — the logbook tick cannot reach it here`)
+    })
+  }
+})
+
 test('BAL-13: the early bosses are fights, not flat routes', () => {
   /* The fourth audit found The Priest (act 1) and The Hourglass (act 2) were
      single-phase — a slightly harder route — against the two- and three-phase

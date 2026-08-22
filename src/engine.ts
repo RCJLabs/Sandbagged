@@ -2489,8 +2489,53 @@ export const MAP_SWAP_IN: NodeType[] = ['camp', 'shop']
    WHAT IT COSTS. Variety, a little, honestly: 16 of the 26 stages produced more than one shape
    and now 14 do, because a stage that already offers both a camp and a shop has nothing left to
    be given. That is the price of the map varying the support instead of the story. */
+/* RUN-15. The pools a climb slot may draw from: every route that appears as a CLIMB node in
+   the act's own map, keyed by grade. Derived from ACTS the way ACT_OF_ROUTE is, so there is no
+   second table to drift and a swapped-in line is always one the act already owns — which also
+   keeps `actTicked` whole, because the logbook goal is account-scoped and every pool member is
+   reachable across runs. The row said varying the routes "is authoring, not a rule", and the
+   measured map disagrees twice over: all 35 non-tutorial lines are ALREADY in ACTS (there was
+   no unused pool to author), and the map's own idiom already double-slots nine same-grade
+   pairs and statically offers a 44-point spread in one stage's menu (Rattlesnake 66% · Kiln
+   22% · Blowhole 47% at mid deck) — same-grade-as-interchangeable is the map's existing rule,
+   applied here per run instead of per author. */
+export const CLIMB_POOLS: Record<number, number[]>[] = ACTS.map(map => {
+  const pools: Record<number, number[]> = {}
+  map.forEach(tier => tier.forEach(n => {
+    if (n.type === 'climb' && n.routeIdx >= 0) {
+      const g = ROUTES[n.routeIdx].grade
+      if (!pools[g]) pools[g] = []
+      if (!pools[g].includes(n.routeIdx)) pools[g].push(n.routeIdx)
+    }
+  }))
+  return pools
+})
+
 export function tierNodes(s: GameState, tier = s.tier): MapNode[] {
-  const all = ACTS[s.act]?.[tier] ?? []
+  const staticTier = ACTS[s.act]?.[tier] ?? []
+  /* RUN-15: WHICH LINE fills a climb slot is a property of the run now, the way RUN-14 made
+     the support a property of the run — and under NARR-22's rule from that ticket: the swap
+     may only take what it can give back, so a climb swaps only for another climb, of the same
+     act, at the same grade. The stage's grade ramp is therefore untouched by construction.
+     Bosses are the act's spine and projects are RUN-10's deliberately-distinct boulders:
+     neither is a 'climb', so neither can swap. One route never fills two slots of one stage.
+     Its RNG stream is separate from the support swap's below on purpose, so this ticket left
+     RUN-14's per-seed support layout exactly as it was. */
+  const pools = CLIMB_POOLS[s.act]
+  let all = staticTier
+  if (pools) {
+    const rr = new RNG((s.runSeed ^ (s.act * 48611) ^ (tier * 92821) ^ 0x5eed) >>> 0)
+    const taken = new Set(staticTier.filter(n => n.type === 'climb').map(n => n.routeIdx))
+    all = staticTier.map(n => {
+      if (n.type !== 'climb' || n.routeIdx < 0) return n
+      const pool = pools[ROUTES[n.routeIdx].grade] ?? []
+      const cands = pool.filter(r => r === n.routeIdx || !taken.has(r))
+      const pick = cands.length ? cands[rr.int(cands.length)] : n.routeIdx
+      if (pick === n.routeIdx) return n
+      taken.delete(n.routeIdx); taken.add(pick)
+      return { ...n, routeIdx: pick }
+    })
+  }
   if (all.length <= MAP_FLOOR) return all
   // NARR-22: only what the pool can hand back is in range — see the note above for what each of
   // the two wider versions of this line cost

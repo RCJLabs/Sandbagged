@@ -2,10 +2,10 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.72 — CARD-20: Launch, the combination the two Bump cards had promised by
-//   name since they existed. +2 Power while the card in your OTHER hand has held a turn —
-//   Settle turned sideways — and the state it fires off is honest now: a card that blows or
-//   is lifted comes off the wall without its stand, the reset an echo and a spit always made.
+// SANDBAGGED v10.73 — RUN-15: which line fills a stage is a property of the run. A climb slot
+//   deals per run from its act's exact-grade pool (derived from the map itself), under RUN-14's
+//   own rule that a swap only takes what it can give back — so the ramp, the bosses and the
+//   projects never move, and the stage you plan on is still the stage you get.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1572,7 +1572,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.72 · RCJ Labs</div>
+          <div className="sfoot">v10.73 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1801,7 +1801,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.72 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.73 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
