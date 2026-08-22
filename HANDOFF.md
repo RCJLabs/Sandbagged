@@ -3,7 +3,7 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.78.** `npm run check` is 203/203 core + 119/119 kept;
+**State at the time of writing: v10.79.** `npm run check` is 204/204 core + 119/119 kept;
 `npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
@@ -52,9 +52,9 @@ where a number appears it is reproducible with the command next to it.
 
 | what | command | at v10.75 |
 |---|---|---|
-| campaign band (the pin) | `PAGES=14 SHARP_AT=99 node sim/run.mjs campaign 3000` | **58.8%** |
-| known-ending rate | `TRIPS=8 node sim/run.mjs career 720 reads` | **78.2%** |
-| climber ladder | `PROJECTS=0 node sim/run.mjs arch 2000` | 12.0 / 8.3 / 9.6 / 10.7 / 13.3 |
+| campaign band (the pin) | `PAGES=14 SHARP_AT=99 node sim/run.mjs campaign 3000` | **61.8%** |
+| known-ending rate | `TRIPS=8 node sim/run.mjs career 720 reads` | **81.5%** |
+| climber ladder | `PROJECTS=0 node sim/run.mjs arch 2000` | 14.6 / 13.6 / 10.8 / 13.1 / 13.4 |
 
 All three go into `sim/band.mjs` for the version you ship; a release without them fails
 `npm run check`. The band takes ~20 minutes, the ending ~4 minutes (CARD-20 bought its resolution — the old
@@ -93,6 +93,14 @@ measurement yet.
 slow suite. Then: bump `package.json`, update the three version strings in `src/App.tsx`
 (SHIP-4 enforces this — two releases shipped showing the wrong version before it existed), add
 the ledger row, update the ROADMAP row, commit, push to `main`.
+
+## Read this before the next roster-wide change
+
+**v10.79 (ARCH-1) put both the band and the ending at the edge of their tolerances** — band 61.8
+against a pin of 60 (±2), ending 81.5 against 76.7 (±5). Nothing is re-pinned and nothing is
+outside, but an ability handed to *every* climber lifts the whole game, and there is now about
+0.2 of band headroom left. The next roster-wide addition should have its re-pin agreed with Evan
+**before** it is built rather than discovered afterwards.
 
 ## What is open
 

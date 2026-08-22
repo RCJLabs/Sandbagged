@@ -5175,6 +5175,89 @@ test('CARD-21: the lane carries the combination, because nothing else lasts', ()
     'Setup is not in the glossary, so the only rule in the game the LANE remembers is unexplained')
 })
 
+test('ARCH-1: every climber has a verb, and the policy spends it', () => {
+  /* THE FIVE SIGNATURES WERE ALL PASSIVE STAT DIALS — "+3 Power on every move", "beta is worth
+     double", "settles all the way to +3" — so the roster SCORED differently and PLAYED
+     identically. There was no moment in a burn where being the Trad Dad rather than the Comp Kid
+     changed what you could DO. One `signatureStep` over the table rather than five bespoke rules,
+     for SIM-5's reason: a rule written per-climber is a rule added to one and forgotten in four.
+
+     WHAT THE TUNING COST, because three of the five were wrong first and the corrections are the
+     content of this ticket (ladder at n=2000, floor 5, ceiling 2.2x):
+       Commit  13.3 -> 2.0   banning the burn's RESTS. SIM-9 measured shaking out at +21 points
+                              of session send, so the cost was worth more than 2 Power ever is.
+               13.3 -> 10.6  costing 2 PUMP, spent on turn one.
+               13.3 -> 9.0   costing 2 pump, spent where the Power converts a miss.
+               13.3 -> 13.4  costing the FLOW, which is what Dig In already pays with.
+       Dig In  10.7 -> 15.9  capped at 4: it scales with turns survived and this climber runs
+                              the longest burns in the game, so it scaled with its own signature.
+               10.7 -> 13.1  capped at 2, and the roster spread came back 2.04x -> 1.35x.
+       Read     8.3 -> 7.8   read alone: nothing. A one-off DRAW: also nothing, and structurally
+                              so — `refillAndDraw` tops the hand to a target every turn, so a
+                              card drawn mid-turn is one the refill does not draw. That is why
+                              BAL-16 measured a point of HAND at +15.6 here and a draw at zero.
+                8.3 -> 13.6  a card of HAND for the burn.
+     Roster after: 14.6 / 13.6 / 10.8 / 13.1 / 13.4 — floor 10.8 against 8.3 before, spread
+     1.35x against 1.60x. Every climber gained and the roster got TIGHTER, which is the outcome
+     a roster-wide ability has to have or it is a spread problem wearing a feature's clothes. */
+  for (const a of E.ARCHETYPES) {
+    ok(a.move && a.move.name && a.move.text,
+      `${a.name} has no signature move, so it is a stat block again`)
+    ok(a.move.text.length > 20, `${a.name}'s move does not say what it does: ${a.move.text}`)
+  }
+  const ids = E.ARCHETYPES.map(a => a.move.name)
+  eq(new Set(ids).size, ids.length, `two climbers share a signature move: ${ids.join(', ')}`)
+
+  const stFor = (id, extra = {}) => {
+    const i = E.ARCHETYPES.findIndex(a => a.id === id)
+    const hold = { uid: 70, name: 'crimp', grip: 6, bite: 3, crux: false, clean: false }
+    return { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null, arch: i, phase: 'climb',
+      gear: [], boons: [], mutators: [], pump: 4, turn: 3, beta: [], moveUsed: false,
+      boardH: [hold, { ...hold, uid: 71 }, null], boardP: [null, null, null],
+      holdDeck: [{ ...hold, uid: 72 }, { ...hold, uid: 73 }, { ...hold, uid: 74 }], ...extra }
+  }
+  // once a burn, for everybody
+  for (const a of E.ARCHETYPES) {
+    const once = E.signatureStep(stFor(a.id))
+    ok(once.moveUsed, `${a.name}'s move did not fire at all`)
+    eq(E.signatureStep(once).moveUsed, true, `${a.name} spent its move twice in a burn`)
+    eq(JSON.stringify(E.signatureStep(once)), JSON.stringify(once),
+      `${a.name}'s move fires again once spent — once a burn is the whole shape of it`)
+  }
+  // and each does its own thing
+  const boul = E.signatureStep(stFor('boulderer'))
+  ok(boul.beta.length > 0, 'Work It taught the Boulderer nothing')
+  const comp = E.signatureStep(stFor('comp'))
+  ok(comp.readAhead >= E.ARCH_READ, 'Read The Set read nothing')
+  eq(comp.handBonus, E.ARCH_READ_HAND,
+    'Read The Set no longer keeps a card of HAND — a one-off draw is void against the refill, which is why this is a hand bonus')
+  ok(E.signatureStep(stFor('trad')).bomber, 'Bomber does not hold the placement')
+  const dug = E.signatureStep(stFor('alpine', { pump: 6, turn: 9, flow: 3 }))
+  ok(dug.pump < 6 && 6 - dug.pump <= E.ARCH_DIG_MAX,
+    `Dig In gave back ${6 - dug.pump} against a cap of ${E.ARCH_DIG_MAX} — uncapped it scales with this climber's own longest-burn signature`)
+  eq(dug.flow, 0, 'Dig In no longer costs the flow, so the shed is free')
+  const com = E.signatureStep(stFor('onsight', { flow: 3 }))
+  ok(com.commitPower, 'Commit buys no Power')
+  eq(com.flow, 0, 'Commit no longer costs the flow — and it must not cost pump or rests, which measured at -4.3 and -11.3')
+  eq(com.pump, 4, 'Commit costs pump again, which took this climber to 10.6% and 9.0% against 13.4% on the flow')
+
+  /* THE POLICY SPENDS ALL FIVE, or the whole ticket measures as nothing — ENG-25, which this
+     project has now hit eight times. Asserted at source AND by firing it. */
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const auto = region(eng, 'export function autoPlay', ['const ab = boonMods'],
+    { min: 600, what: 'the policy' })
+  ok(/if \(wantsIt\) st = signatureStep\(st\)/.test(auto),
+    'the policy never spends a signature move, so all five measure at zero')
+  for (const id of ['boulderer', 'comp', 'trad', 'alpine', 'onsight'])
+    ok(new RegExp(`'${id}'`).test(auto), `the policy has no heuristic for ${id}, so that climber's move is dead`)
+
+  // the per-burn flags reset on a fresh go, like savedBlow beside them
+  const spent = E.signatureStep(stFor('trad'))
+  const fresh = E.startBurn({ ...spent, burn: 2 }, new E.RNG(3))
+  ok(!fresh.moveUsed && !fresh.bomber && !fresh.commitPower && !fresh.handBonus,
+    'a fresh burn does not hand the signature move back')
+})
+
 test('ROUTE-16: no line is another line wearing a different name', () => {
   /* THE CORNICE AND THE HANGING SLAB WERE THE SAME ROUTE. Identical grade, style, clear,
      crux, feet, roped and pitches — and signatures with identical stats as well

@@ -2,10 +2,10 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.78 — CARD-21: the LANE carries the combination, because nothing else here
-//   lasts — a placed card stands 1.09 turns. Work a hold with a Setup move and the next hold in
-//   that lane arrives 1 Grip easier; you collect it by climbing back into the same lane. Match
-//   and Mantle carry it, and the discount it leaves is collected 86.7% of the time.
+// SANDBAGGED v10.79 — ARCH-1: the five climbers have a VERB. Every signature was a passive stat
+//   dial, so the roster scored differently and played identically. Work It, Read The Set, Bomber,
+//   Dig In and Commit — one a burn, each with a cost. The roster floor rose 8.3 to 10.8 and the
+//   spread tightened 1.60x to 1.35x; the band and the ending both sit at the edge of tolerance.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1572,7 +1572,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.78 · RCJ Labs</div>
+          <div className="sfoot">v10.79 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1801,7 +1801,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.78 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.79 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

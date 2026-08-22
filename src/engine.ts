@@ -518,6 +518,15 @@ export type GameState = {
   boons: string[]
   gearOffers: string[]
   savedBlow: boolean
+  /* ARCH-1: has this climber's signature move been spent on this burn? Per-burn like
+     `savedBlow` and `peakPump` beside it — startBurn clears it, so a retry gets it back. */
+  moveUsed?: boolean
+  /* ARCH-1: the Trad Dad's placement holds no matter what, for one turn. */
+  bomber?: boolean
+  /* ARCH-1: and the Power it buys lands on the turn it was spent — cleared with `bomber`. */
+  commitPower?: boolean
+  /* ARCH-1: the Comp Kid read the set and is holding one more for the rest of this burn. */
+  handBonus?: number
   /** How close it got. Kept per burn so the screen at the end has something
       to tell you beyond "that is a send". */
   peakPump: number
@@ -1958,6 +1967,11 @@ export function rollEvent(rng: RNG, act = 0, seen: string[] = [],
 export type Archetype = {
   id: string; name: string; text: string; sig: string; sigText: string
   unlock: number; gear: string; loadout: string[]
+  /* ARCH-1: the thing this climber DOES, once a burn. Every signature in this table was a
+     passive stat dial until v10.79 — "+3 Power on every move", "beta is worth double" — so the
+     five climbers scored differently and played identically. `move` is the verb; the effect is
+     resolved by `signatureStep`, one function over this data rather than five bespoke rules. */
+  move?: { name: string; text: string }
   betaGrip?: number; firstTurnPower?: number; noBeta?: boolean
   /* BAL-12. Three signatures compound over a burn — beta coming back cheaper,
      Contact on every move, settling to +3. The Comp Kid's fired once, on turn
@@ -1997,12 +2011,14 @@ export const L = (...pairs: [string, number][]) => {
 }
 export const ARCHETYPES: Archetype[] = [
   { id: 'boulderer', name: 'The Boulderer', unlock: 1, gear: 'sticky',
+    move: { name: 'Work It', text: 'Read this hold off the wall and keep it: the kind you are on comes back beta\u2019d for the rest of this session.' },
     text: 'Pads, chalk, and forty attempts. The default way in.',
     sig: 'Projecting', sigText: 'Beta is worth double — worked holds come back at −2 Grip.',
     betaGrip: 2,
     loadout: L(['Crimp Grip', 3], ['Open Hand', 2], ['Lock Off', 2], ['Smear', 3],
       ['Shake Out', 2], ['Breathe', 2], ['Chalk Up', 1]) },
   { id: 'comp', name: 'The Comp Kid', unlock: 4, gear: 'downturn',
+    move: { name: 'Read The Set', text: 'Comp habits: look at the next three holds before you touch them.' },
     text: 'Trained on plastic. Enormously strong, no patience at all.',
     sig: 'Plastic', sigText: '+3 Power on every move, and one less burn a day. All engine, no patience. Feet you trust the moment they land, and a boulder that beats you never gets in your head.',
     dPower: 3, dAttempts: -1, quickFeet: true, dPsyche: 1, deed: 'strong',   // META-6: earned by sending V5+
@@ -2010,6 +2026,7 @@ export const ARCHETYPES: Archetype[] = [
       ['Smear', 2], ['High Step', 1], ['Shake Out', 2], ['Deep Breath', 1],
       ['Breathe', 1], ['Chalk Up', 1]) },
   { id: 'trad', name: 'The Trad Dad', unlock: 8, gear: 'tape',
+    move: { name: 'Bomber', text: 'Nothing you have placed comes off this turn. It holds, whatever it costs.' },
     text: 'Slow, bomber, and will tell you about the rack.',
     sig: 'Bomber', sigText: '+2 Contact on every move, and nothing you place ever settles.',
     dContact: 2, settleMax: 0, deed: 'fa',       // META-6: earned by putting up a line
@@ -2018,6 +2035,7 @@ export const ARCHETYPES: Archetype[] = [
   { id: 'alpine', name: 'The Alpinist', unlock: 12, gear: 'liquid',
     text: 'Used to being cold, tired and a long way from the road.',
     sig: 'Endurance', sigText: 'Moves settle all the way to +3 and two more burns a day, but everything has 2 less Contact.',
+    move: { name: 'Dig In', text: 'Settle in and breathe: shed a pump for every turn you have been on this thing, up to 4. Your flow goes with it.' },
     /* NARR-22 BOUGHT THIS CLIMBER BACK, and the reason is worth keeping because the money was
        coming from a bug. RUN-14's swap could take a node the pool cannot hand back, and one side
        effect was that it INFLATED CAMPS from 9 a run to 10.55 — which had been propping the
@@ -2082,6 +2100,7 @@ export const ARCHETYPES: Archetype[] = [
   { id: 'onsight', name: 'The Onsighter', unlock: 16, gear: 'ball',
     text: 'Walks up, ties in, and climbs it. Strong, unfussy, no tick marks.',
     sig: 'Onsight', sigText: 'No beta ever — every hold stays a guess — but nothing the weather does touches you, your hand runs a card deeper, and you commit hard off the first move.',
+    move: { name: 'Commit', text: 'Read it once and go: +2 Power on both hands this turn, and no shaking out for the rest of the burn.' },
     noBeta: true, ignoreWeather: true, dHand: 1, dContact: 1, dSkin: 1, firstTurnPower: 3,
     deed: 'flash',   // META-6: earned by a flash — a first-try send, which is the whole idea
     loadout: L(['Crimp Grip', 2], ['Open Hand', 2], ['Lock Off', 2], ['Mantle', 1],
@@ -4644,6 +4663,7 @@ function refillAndDraw(s: GameState, rng: RNG, setupLanes?: boolean[]): GameStat
   if (!boardH[2] && feetDeck.length) boardH[2] = feetDeck.pop()!
   const gm = gearMods(s.gear)
   const want = HAND_SIZE + gm.handSize + boonMods(s.boons).dDraw
+    + (s.handBonus ?? 0)     // ARCH-1: the Comp Kid's read buys a card of HAND, not a draw
     + (s.inRun ? (archOf(s).dHand ?? 0) : 0) + (s.turn === 1 ? gm.drawFirst : 0)
     - (mutMods(s.mutators).retain ? SUSTAINED_CUT : 0)   // RUN-11: a smaller working hand
     // PUMP-1: past DUSK_AT the light is going, and it keeps going — one card fewer for every
@@ -4706,6 +4726,8 @@ export function startBurn(s: GameState, rng: RNG): GameState {
     // DAILY-2: per-burn, like peakPump above it — a fresh go asks the objective again
     rests: 0, cruxFree: 0,
     clipped: false, seq: null, readAhead: 0,
+    // ARCH-1: the signature move comes back on a fresh go, like savedBlow beside it
+    moveUsed: false, bomber: false, commitPower: false, handBonus: 0,
     // CARD-9: a second wind buys a go on THIS boulder only — clear it when a
     // fresh line begins (burn 1), keep it across a retry on the same line.
     bonusBurns: s.burn <= 1 ? 0 : (s.bonusBurns ?? 0),
@@ -5313,6 +5335,8 @@ export function powerAgainst(s: GameState, card: Card, hold: Hold, lane: number,
   if (card.fx === 'greedy') p += desperationOf(s)
   if (card.fx === 'momentum') p += Math.min(3, s.flow)   // ENG-23: keep Power at the old ceiling; the raised flow cap feeds tempo
   if (s.inRun && s.turn === 1) p += archOf(s).firstTurnPower ?? 0
+  // ARCH-1: the Onsighter committed this turn — both hands, and it is spent when the turn ends
+  if (lane < 2 && s.commitPower) p += ARCH_COMMIT_POWER
   if (s.inRun) p += archOf(s).dPower ?? 0
   if (card.fx === 'weight') p += s.boardP.filter((c, k) => c && k !== lane).length
   /* CARD-20: a launch fires off the OTHER hand having held a turn — Settle's rule turned
@@ -5551,6 +5575,14 @@ export function resolve(s: GameState, rng: RNG): GameState {
     } else boardH[i] = { ...hold, grip: g }
 
     if (c <= 0 || committed) {
+      /* ARCH-1: the Trad Dad's placement holds, whatever it costs. Ahead of the Second Wind
+         boon's save because this one is a choice he made this turn, and it deliberately does
+         not consume that boon's once-a-burn save. */
+      if (s.bomber && !committed) {
+        boardP[i] = { ...card, spent: (card.spent ?? 0) + contactOf(s, card) - 1 }
+        log.push(`${card.name} should have gone. Bomber — it stays.`)
+        continue
+      }
       if (bm.saveBlow && !savedBlow && !committed) {
         savedBlow = true
         boardP[i] = { ...card, spent: (card.spent ?? 0) + contactOf(s, card) - 1 }
@@ -5666,7 +5698,7 @@ export function resolve(s: GameState, rng: RNG): GameState {
   out = { ...out, routeMove: move }
   if (move) out = { ...out, log: [...out.log, `▸ ${move.text}`] }
   // the nerve a piece buys you lasts exactly one turn
-  out = { ...out, bonusUsed: false, clipped: false }
+  out = { ...out, bonusUsed: false, clipped: false, bomber: false, commitPower: false }   // ARCH-1: both are one turn
   const nowPh = phaseOf(out)
   if (nowPh && out.phaseSeen !== nowPh.name)
     out = { ...out, phaseSeen: nowPh.name, log: [...out.log, `— ${nowPh.name.toUpperCase()} — ${nowPh.text}`] }
@@ -5834,6 +5866,109 @@ export function playBonusStep(s: GameState, c: Card, lane: number, rng: RNG): Ga
     selected: null, log: [...s.log, ...log] }
 }
 
+/* ARCH-1. THE FIVE CLIMBERS HAVE A VERB NOW. Every signature in ARCHETYPES was a passive stat
+   dial — "+3 Power on every move", "beta is worth double", "settles all the way to +3" — so the
+   roster scored differently and PLAYED identically: there was no moment in a burn where being
+   the Trad Dad rather than the Comp Kid changed what you could DO.
+
+   ONE FUNCTION OVER THE DATA, not five bespoke rules, for the reason SIM-5 gives about
+   `playBonusStep`: a rule implemented per-climber is a rule that gets added to one of them and
+   forgotten in the other four. Each effect is expressed in state the engine already owns —
+   `beta`, `readAhead`, `pump`, `flow`, and two per-burn flags beside `savedBlow` — so nothing
+   here invents a mechanic, it spends one the game already has.
+
+   ONCE A BURN, AND A RETRY GETS IT BACK (`startBurn` clears `moveUsed`), which is the same
+   shape as `savedBlow` and `peakPump`. Each one is narrow or carries a cost, because an active
+   is a gift to every climber at once and the band is pinned: Dig In takes your flow, Commit
+   stops you resting for the rest of the burn, Work It only pays if you come back, and Read The
+   Set buys information — which INFO-2 made worth something and worth measuring. */
+export function signatureStep(s: GameState): GameState {
+  const a = archOf(s)
+  if (!a.move || s.moveUsed || s.phase !== 'climb') return s
+  const spent = { ...s, moveUsed: true }
+  switch (a.id) {
+    case 'boulderer': {
+      /* Projecting, made into a move: the hold you are on becomes a kind you know. Pushed into
+         `beta`, which is exactly what falling already teaches — so this is the climber's own
+         signature (beta at -2 Grip) reaching one hold earlier. */
+      const h = s.boardH.find(Boolean)
+      if (!h || s.beta.includes(h.name)) return s
+      return { ...spent, beta: [...s.beta, h.name],
+        log: [...s.log, `${a.move.name}. You have got the ${h.name} sussed.`] }
+    }
+    case 'comp':
+      /* Plastic: reading a set is what comp climbing IS. Information only — the resolution never
+         consults `readAhead` — so it is band-safe by construction (RUN-9, ENG-24) and worth
+         something only because INFO-2 made the policy uncertainty-limited. */
+      /* AND IT DRAWS, which is a buy-back rather than a flourish. Read alone measured at NOTHING
+         for this climber (8.3% to 7.8% at n=2000, inside the noise), and INFO-2 explains why: a
+         read is a maximum you top up, so one read in a six-turn burn covers a turn or two and
+         then saturates — worth ~3 points as a repeatable CARD effect and ~0 as a one-shot.
+         BAL-16 measured what this climber is actually starved of: one card of hand swings it
+         15.6 points, where a point of skin and a point of betaGrip moved nothing. So the draw
+         is on the axis it dies on and it amplifies the signature rather than eroding it, which
+         is the CARD-15 / LANE-5 shape. NOT a Grip discount on what it read: INFO-1 built that,
+         measured +1.8 of band that four dials could not contain, and retracted it. */
+      /* AND IT BUYS A CARD OF HAND, which is a buy-back on the axis this climber is measured
+         to die on — and the second thing tried, because the first was VOID. Read alone measured
+         at nothing (8.3% to 7.8% at n=2000); a one-off DRAW measured at nothing too, and the
+         reason is structural rather than small: `refillAndDraw` tops the hand up to a target
+         size every turn, so a card drawn mid-turn is simply one the refill does not draw. That
+         is why BAL-16 measured a point of HAND at +15.6 for this climber while a draw moves
+         nothing — the same shape as INFO-1's read discount, which was flat for its own
+         structural reason. So the move raises `want` for the rest of the burn. */
+      if (!s.holdDeck.length) return s
+      return { ...spent, handBonus: (s.handBonus ?? 0) + ARCH_READ_HAND,
+        readAhead: Math.min(s.holdDeck.length, Math.max(s.readAhead, ARCH_READ)),
+        log: [...s.log, `${a.move.name}. You read the next ${Math.min(s.holdDeck.length, ARCH_READ)} off the wall, and keep one more in hand.`] }
+    case 'trad':
+      /* Bomber, made into a move: what he places, stays. One turn, and it is the only way in the
+         game to make a placement unconditional. */
+      return { ...spent, bomber: true,
+        log: [...s.log, `${a.move.name}. That is not coming off.`] }
+    case 'alpine': {
+      /* Endurance: the one climber who gets PAID for having been up there a while. Capped, and
+         it costs the flow — so it is a reset, not a free shed, and it competes with the tempo
+         the flow bar rewards. */
+      const give = Math.min(ARCH_DIG_MAX, Math.max(1, s.turn - 1))
+      if (s.pump <= 0) return s
+      return { ...spent, pump: Math.max(0, s.pump - give), flow: 0,
+        log: [...s.log, `${a.move.name}. ${give} back, and you have lost your rhythm.`] }
+    }
+    case 'onsight':
+      /* Onsight: read it once and go — the Power lands this turn and you pay for it in pump.
+         THE FIRST CUT PRICED THIS AT THE REST OF THE BURN'S RESTS and it was a disaster,
+         measured: the Onsighter fell 13.3% to 2.0% at n=2000, through the 5% floor, and took
+         the roster spread to 7.95x against a 2.2x ceiling. The reason is SIM-9's own finding —
+         shaking out is worth +21 points of session send because 74.6% of burns die of pump —
+         so banning rests costs far more than 2 Power can ever pay. A cost has to be smaller
+         than the thing it buys. Pump is the currency this climber is spending anyway. */
+      return { ...spent, commitPower: true, flow: 0,
+        log: [...s.log, `${a.move.name}. All of it, now — and your rhythm goes with it.`] }
+  }
+  return s
+}
+/** ARCH-1: what committing is worth on the turn you spend it, on both hands. */
+export const ARCH_COMMIT_POWER = 2
+/* ARCH-1: WHAT COMMITTING COSTS, and it took two wrong answers to find. The rest of the burn's
+   RESTS took this climber 13.3% to 2.0% — through the 5% floor — because SIM-9 measured shaking
+   out as worth +21 points of session send. Two PUMP was still wrong and by a lot: 13.3% to
+   10.6% spent on turn one, and 9.0% spent where the Power converts a miss, because pump is the
+   resource 74.6% of failed burns die of and 2 Power on one turn cannot buy 2 of it back.
+   So it costs the FLOW, which is what Dig In pays with two cases above: real, thematic
+   ("you went at it and lost your rhythm"), and not made of the currency that kills you. */
+/** ARCH-1: what the Comp Kid's read hands back, on the axis BAL-16 measured it starved on —
+    a card of HAND for the rest of the burn, because a one-off draw is void against a refill. */
+export const ARCH_READ_HAND = 1
+/** ARCH-1: how deep the Comp Kid reads. Two is what a card gives; three is a signature. */
+export const ARCH_READ = 3
+/* ARCH-1: the most the Alpinist can dig back. FOUR WAS TOO MUCH AND IT SHOWED IN THE ROSTER
+   RATHER THAN THE BAND: this climber already runs the longest burns in the game (182 turns
+   against the Comp Kid's 93), so a shed that scales with turns survived scales with its own
+   signature — measured, it took the Alpinist 10.7% to 15.9% at n=2000 and the roster spread
+   1.60x to 2.04x against a 2.2x ceiling. Two keeps the verb and halves the compounding. */
+export const ARCH_DIG_MAX = 2
+
 /** Headless policy — used by the sim so it exercises the shipping engine. */
 /* SIM-6. What a worked FOOTHOLD is worth to the policy, against a point of Support.
    A cleared foothold is one hold of progress, certain. A point of Support is +1 Power
@@ -5996,6 +6131,40 @@ export function autoPlay(s: GameState, rng: RNG, shakeAt: number = SHAKE_AT,
      the ability exists to create — and it costs what the ability costs: the lane sent first
      may blow before the second resolves, taking its opposition with it. Only when exactly one
      hand hold is chained; two chained holds cannot both go second. */
+  /* ARCH-1: THE POLICY HAS TO SPEND THE SIGNATURE, or all five measure as dead — ENG-25's
+     failure, now eight for eight in this project. One heuristic per climber, each the cheapest
+     honest reading of what the move is FOR, and each deliberately conservative: a move spent
+     badly is worse than a move held, and the ladder is what these numbers feed.
+       Work It     — on a hold this hand cannot clear, so the beta is worth having next go
+       Read The Set— holding no read, with holds still to come (INFO-2's own gate)
+       Bomber      — a card is out and would come off this turn
+       Dig In      — deep enough into a burn that the shed beats the flow it costs
+       Commit      — turn one, when the Power lands before the no-rest bill does
+     Placed BEFORE the bonus loop so a signature that reads or sheds is visible to it. */
+  const mv = archOf(st).move
+  if (mv && !st.moveUsed && st.phase === 'climb') {
+    const id = archOf(st).id
+    const wantsIt =
+      id === 'boulderer' ? [0, 1].some(i => {
+        const h = st.boardH[i], c = st.boardP[i]
+        return h && c && !st.beta.includes(h.name)
+          && powerAgainst(st, c, h, i, st.boardP) < gripFor(st, h)
+      })
+      : id === 'comp' ? st.readAhead === 0 && st.holdDeck.length > 0
+      : id === 'trad' ? [0, 1].some(i => st.boardP[i] && st.boardH[i] && laneBlows(st, i))
+      : id === 'alpine' ? st.turn > ARCH_DIG_MAX && st.pump >= ARCH_DIG_MAX
+      /* ARCH-1: NOT turn one out of habit — measured, that cost this climber 2.7 points,
+         because it already carries `firstTurnPower` and was paying pump for Power it did not
+         need. Spend it where the 2 Power CONVERTS a lane that would otherwise miss. */
+      : id === 'onsight' ? [0, 1].some(i => {
+          const h = st.boardH[i], c = st.boardP[i]
+          if (!h || !c) return false
+          const short = gripFor(st, h) - powerAgainst(st, c, h, i, st.boardP)
+          return short > 0 && short <= ARCH_COMMIT_POWER
+        })
+      : false
+    if (wantsIt) st = signatureStep(st)
+  }
   const chainedLane = [0, 1].filter(i => st.boardH[i] && abilityOf(st.boardH[i]!) === 'Chained')
   if (chainedLane.length === 1) {
     const c = chainedLane[0]
