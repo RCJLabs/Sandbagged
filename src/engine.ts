@@ -1982,15 +1982,15 @@ export const ARCHETYPES: Archetype[] = [
       ['Shake Out', 2], ['Breathe', 2], ['Chalk Up', 1]) },
   { id: 'comp', name: 'The Comp Kid', unlock: 4, gear: 'downturn',
     text: 'Trained on plastic. Enormously strong, no patience at all.',
-    sig: 'Plastic', sigText: '+2 Power on every move, and one less burn a day. All engine, no patience. Feet you trust the moment they land, and a boulder that beats you never gets in your head.',
-    dPower: 2, dAttempts: -1, quickFeet: true, dPsyche: 1, deed: 'strong',   // META-6: earned by sending V5+
+    sig: 'Plastic', sigText: '+3 Power on every move, and one less burn a day. All engine, no patience. Feet you trust the moment they land, and a boulder that beats you never gets in your head.',
+    dPower: 3, dAttempts: -1, quickFeet: true, dPsyche: 1, deed: 'strong',   // META-6: earned by sending V5+
     loadout: L(['Deadpoint', 2], ['Lunge', 2], ['Bump', 1], ['Mantle', 1], ['Crimp Grip', 1],
       ['Smear', 2], ['High Step', 1], ['Shake Out', 2], ['Deep Breath', 1],
       ['Breathe', 1], ['Chalk Up', 1]) },
   { id: 'trad', name: 'The Trad Dad', unlock: 8, gear: 'tape',
     text: 'Slow, bomber, and will tell you about the rack.',
-    sig: 'Bomber', sigText: '+1 Contact on every move, and nothing you place ever settles.',
-    dContact: 1, settleMax: 0, deed: 'fa',       // META-6: earned by putting up a line
+    sig: 'Bomber', sigText: '+2 Contact on every move, and nothing you place ever settles.',
+    dContact: 2, settleMax: 0, deed: 'fa',       // META-6: earned by putting up a line
     loadout: L(['Hand Jam', 2], ['Arm Bar', 2], ['Undercling', 2], ['Slow Pull', 1],
       ['Heel Hook', 2], ['Smear', 1], ['Kneebar', 1], ['Breathe', 2], ['Brush', 2]) },
   { id: 'alpine', name: 'The Alpinist', unlock: 12, gear: 'liquid',
@@ -6180,9 +6180,9 @@ export function buildLoadout(s: GameState, seed: string[], owned: string[]): str
       // once the slots left would not cover the hands a deck needs, only hands
       if (c.lane !== 'hand' && c.lane !== 'any' && hands + left <= MIN_HANDS) continue
       let v = cardValue(s, c, spawned)
-      /* LANE-3: this is the ONE feet urgency now. `cardValue` used to carry a second one and
-         the builder was applying both; the value function is intrinsic again and `needBonus` is
-         for offers, so the builder's own structural push stands alone. */
+      /* LANE-5: this is the ONLY feet urgency in the game now. `cardValue` carried a second
+         one and the builder was applying both; the valuation is about the card again, and a
+         statement about what a DECK needs belongs here, where a deck is being assembled. */
       if (c.lane === 'feet' && feet < WANT_FEET) v += 14
       if (c.shed > 0 && rests < WANT_RESTS) v += 12
       /* LANE-2: THERE USED TO BE A FAMILY BONUS HERE — `v += 3 + have * 2`, capped at
@@ -6219,60 +6219,42 @@ export function buildLoadout(s: GameState, seed: string[], owned: string[]): str
   return deck
 }
 
-/* LANE-3: what this deck NEEDS, as opposed to what a card is worth. Feet coverage is the single
-   biggest hidden lever in the game, so the urgency is real and it stays in `cardValue` — pulling
-   it out entirely is worth +16.9 points of completion and is not this ticket's call to make
-   (LANE-4). What this extraction buys is that the term can be SKIPPED, which is the whole fix:
-   `bestOffer` measures its candidates against the deck's mean, and that mean has to be about
-   what the cards are worth rather than about what the deck is missing.
+/* LANE-5. THE FEET URGENCY IS GONE FROM THE VALUATION, and with it everything LANE-3 built to
+   contain it. This is the end of a three-ticket argument, so the whole of it is here.
 
-   Kept as a cliff rather than smoothed: a deck either has enough feet or it does not, and a
-   gradient would trade a sharp answer for a vague one on the one axis where being wrong loses
-   the run. */
-export const FEET_SHARE = 0.25
-/* LANE-4. THE CLIFF WAS SEVENFOLD AND IT IS NOW DOUBLE, and the row this comes from had the
-   mechanism backwards.
+   WHAT THE TERM WAS. `cardValue` paid a feet card +7 when the deck held under a quarter feet and
+   +1 when it did not — a sevenfold cliff at a hard threshold, and a statement about what the DECK
+   LACKS wearing the clothes of what a CARD IS WORTH. LANE-3 measured what that cost: on the two
+   decks LANE-2 raced it was 1.13 of the 1.38 gap by which the valuation preferred a concentrated
+   deck to a spread one that beats it by 10.9 points. Eighty-two per cent of the valuation backing
+   the worse deck, on one constant.
 
-   The row said the urgency is worth +16.9 points of completion and framed the question as whether
-   to REMOVE it. Measured on v10.68 the removal is worth +14.8 (band 45.2% to 60.0% at n=3000) —
-   and it is not shippable, because it takes the Comp Kid to 5.0% and the Trad Dad to 5.5% against
-   a floor of 5, with the roster spread at 2.26x against a ceiling of 2.2. Two guardrails, not a
-   difficulty preference.
+   WHY IT TOOK THREE TICKETS. LANE-3 could not remove it — `bestOffer` measured its candidates
+   against the deck's own mean THROUGH this function, so a deck short of feet inflated the bar it
+   declined against and the deficiency made the fix harder to buy. LANE-3 fixed that (compute the
+   bar bare) and left the term. LANE-4 then found that removing it outright is worth +14.8 points
+   of the band and breaks two guardrails — Comp Kid 5.0% and Trad Dad 5.5% against a floor of 5,
+   spread 2.26x against a ceiling of 2.2 — so it shipped the largest legal softening, 7 to 2, for
+   +3.2. LANE-5 pays for the roster and takes the rest.
 
-   WHAT THE SWEEP FOUND, at n=2000 on the climber ladder, and it is the opposite of the row's
-   reading. The damage is the MAGNITUDE of the cliff; the flat +1 underneath it is load-bearing.
+   THE BUY-BACKS, measured at n=2000 on the ladder, paired so six dials cost three runs:
+       Comp Kid   dAttempts -1 to 0   10.3%   hands back half of what Plastic IS
+                  dPower 2 to 3        8.0%   SHIPPED
+                  dPsyche 1 to 2       4.8%   nothing, as BAL-16 found for its other dials
+       Trad Dad   dContact 1 to 2      9.7%   SHIPPED
+                  dAttempts +1         9.3%
+                  settleMax 0 to 1     9.8%   removes "nothing you place ever settles"
+   Both shipped dials AMPLIFY the climber's own signature rather than eroding it, which is the
+   CARD-15 shape (the Onsighter was bought back with firstTurnPower, not with a new mechanic).
+   Roster after: 9.8 / 8.0 / 9.7 / 11.3 / 8.6 — lowest 4.95 SE over the floor, spread 1.41x, both
+   healthier than before this ticket.
 
-       FEET_URGENT   lowest climber   floor margin   spread
-            7 (was)            7.0         3.5 SE     1.40x
-            5                  7.0         3.5 SE     1.39x
-            3                  6.3         2.4 SE     1.71x
-            2 (SHIPPED)        6.7         3.1 SE     1.55x
-            1                  5.5         0.98 SE    1.80x   <- a coin flip, not a floor
-            removed            5.0         fails      2.26x
+   WHAT IS LEFT OF THE IDEA. `buildLoadout` still pushes feet structurally (+14 under WANT_FEET)
+   when it builds you a deck from nothing. That is the right place for it: a statement about a
+   deck belongs where a deck is being assembled, not inside the price of a card.
 
-   At 1 the cliff is gone but the +1 remains, and the Comp Kid still clears the floor by one
-   standard error — which BAL-16 and BAL-17 exist to forbid. Delete the +1 as well and two
-   climbers lose two points each: the drafter needs SOME reason to value feet, just not a
-   sevenfold one. So the boundary is between 2 and 1, and 2 has the healthier margin of the two
-   values that pass (3 reads 6.3 and 2 reads 6.7; that dip is noise at ~0.5 SE, not a real one).
-
-   WHAT IT BUYS, AND WHAT IT DOES NOT. Band 45.2% to 48.4%, ending 63.8% to 68.8% of careers —
-   +3.2 and +5.0, both re-pinned deliberately with Evan. That is a FIFTH of the +14.8 the removal
-   offers. The rest is behind the floor, and reaching it is a two-climber buy-back pass (the
-   Alpinist alone took ten dial measurements in NARR-22), not a constant. Recorded here so the
-   next person does not re-derive the sweep to find that out.
-
-   AND LANE-3 SURVIVES BECAUSE THIS IS A SOFTENING. Had the term gone entirely, `needBonus`, the
-   `bare` parameter and the bare-bar fix would all have become vestigial — there would be nothing
-   left to strip out of the offer bar. Softening keeps every one of them doing its job. */
-export const FEET_URGENT = 2
-export const FEET_COVERED = 1
-export function needBonus(c: Card, deck: Card[]): number {
-  if (c.lane !== 'feet') return 0
-  const feet = deck.filter(x => x.lane === 'feet').length
-  return feet / Math.max(1, deck.length) < FEET_SHARE ? FEET_URGENT : FEET_COVERED
-}
-export function cardValue(s: GameState, c: Card, deck: Card[], bare = false): number {
+   A DELIBERATE JOINT RE-PIN with Evan: band 48 to 60, known ending 68.8 to 82.5. */
+export function cardValue(s: GameState, c: Card, deck: Card[]): number {
   if (c.rarity === 'curse') return -20
   const arch = archOf(s)
   const gm = gearMods(s.gear)
@@ -6298,29 +6280,26 @@ export function cardValue(s: GameState, c: Card, deck: Card[], bare = false): nu
   if (bn.wideSupport && c.lane === 'feet') v += c.support * 1.5
   if (bn.settle && c.kind === 'move') v += 1.5
 
-  /* LANE-3: THE FEET URGENCY USED TO LIVE HERE AND IT DOES NOT BELONG IN A CARD'S VALUE.
+  /* THE FEET URGENCY USED TO LIVE HERE AND IT IS GONE — LANE-3 to LANE-5, and the sequence is
+     worth the eight lines because each ticket was wrong about the one before.
 
-     It was `v += feetShare < 0.25 ? 7 : 1` — a SEVENFOLD cliff at a hard threshold — and it is
-     a statement about what the DECK NEEDS, not about what the card is worth. Two things went
-     wrong with it sitting here.
+     It read `v += feetShare < 0.25 ? 7 : 1`: a sevenfold cliff at a hard threshold, and a
+     statement about what the DECK LACKS priced as what a CARD IS WORTH. On the two decks LANE-2
+     raced it was 1.13 of the 1.38 gap by which this function preferred the concentrated deck
+     (3 feet in 15, share 0.20, +7 each, rated 15.31) to the spread one that beats it by 10.9
+     points (4 in 15, 0.27, +1 each, rated 13.93) — 82% of the valuation backing the worse deck.
 
-     ONE: `bestOffer` computes the bar it declines against as the deck's own mean THROUGH this
-     function, so a deck short of feet inflated its own bar and declined more offers — the
-     deficiency made the deck look better and the fix harder to buy. Measured on the two decks
-     LANE-2 raced: the concentrated one holds 3 feet in 15 (share 0.20, under the threshold, so
-     every feet card in it scored +7) and rated 15.31, while the spread deck that beats it by
-     10.9 points holds 4 in 15 (share 0.27, over the threshold, +1 each) and rated 13.93. The
-     feet term alone accounts for 1.13 of that 1.38 gap — 82% of `cardValue` preferring the worse
-     deck was this cliff, and none of it was the family bias I had written down in the row.
+     LANE-3 could not remove it, because `bestOffer` took its bar as this deck's own mean through
+     this same function, so a deck short of feet inflated the bar it declined against and its
+     deficiency made the fix harder to buy. LANE-4 measured the removal at +14.8 points of band
+     and found it breaks the climber floor and the spread. LANE-5 bought the two climbers back
+     (Comp Kid +1 Power, Trad Dad +1 Contact) and took it out.
 
-     TWO: `buildLoadout` carries its OWN feet urgency (`+14` under WANT_FEET), so the builder was
-     applying it twice.
-
-     So the urgency is `needBonus`, it is added to CANDIDATES only, and this function is back to
-     being about the card. The gear terms stay: they are intrinsic. */
+     `buildLoadout` keeps its own +14 under WANT_FEET, and that is the right home for it: a
+     statement about a deck belongs where a deck is assembled. The gear terms below stay — they
+     are intrinsic to the card. */
   if (c.lane === 'feet') v += gm.dPowerFeet * 2
   else v += gm.dPowerHand * 1.5
-  if (!bare) v += needBonus(c, deck)
 
   // synergy runs both ways: a specialist gains from the deck, and a tagged
   // card feeds any specialist already in it
@@ -6398,7 +6377,7 @@ export function bestOffer(s: GameState, offers: Card[], deck: Card[]): Card | nu
      rated 13.93. The urgency alone accounted for 1.13 of that 1.38 gap — 82% of `cardValue`
      preferring the worse deck, and none of it the family bias the row had guessed at. */
   const mean = deck.length
-    ? deck.reduce((a, c) => a + cardValue(s, c, deck, true), 0) / deck.length : 0
+    ? deck.reduce((a, c) => a + cardValue(s, c, deck), 0) / deck.length : 0
   // decline anything that would drag the deck down
   return scored[0][1] > mean * OFFER_BAR ? scored[0][0] : null
 }

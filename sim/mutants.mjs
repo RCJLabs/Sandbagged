@@ -370,7 +370,9 @@ export const MUTANTS = [
   { id: 'BAL-16/buy-back-spreads', suite: 'core',
     why: 'the buy-back handed to a climber that did not need it',
     catches: 'this was a buy-back for one climber',
-    patch: [['src/engine.ts', "    dContact: 1, settleMax: 0,", "    dContact: 1, settleMax: 0, dPsyche: 1,"]] },
+    /* LANE-5 moved the Trad Dad's Contact 1 -> 2, so this anchors on the field that identifies the
+       climber rather than on a value a balance pass can change. */
+    patch: [['src/engine.ts', "settleMax: 0, deed: 'fa',", "settleMax: 0, dPsyche: 1, deed: 'fa',"]] },
   { id: 'BAL-16/bare-constant-cap', suite: 'core',
     why: 'a psyche cap goes back to the bare constant, so the dial stops applying there',
     catches: 'reads the bare constant again',
@@ -388,12 +390,10 @@ export const MUTANTS = [
     catches: 'no longer checks its own margin',
     patch: [['sim/test.mjs', '    ok(lo - ARCH_FLOOR > 2 * se,', '    ok(lo - ARCH_FLOOR > 0 * se,']] },
   { id: 'BAL-16/fine-pass-gone', suite: 'core',
-    why: 'the guard stops resolving the lowest climber finely',
-    catches: 'no longer resolves the lowest climber finely',
-    patch: [['sim/test.mjs', 'PROJECTS=0 ARCH' + '_ONLY=${i} node sim/run.mjs arch ${FINE}',
-      'PROJECTS=0 node sim/run.mjs arch ${FINE}']] },
-
-  // ---- SKIRM-8: the good outcome gets a screen ------------------------------------
+    why: 'the climbers are measured at a coarse sample again, where taking the min of five noisy estimates reads about a point low — the Comp Kid once measured 5.2% here against a real 5.8%, and the guard was a coin flip rather than a measurement',
+    catches: 'no longer resolves the climbers at the fine sample',
+    patch: [['sim/test.mjs', 'const got = read(`PROJECTS=0 node sim/run.mjs arch ${FINE}`)',
+      "const got = read('PROJECTS=0 node sim/run.mjs arch 600')"]] },
   { id: 'SKIRM-8/back-to-the-menu', suite: 'core',
     why: 'THE BUG: the walk-off goes straight to the guidebook again',
     catches: 'goes straight to the menu again',
@@ -1687,64 +1687,29 @@ export const MUTANTS = [
     catches: 'the standard error is over 4 points',
     patch: [['sim/band.mjs', 'export const ENDING_N = 240', 'export const ENDING_N = 60']] },
 
-  // ---- LANE-3: the bar is not inflated by what the deck lacks ----
-  { id: 'LANE-3/bar-inflated-again', suite: 'kept',
-    why: 'the bar goes back to being measured through the full valuation, so a deck short of feet inflates the bar it is judged against and declines the very fix it needs — 82% of cardValue preferring the worse deck was this',
-    catches: 'the bar is inflated by the urgency again',
-    patch: [['src/engine.ts', '    ? deck.reduce((a, c) => a + cardValue(s, c, deck, true), 0) / deck.length : 0',
-      '    ? deck.reduce((a, c) => a + cardValue(s, c, deck), 0) / deck.length : 0']] },
-  { id: 'LANE-3/urgency-gone-from-the-value', suite: 'kept',
-    why: 'the urgency drops out of a card\'s value entirely, which is worth +16.9 points of completion and is LANE-4\'s question rather than a thing to do quietly — a feet card stops being worth more to a deck that has none',
-    catches: 'does not differ from the full one by the urgency',
-    patch: [['src/engine.ts', '  if (!bare) v += needBonus(c, deck)', '']] },
-  { id: 'LANE-3/urgency-ignores-the-share', suite: 'kept',
-    why: 'the urgency stops depending on how covered the deck already is, so a deck with four feet cards is pushed as hard toward a fifth as a deck with none',
-    catches: 'a covered deck is still urgent about feet',
-    patch: [['src/engine.ts', '  return feet / Math.max(1, deck.length) < FEET_SHARE ? FEET_URGENT : FEET_COVERED',
-      '  return FEET_URGENT']] },
-  { id: 'LANE-3/urgency-on-every-card', suite: 'kept',
-    why: 'every card carries the feet urgency, not just feet cards, so the term stops being about coverage and becomes a flat bonus on the whole shelf',
-    catches: 'a hand card carries a feet urgency',
-    patch: [['src/engine.ts', "  if (c.lane !== 'feet') return 0", '  if (false) return 0']] },
-  { id: 'LANE-3/bare-is-not-bare', suite: 'kept',
-    why: 'the bare reading stops being bare, so there is no way to ask what a card is intrinsically worth and the fix has nothing to stand on',
-    catches: 'does not differ from the full one by the urgency',
-    patch: [['src/engine.ts', '  if (!bare) v += needBonus(c, deck)', '  v += needBonus(c, deck)']] },
-
-  { id: 'SHIP-4/shown-version-goes-stale', suite: 'core',
-    why: 'the splash and menu keep printing an old version after a bump. This is not hypothetical: v10.65 and v10.66 BOTH shipped saying v10.64, and both of them were tickets that added teeth to the band ledger\'s version check while the one number a player can see had none',
-    catches: 'and package.json says',
-    /* ANCHORED OFF THE MARKUP, NOT THE NUMBER — and this injection rotted on the very first bump
-       after it was written, which is the same mistake GUARD-10's release anchor made twice. It
-       now leaves the real string in place behind a hidden div and prints a wrong one, so nothing
-       here names a version. */
-    patch: [['src/App.tsx', 'className="sfoot">v',
-      'className="sfoot">v0.0 · RCJ Labs</div><div hidden>v']] },
-  { id: 'SHIP-4/a-screen-stops-saying-it', suite: 'core',
-    why: 'a screen drops its version string entirely, which is the same bug from the other side — the guard would still find one matching string and pass if it did not count them',
-    catches: 'a screen that stopped saying it',
-    /* Also version-agnostic: dropping the leading v is enough to stop the screen matching, and
-       it cannot rot on a bump. */
-    patch: [['src/App.tsx', 'style={{ marginTop: 14 }}>v', 'style={{ marginTop: 14 }}>']] },
-
-  // ---- LANE-4: the feet urgency is a preference, not a cliff ----
-  { id: 'LANE-4/acts-compared-unconditionally', suite: 'slow',
-    why: 'the act curve goes back to comparing shares of ALL runs, which is structurally biased against the last act — act 2 taking a quarter of every run leaves ~72% alive to reach act 3, so act 3 cannot post a bigger share unless it kills nearly everyone. It read green on v10.67 and v10.68 while the raw shares were already inverted at n=3000, and only tripped when LANE-4 nudged it',
-    catches: 'the last act is not the hardest',
-    patch: [['sim/test.mjs', '    const reach = [100, 100 - a1, 100 - a1 - a2]',
-      '    const reach = [100, 100, 100]']] },
-  { id: 'LANE-4/cliff-restored', suite: 'core',
-    why: 'the sevenfold cliff comes back. Measured by LANE-3: it was 1.13 of the 1.38 gap by which cardValue preferred a concentrated deck over a spread one that beats it by 10.9 points — 82% of the valuation backing the worse deck, on one hard threshold',
-    catches: 'that is a cliff, not a preference',
-    patch: [['src/engine.ts', 'export const FEET_URGENT = 2', 'export const FEET_URGENT = 7']] },
-  { id: 'LANE-4/urgency-flattened', suite: 'core',
-    why: 'an uncovered deck stops wanting feet any more than a covered one, which reads 5.5% on the lowest climber against a floor of 5 — 0.98 SE, the coin flip BAL-16 and BAL-17 exist to forbid',
-    catches: 'wants a feet card no more than a covered one',
-    patch: [['src/engine.ts', 'export const FEET_URGENT = 2', 'export const FEET_URGENT = 1']] },
-  { id: 'LANE-4/floor-removed', suite: 'core',
-    why: 'the flat bonus under the cliff goes, which is the load-bearing half the row missed: without it the drafter stops valuing feet at all and the Comp Kid drops 2.1 points, the Trad Dad 2.2, and the spread blows to 2.26x',
-    catches: 'delete that floor',
-    patch: [['src/engine.ts', 'export const FEET_COVERED = 1', 'export const FEET_COVERED = 0']] },
+  // ---- LANE-5: the urgency is out of the valuation and the roster is paid for ----
+  { id: 'LANE-5/urgency-returns', suite: 'kept',
+    why: "the feet urgency comes back into cardValue, which is where LANE-3 measured it as 1.13 of the 1.38 gap by which the valuation preferred a deck that loses by 10.9 points — 82% of it backing the worse deck, on one constant",
+    catches: 'the urgency is back in the valuation',
+    patch: [['src/engine.ts', "  if (c.lane === 'feet') v += gm.dPowerFeet * 2",
+      "  if (c.lane === 'feet') v += gm.dPowerFeet * 2 + (deck.filter(x => x.lane === 'feet').length / Math.max(1, deck.length) < 0.25 ? 7 : 1)"]] },
+  { id: 'LANE-5/builder-push-gone', suite: 'core',
+    why: 'the builder stops steering a built deck toward feet, and after LANE-5 it is the ONLY feet push left in the game — the valuation no longer carries one, so nothing would',
+    catches: 'the only feet push in',
+    patch: [['src/engine.ts', "      if (c.lane === 'feet' && feet < WANT_FEET) v += 14",
+      '      if (false) v += 14']] },
+  { id: 'LANE-5/comp-kid-unbought', suite: 'slow',
+    why: 'the Comp Kid loses the Power that LANE-5 paid it to survive the removal: it reads 5.0% against a floor of 5, which is where the urgency was propping it up',
+    catches: 'completes only',
+    patch: [['src/engine.ts', '    dPower: 3, dAttempts: -1', '    dPower: 2, dAttempts: -1']] },
+  { id: 'LANE-5/trad-dad-unbought', suite: 'slow',
+    why: 'the Trad Dad loses the Contact LANE-5 paid it: 5.5% against a floor of 5, clearing it by 0.98 SE — the coin flip BAL-16 and BAL-17 exist to forbid',
+    catches: 'clears the floor by only',
+    patch: [['src/engine.ts', "    dContact: 2, settleMax: 0, deed: 'fa',", "    dContact: 1, settleMax: 0, deed: 'fa',"]] },
+  { id: 'LANE-5/signature-undersells-itself', suite: 'core',
+    why: "a climber's signature keeps quoting the number it granted before the buy-back, so the screen tells you +2 Power while the engine gives 3 — CARD-17's rule, and the reason this is asserted against the FIELD rather than a literal",
+    catches: 'and its signature does not say so',
+    patch: [['src/engine.ts', "sigText: '+3 Power on every move", "sigText: '+2 Power on every move"]] },
 
   // ---- QA-1: one scroller, and nothing hides under the fixed bar ----
   { id: 'QA-1/two-scrollers-again', suite: 'core',
@@ -1780,16 +1745,25 @@ export const MUTANTS = [
     why: "the window a recorded ladder must be reproducible within widens past the ledger's own widest release-to-release step, so a ladder measured on a different engine passes as a fresh one — the +-6 mistake GUARD-10 was built for, in this column",
     catches: 'cannot tell a stale ladder from a fresh one',
     patch: [['sim/band.mjs', 'export const ARCH_TOL = 1.5', 'export const ARCH_TOL = 6']] },
-  { id: 'BAL-18/coarse-pass-returns', suite: 'core',
-    why: 'the ranking goes back to a fresh n=600 pass, which at v10.65 named the FOURTH climber as the lowest (Boulderer 6.7 against a true 7.7) and left the second-lowest unmeasured — it passed only because the pair it happened to pick contained the real minimum',
-    catches: 'the coarse n=600 pass is back',
-    patch: [['sim/test.mjs', '    const recorded = E.ARCHETYPES.map((a, i) => [ladder[a.id], i])',
-      "    const recorded = read('PROJECTS=0 node sim/run.mjs arch 600').map((p, i) => [p, i])"]] },
+  { id: 'BAL-18/only-the-lowest-two-measured', suite: 'slow',
+    why: "the fine pass goes back to measuring only the two climbers the LEDGER calls lowest. That ranking is taken BEFORE the change under test, so a change that sinks a MID-ladder climber is invisible — demonstrated by reverting LANE-5's Trad Dad buy-back to 5.5% against a floor of 5 and watching the whole slow suite pass",
+    catches: 'climbers, expected',
+    /* AND THE FIRST CUT OF THIS INJECTION DID NOT TEST THE FIX. It sliced `measured` to the two
+       lowest — but `lo` and `hi` are taken from the full reading, so the floor and the spread were
+       unaffected and the suite passed, correctly. What enforces measuring every climber is the
+       length assertion, so that is what this has to attack. */
+    patch: [['sim/test.mjs', 'const got = read(`PROJECTS=0 node sim/run.mjs arch ${FINE}`)',
+      'const got = read(`PROJECTS=0 node sim/run.mjs arch ${FINE}`).sort((a, b) => a - b).slice(0, 2)']] },
   { id: 'BAL-18/ladder-not-reproduced', suite: 'slow',
     why: 'a recorded completion is a number nobody measured. This is the check the band ledger admits it cannot have — n=3000 campaigns is too dear to re-run, one climber at n=2000 is not — so an invented ladder fails where it matters',
     catches: 'the ladder is stale or was never measured',
-    patch: [['sim/band.mjs', "{ version: '10.66.0', band: 45.2, ending: 62.9, arch: { boulderer: 7.7, comp: 6.8,",
-      "{ version: '10.66.0', band: 45.2, ending: 62.9, arch: { boulderer: 7.7, comp: 5.1,"]] },
+    /* THE ONE ANCHOR HERE THAT MUST BE REPOINTED EVERY RELEASE, and it is worth saying why rather
+       than pretending otherwise. The reproduction check applies to the NEWEST ledger row by
+       definition — an older row was measured on an older engine and cannot be re-run — so this
+       injection has to name the current one. It rotted once already, on v10.66's row, three
+       releases after it was written. GUARD-9's anchor check will demand it each time; that is the
+       system working, not a defect to design around. */
+    patch: [['sim/band.mjs', "arch: { boulderer: 9.8, comp: 8.0,", "arch: { boulderer: 9.8, comp: 5.1,"]] },
 
   // ---- COND-4: the forecast agrees with what the sky costs ----
   { id: 'COND-4/forecast-as-it-was', suite: 'core',

@@ -3246,8 +3246,13 @@ test('BAL-16: a floor nobody can measure is not a floor', () => {
   /* match the COMMAND, not the word: the prose in that guard explains why `ARCH_ONLY`
      exists, so the bare-name form stayed green when the flag was dropped from the call.
      Third time this project has had to make that correction (NARR-14, SIM-6, here). */
-  ok(/ARCH_ONLY=\$\{i\} node sim\/run\.mjs arch \$\{FINE\}/.test(spread),
-    'the guard no longer resolves the lowest climber finely')
+  /* LANE-5: EVERY climber is resolved at the fine sample now, not just the lowest two. BAL-18's
+     ledger ranking was taken before the change under test, so a change that sank a mid-ladder
+     climber went unmeasured — demonstrated by reverting a buy-back and watching the suite pass. */
+  ok(/node sim\/run\.mjs arch \$\{FINE\}/.test(spread),
+    'the guard no longer resolves the climbers at the fine sample')
+  ok(/eq\(got\.length, E\.ARCHETYPES\.length/.test(spread),
+    'the guard no longer measures every climber, so a change that sinks a mid-ladder one is invisible')
   /* BAL-18: and it must not go back to picking that climber off a pass that cannot rank the
      roster. At v10.65 the n=600 pass named the FOURTH climber as the lowest. */
   ok(!/run\.mjs arch 600/.test(spread),
@@ -7230,37 +7235,36 @@ test('GUARD-10: the band cannot drift a version at a time', () => {
   ok(Number.isFinite(worst.d),
     `the widest span in the ledger is unreadable: ${worst.from.version} → ${worst.to.version}`)
 })
-test('LANE-4: the feet urgency is a preference, not a cliff', () => {
-  /* THE ROW ASKED THE WRONG QUESTION. It measured the urgency at +16.9 points of completion and
-     framed the choice as whether to REMOVE it. On v10.68 the removal is worth +14.8 (band 45.2%
-     to 60.0%, n=3000) and it is not shippable: the Comp Kid lands on 5.0% and the Trad Dad on
-     5.5% against a floor of 5, with the spread at 2.26x against a ceiling of 2.2.
+test('LANE-5: the feet push lives where a deck is assembled, and the climbers say what they cost', () => {
+  /* WHAT SURVIVED THE REMOVAL. Taking the urgency out of `cardValue` does not mean the game stops
+     caring whether you have feet — it means the caring belongs where a DECK is being built rather
+     than inside the price of a card. `buildLoadout` keeps its own structural push, and that is now
+     the only one in the game; if it goes too, nothing steers a built deck toward feet at all. */
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const builder = region(eng, 'export function buildLoadout', ['export function cardValue'],
+    { min: 400, what: 'buildLoadout' })
+  ok(/c\.lane === 'feet' && feet < WANT_FEET/.test(builder),
+    'the builder no longer pushes a deck toward feet, and after LANE-5 it is the only feet push in '
+    + 'the game — nothing else steers a built deck toward them')
+  const value = region(eng, 'export function cardValue', ['export function cardHints'],
+    { min: 400, what: 'cardValue' })
+  ok(!/WANT_FEET|FEET_SHARE|needBonus/.test(value),
+    'the valuation prices what the deck lacks again — that belongs in the builder, not in a card')
 
-     Swept at n=2000 on the ladder, the damage is the MAGNITUDE, and the flat bonus underneath the
-     cliff is load-bearing:
-
-         FEET_URGENT   lowest   margin     spread
-              7           7.0   3.5 SE      1.40x
-              3           6.3   2.4 SE      1.71x
-              2           6.7   3.1 SE      1.55x   <- shipped
-              1           5.5   0.98 SE     1.80x   <- a coin flip, not a floor
-              removed     5.0   fails       2.26x
-
-     So three things have to stay true, and they are arithmetic rather than simulation. */
-  ok(E.FEET_COVERED >= 1,
-    `a covered deck values a feet card at ${E.FEET_COVERED} — delete that floor and the drafter `
-    + 'stops taking feet at all: the Comp Kid loses 2.1 points and the Trad Dad 2.2')
-  ok(E.FEET_URGENT > E.FEET_COVERED,
-    `an uncovered deck wants a feet card no more than a covered one (${E.FEET_URGENT} vs `
-    + `${E.FEET_COVERED}) — measured, that puts the lowest climber 0.98 SE over its floor`)
-  ok(E.FEET_URGENT <= E.FEET_COVERED * 2,
-    `the urgency is ${E.FEET_URGENT} against ${E.FEET_COVERED} for a covered deck — that is a `
-    + 'cliff, not a preference, and at sevenfold it was 82% of the valuation preferring a deck '
-    + 'that loses by 10.9 points')
-  /* and it is a share of the deck, not a count: a threshold on the count would push a 30-card
-     deck as hard as a 12-card one. */
-  ok(E.FEET_SHARE > 0 && E.FEET_SHARE < 1,
-    `the coverage threshold is ${E.FEET_SHARE}, which is not a share of the deck`)
+  /* AND THE BUY-BACKS ARE VISIBLE. LANE-5 pays two climbers to clear the floor without the
+     urgency, and CARD-17's rule applies: a signature that undersells itself is a bug. Both dials
+     amplify the climber's own signature, so both belong in its text — asserted against the FIELD
+     rather than against a number typed twice. */
+  const comp = E.ARCHETYPES.find(a => a.id === 'comp')
+  const trad = E.ARCHETYPES.find(a => a.id === 'trad')
+  eq(comp.dPower, 3, `the Comp Kid carries ${comp.dPower} Power — LANE-5 bought it to 3 and without `
+    + 'that it reads 5.0% against a floor of 5')
+  eq(trad.dContact, 2, `the Trad Dad carries ${trad.dContact} Contact — LANE-5 bought it to 2 and `
+    + 'without that it reads 5.5%, which clears the floor by 0.98 SE')
+  ok(comp.sigText.includes(`+${comp.dPower} Power`),
+    `the Comp Kid grants +${comp.dPower} Power and its signature does not say so: ${comp.sigText}`)
+  ok(trad.sigText.includes(`+${trad.dContact} Contact`),
+    `the Trad Dad grants +${trad.dContact} Contact and its signature does not say so: ${trad.sigText}`)
 })
 test('QA-1: one scroller, and nothing hides under the fixed bar', () => {
   /* BOTH HALVES OF THIS CAME OFF A REAL PHONE — a Z Fold 6 running the installed PWA — and

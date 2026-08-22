@@ -643,76 +643,44 @@ test('DECK-4: the shape a deck commits to can be paid for', () => {
      70.8% of shelves for a crack deck, 1.0% for a crimp one, LANE-3). What this fixture is for
      is the randomness, which is the same either way. */
 })
-test('LANE-3: a deck short of feet must not raise the bar it is judged against', () => {
-  /* `cardValue` carries an urgency term — a feet card is worth +7 to a deck under a quarter feet
-     and +1 to one over it — and `bestOffer` was measuring its candidates against the deck's own
-     mean THROUGH the same function. So a deck short of feet inflated the bar it declined against:
-     the deficiency made the deck look better and the fix harder to buy, which is backwards.
+test('LANE-5: what a card is worth does not depend on what the deck lacks', () => {
+  /* THE END OF A THREE-TICKET ARGUMENT, and this guard replaces LANE-3's because the thing
+     LANE-3 contained no longer exists.
 
-     Measured on the two decks LANE-2 raced: the concentrated one holds 3 feet in 15 (share 0.20,
-     under the threshold, so every feet card in it scored +7) and rated 15.31, while the spread
-     deck that beats it by 10.9 points holds 4 in 15 (0.27, +1 each) and rated 13.93. The urgency
-     alone accounts for 1.13 of that 1.38 gap — 82% of the valuation preferring the worse deck,
-     and none of it the family bias the row had guessed at.
+     `cardValue` used to pay a feet card +7 against a deck under a quarter feet and +1 against one
+     over it — a statement about the DECK priced as the worth of a CARD. LANE-3 could not remove
+     it (the offer bar was computed through the same function, so a deck short of feet inflated
+     the bar it declined against) and fixed that instead. LANE-4 measured the removal at +14.8
+     points of band and found it breaks the climber floor and the spread. LANE-5 bought the two
+     climbers back — Comp Kid +1 Power, Trad Dad +1 Contact — and took the term out.
 
-     The urgency itself STAYS: pulling it out of the valuation entirely measured +16.9 points of
-     completion, which is a question about how hard the game should be and not this ticket's to
-     answer (LANE-4). What is fixed is that the bar is computed bare. */
-  eq(E.needBonus(E.spawn('Lock Off'), []), 0, 'a hand card carries a feet urgency')
+     ASSERTED EXACTLY. Price the same feet card against a nine-card deck with no feet and against
+     that deck plus four feet cards. The only thing that may differ is the universal deck-length
+     penalty, `deck.length * 0.12`, which is 0.48 across four cards. Measured: 8.480 and 8.000.
+     With the urgency in, the gap was 6.48. */
+  const st = { ...E.freshRun(8, 1, 7), inRun: true, act: 1 }
   const feetCard = E.spawn('Smear')
   eq(feetCard.lane, 'feet', 'the fixture card is not a feet card')
-  const shortDeck = [...Array(9)].map(() => E.spawn('Lock Off'))
-  const coveredDeck = [...shortDeck, ...[...Array(4)].map(() => E.spawn('Smear'))]
-  ok(shortDeck.filter(c => c.lane === 'feet').length / shortDeck.length < E.FEET_SHARE,
-    'the short fixture is not actually short of feet')
-  ok(coveredDeck.filter(c => c.lane === 'feet').length / coveredDeck.length >= E.FEET_SHARE,
-    'the covered fixture is not actually covered')
-  eq(E.needBonus(feetCard, shortDeck), E.FEET_URGENT, 'a deck with no feet is not urgent about them')
-  eq(E.needBonus(feetCard, coveredDeck), E.FEET_COVERED, 'a covered deck is still urgent about feet')
+  const starved = [...Array(9)].map(() => E.spawn('Lock Off'))
+  const covered = [...starved, ...[...Array(4)].map(() => E.spawn('Smear'))]
+  ok(starved.every(c => c.lane !== 'feet'), 'the starved fixture is not actually short of feet')
+  ok(covered.filter(c => c.lane === 'feet').length / covered.length >= 0.25,
+    'the covered fixture would not have crossed the old threshold, so this proves nothing')
+  const gap = E.cardValue(st, feetCard, starved) - E.cardValue(st, feetCard, covered)
+  const lengthOnly = (covered.length - starved.length) * 0.12
+  ok(Math.abs(gap - lengthOnly) < 0.05,
+    `a feet card is worth ${gap.toFixed(2)} more to a deck with no feet than to one with four, `
+    + `against ${lengthOnly.toFixed(2)} for the deck-length penalty alone — the urgency is back `
+    + 'in the valuation, and it is a statement about the deck, not about the card')
 
-  // the bare reading is the intrinsic one: it differs from the full reading by exactly the urgency
-  const st = { ...E.freshRun(8, 1, 7), inRun: true, act: 1 }
-  for (const [label, deck] of [['short', shortDeck], ['covered', coveredDeck]]) {
-    const full = E.cardValue(st, feetCard, deck)
-    const bare = E.cardValue(st, feetCard, deck, true)
-    eq(Number((full - bare).toFixed(6)), E.needBonus(feetCard, deck),
-      `on the ${label} deck the bare value does not differ from the full one by the urgency`)
-  }
-
-  /* THE FIX, ASSERTED WHERE IT BITES. A deck of feet cards is short of nothing else, so its
-     urgency-inflated mean is far above its intrinsic one — and the two bars have to disagree
-     about a real candidate for this to prove anything, which is checked before it is used. */
-  const inflated = [...Array(4)].map(() => E.spawn('Smear'))
-  ok(inflated.filter(c => c.lane === 'feet').length / inflated.length >= E.FEET_SHARE,
-    'the inflated fixture is not carrying the urgency at all')
-  const meanFull = inflated.reduce((a, c) => a + E.cardValue(st, c, inflated), 0) / inflated.length
-  const meanBare = inflated.reduce((a, c) => a + E.cardValue(st, c, inflated, true), 0) / inflated.length
-  ok(meanFull > meanBare,
-    `the urgency does not inflate this deck's mean (${meanFull.toFixed(2)} vs ${meanBare.toFixed(2)}), so nothing below is tested`)
-
-  /* And the bar the game uses is the bare one. Proved through `bestOffer` rather than by reading
-     the source: a candidate priced between the two bars must be ACCEPTED, and it is only the
-     bare bar that accepts it. */
-  const between = (meanBare * E.OFFER_BAR + meanFull * E.OFFER_BAR) / 2
-  const cand = Object.values(E.CARDS)
-    .filter(c => c.kind === 'move' && (c.rarity ?? 'common') !== 'curse')
-    .map(d => E.spawn(d.name))          // spawn takes a NAME; mapping defs into it yields undefined
-    .find(c => { const v = E.cardValue(st, c, inflated)
-      return v > meanBare * E.OFFER_BAR && v < meanFull * E.OFFER_BAR })
-  ok(cand,
-    `no card in the game prices between the bare bar (${(meanBare * E.OFFER_BAR).toFixed(2)}) and `
-    + `the inflated one (${(meanFull * E.OFFER_BAR).toFixed(2)}), so the two cannot be told apart`)
-  eq(E.bestOffer(st, [cand], inflated)?.name, cand.name,
-    `${cand.name} prices above the bare bar and was declined — the bar is inflated by the urgency again`)
-
-  // one source pin: the mean must be taken bare, which is the single character this rests on
+  /* AND THE OFFER BAR IS ONE VALUATION AGAIN. LANE-3 had to compute it bare; with nothing left to
+     strip, asking for a second reading would be machinery with no purpose behind it. */
   const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
   const body = region(eng, 'export function bestOffer', ['export function trailNote'],
     { min: 200, what: 'bestOffer' })
-  ok(/cardValue\(s, c, deck, true\)/.test(body),
-    'bestOffer computes its bar through the full valuation again, urgency and all')
-  ok(!/needBonus/.test(body),
-    'bestOffer adds the urgency to its candidates by hand — it belongs inside cardValue, once')
+  ok(!/cardValue\(s, c, deck, true\)/.test(body),
+    'bestOffer still asks for a bare valuation, which no longer differs from the full one')
+  ok(!/needBonus/.test(body), 'bestOffer adds a deck-need bonus by hand')
 })
 
 test('LANE-2: the builder spreads, because concentrating cost three and a half points', () => {
@@ -3040,25 +3008,26 @@ if (SLOW) {
     const ladder = BAND_LOG[BAND_LOG.length - 1].arch
     ok(ladder, 'the newest ledger entry records no climber ladder — '
       + `measure it (\`PROJECTS=0 node sim/run.mjs arch ${ARCH_N}\`) and add \`arch\` to the entry`)
-    const recorded = E.ARCHETYPES.map((a, i) => [ladder[a.id], i])
-    for (const [v, i] of recorded)
-      ok(typeof v === 'number' && v > 0 && v < 100,
-        `${E.ARCHETYPES[i].name} is not in the recorded ladder, so nothing here can rank it`)
-    const hi = Math.max(...recorded.map(([v]) => v))
-    const bottom = [...recorded].sort((a, b) => a[0] - b[0]).slice(0, 2)
-    const fine = bottom.map(([was, i]) => {
-      const got = read(`PROJECTS=0 ARCH_ONLY=${i} node sim/run.mjs arch ${FINE}`)
-      eq(got.length, 1, `ARCH_ONLY=${i} reported ${got.length} climbers`)
-      /* THE LEDGER HAS TO BE REPRODUCIBLE, and this is the assertion that makes recording it
-         worth anything. The harness is seed-fixed, so an honest entry measured on this code
-         comes back identical; anything outside ARCH_TOL means the ladder was written for a
-         different engine or was never measured at all. */
-      ok(Math.abs(got[0] - was) <= ARCH_TOL,
-        `${E.ARCHETYPES[i].name} measures ${got[0]}% against the ${was}% recorded in band.mjs — `
-        + 'the ladder is stale or was never measured; re-record it')
-      return [got[0], i]
-    })
-    const [lo, worst] = fine.sort((a, b) => a[0] - b[0])[0]
+    for (const a of E.ARCHETYPES)
+      ok(typeof ladder[a.id] === 'number' && ladder[a.id] > 0 && ladder[a.id] < 100,
+        `${a.name} is not in the recorded ladder, so nothing here can check it`)
+
+    /* LANE-5 MEASURES ALL FIVE, and BAL-18's own blind spot is why.
+       BAL-18 replaced a coarse n=600 ranking with the ledger's n=2000 one and fine-measured the
+       two climbers the LEDGER called lowest. Better ranking, same hole one layer down: the ranking
+       is taken BEFORE the change under test, so a change that sinks a MID-ladder climber is
+       invisible. Demonstrated, not argued — reverting LANE-5's Trad Dad buy-back drops it to 5.5%
+       against a floor of 5 and the whole slow suite passed, because the ledger had it fourth and
+       nobody looked. That is the same fatal assumption BAL-18 called out in the design it
+       replaced ("the other three climbers cannot hold the floor"), made about a fresher number.
+       So: one `arch` run, every climber, at the sample the floor is expressed in. 10,000 runs
+       against the 4,000 BAL-18 spent and the 7,000 before it — GUARD-6 says state the cost, and
+       ~3 minutes buys the difference between checking two climbers and checking the claim. */
+    const got = read(`PROJECTS=0 node sim/run.mjs arch ${FINE}`)
+    eq(got.length, E.ARCHETYPES.length, `read ${got.length} climbers, expected ${E.ARCHETYPES.length}`)
+    const measured = got.map((v, i) => [v, i])
+    const [lo, worst] = [...measured].sort((a, b) => a[0] - b[0])[0]
+    const hi = Math.max(...got)
     /* Floor back to 5 at v9.35. It was lowered to 4 at v9.32 to accommodate a
        drift rather than to fix it, which is the thing BAL-9 exists to prevent.
        BAL-14 investigated it properly: six separate hypotheses tested, none
@@ -3101,7 +3070,20 @@ if (SLOW) {
        Which is the right way round — the numerator is a mid-range number that does not need
        resolution (the old comment above says so) and the denominator is the floor claim. */
     ok(hi / lo < 2.2, `spread is ${(hi / lo).toFixed(1)}x — `
-      + E.ARCHETYPES.map(a => `${a.name.replace('The ', '')} ${ladder[a.id]}`).join(' / '))
+      + E.ARCHETYPES.map((a, i) => `${a.name.replace('The ', '')} ${got[i]}`).join(' / '))
+
+    /* AND ONLY THEN THE BOOKKEEPING. The ledger has to be reproducible — that is what makes
+       recording it worth anything, and it is the check the band ledger admits it cannot have.
+       It comes LAST on purpose: it used to run inside the fine pass, so a change that sank a
+       climber failed as "stale ledger" instead of as "climber under its floor", and the injection
+       for the buy-back could never reach the assertion it was written for. The game claim first,
+       then whether somebody wrote the number down. */
+    for (const [v, i] of measured) {
+      const a = E.ARCHETYPES[i]
+      ok(Math.abs(v - ladder[a.id]) <= ARCH_TOL,
+        `${a.name} measures ${v}% against the ${ladder[a.id]}% recorded in band.mjs — `
+        + 'the ladder is stale or was never measured; re-record it')
+    }
   })
   test('the van is a decision, not the answer to every camp', () => {
     // BAL-11: a find is worth +28 to +42 points of send rate against +26 for
@@ -3246,11 +3228,12 @@ if (SLOW) {
     /* THE BAND, with a date on it, in the shape BAL-14 established and GUARD-10 sharpened:
        what gets defended is the band, and the number here is what somebody last chose.
        Set 2026-08-20 at 62.9% of careers / 11.0 pages, at 240 careers x 8 expeditions, and
-       RE-PINNED 2026-08-21 to 68.8% by LANE-4 — softening the feet urgency from a sevenfold
-       cliff to a double one moves this and the campaign band together, so both were re-pinned
-       in the same breath with Evan rather than one of them going stale.
+       RE-PINNED 2026-08-21 to 68.8% by LANE-4 and to 82.5% by LANE-5 the same day — the feet
+       urgency moves this and the campaign band together, so both were re-pinned in the same
+       breath with Evan rather than one of them going stale. A player who reads the trail node
+       now finishes the story in five careers out of six.
        Re-pinning is allowed and expected — moving the number without saying so is not. */
-    const PIN = 68.8, TOL = 6
+    const PIN = 82.5, TOL = 6
     ok(Math.abs(reads.ending - PIN) <= TOL,
       `an informed player's story lands ${reads.ending}% of careers against a pin of ${PIN} — ` +
       `re-measure, pay it back, or re-pin here on purpose`)
