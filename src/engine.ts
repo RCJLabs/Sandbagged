@@ -1257,7 +1257,8 @@ for (const c of [
   mv('Deadpoint', 4, 3, 'common', { fx: 'snap', text: 'Snap · clears Grip 3 or less outright.' }),
   mv('Jug Haul', 1, 8, 'common', { text: 'Nothing to it but pulling.' }),
   mv('Match', 2, 6, 'common', { text: 'Both hands, one hold.' }),
-  mv('Bump', 3, 5, 'common', { text: 'Small hand, then the good one.' }),
+  mv('Bump', 3, 5, 'common', { fx: 'launch',
+    text: 'Launch · +2 Power while your other hand has held a turn. Small hand, then the good one.' }),
   mv('Layback', 3, 6, 'common', { opposes: true, text: 'Lean and walk the feet. Opposition.' }),
   mv('Hand Jam', 2, 8, 'common', { fx: 'tough', text: 'Tough · ignores Sharp and Razor.' }),
   mv('Palm Press', 2, 6, 'common', { fx: 'friction', text: 'Friction · ignores Greasy.' }),
@@ -1315,7 +1316,8 @@ for (const c of [
      Cross-Through, it is the card that holds on while the pair does the work. */
   mv('Body Tension', 1, 8, 'uncommon', { opposes: true, synergy: 'oppose',
     text: 'Opposition · +1 Power per 3 opposition cards.' }),
-  mv('Lock & Bump', 4, 5, 'uncommon', { text: 'Two moves in one breath.' }),
+  mv('Lock & Bump', 4, 5, 'uncommon', { fx: 'launch',
+    text: 'Launch · +2 Power while your other hand has held a turn. Two moves in one breath.' }),
   mv('Iron Cross', 4, 6, 'uncommon', { opposes: true, text: 'Both arms, nothing spare. Opposition.' }),
   mv('Two-Finger Pocket', 4, 5, 'uncommon', { fx: 'precise', text: 'Precise · +2 vs crimps.' }),
   mv('Finger Lock', 3, 8, 'uncommon', { fx: 'tough', text: 'Tough · ignores Sharp and Razor.' }),
@@ -4797,6 +4799,32 @@ export function matched(boardH: (Hold | null)[], boardP: (Card | null)[]): boole
 }
 export const OPPOSE_ALONE = -2
 export const OPPOSE_PAIR = 2
+/* CARD-20. LAUNCH — the combination that spans a turn. The row asked for a combination that
+   creates a plan rather than a bigger number, and the constraint that killed every obvious
+   candidate was measured first, on 45,606 climb turns of the real campaign:
+     · both hands share a card tag on 19.1% of turns now, not the 61% the row was written
+       against — LANE-2's spread builder dissolved that objection — but a same-tag bonus is
+       still a same-TURN number, not a plan;
+     · a standing hand REST exists on 0.0% of built-campaign turns (the built deck's rests are
+       feet cards, SIM-9's finding), so a rest-payoff combo is born dead in the reference
+       instrument;
+     · a SET foot stands on 63.8% of turns — a condition that common is the old matched-hands
+       problem wearing new clothes;
+     · a SET hand — a card that has held a turn — is out on 44.2% of turns, and a hand
+       placement finds the OTHER hand set on 21.1%. Conditional, chosen, and it spans turns.
+   So: a launch move fires off the other hand having HELD — Settle's rule turned sideways,
+   your neighbour's durability becoming your offence. The player builds the state by keeping
+   a durable card alive and then moves hard off it; +2 mirrors OPPOSE_PAIR, the game's other
+   cross-lane pairing. Carried by the two cards whose names had promised exactly this and
+   delivered nothing — Bump ("small hand, then the good one") and Lock & Bump ("two moves in
+   one breath"), both vanilla statlines until this ticket — rather than by new cards, because
+   CARD-18 measured what adding cards does: every pool length changes and every offer roll
+   downstream diverges. */
+export const LAUNCH_SET = 2
+/** What the drafter may assume about the state the launch needs: 21.1% of hand placements in
+    the measured campaign find the other hand set. An expectation for pricing, never a rule —
+    the same shape as WEIGHT_BOARD. */
+export const LAUNCH_RATE = 0.21
 
 /* ENG-11. "The route is the opponent" has been the thesis since v0 and the
    opponent has never done anything: holds are static numbers and only a boss
@@ -5134,6 +5162,10 @@ export function powerAgainst(s: GameState, card: Card, hold: Hold, lane: number,
   if (s.inRun && s.turn === 1) p += archOf(s).firstTurnPower ?? 0
   if (s.inRun) p += archOf(s).dPower ?? 0
   if (card.fx === 'weight') p += s.boardP.filter((c, k) => c && k !== lane).length
+  /* CARD-20: a launch fires off the OTHER hand having held a turn — Settle's rule turned
+     sideways, a neighbour's durability becoming this card's offence. Reads the live board the
+     way opposition does, so the policy, the preview and the resolution price ONE formula. */
+  if (card.fx === 'launch' && lane < 2 && board[1 - lane]?.set) p += LAUNCH_SET
   if (abilityOf(hold) === 'Greasy' && card.fx !== 'friction' && !s.boardP[2]) p -= 1
   if (abilityOf(hold) === 'Slick') p -= 1
   if (card.fx === 'precise' && (hold.name === 'crimp' || hold.name === 'sharp crimp')) p += 2
@@ -5370,7 +5402,15 @@ export function resolve(s: GameState, rng: RNG): GameState {
         log.push(`${card.name} latches. Barely.`)
       } else {
         boardP[i] = null; fxLane[i] = 'blow'
-        piles = card.anchor && !committed ? pileDiscard(piles, [card]) : pileExhaust(piles, card)
+        /* CARD-20: a card that blows is OFF THE WALL, so it is filed without its stand — the
+           same reset an echo and a spit already make. It mattered the moment `set` became a
+           state another card can fire off: an anchored card recycling through the discard used
+           to come back claiming the turns it had held before it blew, so a launch could fire
+           off a neighbour that was placed this turn, and ENG-32's fresh-foot cost was skipped
+           for a recycled foot the same way. `spent` stays, deliberately — wear is the one
+           thing COND-3 says survives every trip through the piles. */
+        const filed = { ...card, settled: 0, set: false }
+        piles = card.anchor && !committed ? pileDiscard(piles, [filed]) : pileExhaust(piles, filed)
         if (!committed) {
           if (card.fx === 'peel') { piles = pileDraw(piles, 1, rng); log.push(`${card.name} rips. You grab something else.`) }
           else if (card.fx === 'tough') log.push(`${card.name} blows, but takes it clean.`)
@@ -6379,6 +6419,12 @@ export function cardValue(s: GameState, c: Card, deck: Card[]): number {
      other cards out. Priced at that, through the same `power * 2` the raw stat line uses, rather
      than at a number chosen to make it get picked. */
   if (c.fx === 'weight') v += WEIGHT_BOARD * 2
+  /* CARD-20: launch is priced at the measured state rate — 21.1% of hand placements find the
+     other hand set — through the same `power * 2` the raw stat line uses, exactly the way
+     `weight` above is priced at the measured board occupancy. The realised rate under a policy
+     that can see the term will run higher (it prefers the launch when the state exists); the
+     drafter is told the unconditional truth, not the optimised one. */
+  if (c.fx === 'launch') v += LAUNCH_SET * 2 * LAUNCH_RATE
   if (c.fx === 'echo') v += 3
   if (c.fx === 'settle2') v += settleCap
   if (c.chip) v += c.chip * 2.5
@@ -6899,6 +6945,9 @@ export const KEYWORDS: { name: string; text: string }[] = [
   { name: 'The clock', text: '+1 pump every turn, plus 1 for every hold you have not answered. Clearing slows it.' },
   { name: 'Support / campusing', text: 'A card in the feet lane adds Power to both hands. An empty feet lane adds Bite instead.' },
   { name: 'Settle', text: 'A move that survives a turn gains +1 Power, up to +2. Durability turns into offence.' },
+  /* CARD-20: Settle's cross-lane sibling, and the combination the two Bump cards had promised
+     by name since they existed. */
+  { name: 'Launch', text: 'Fires off the other hand: +2 Power while the card in your other hand lane has held a turn. A neighbour you can trust is worth pulling off — durability turned into offence one lane over.' },
   { name: 'Beta', text: 'Hold types you have worked come back at −1 Grip on later burns. Falling is learning.' },
   /* CARD-18: both of these were mechanics the game had and never named. A card can
      spend skin and a card can read the wall, and until this ticket exactly one card

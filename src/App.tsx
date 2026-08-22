@@ -2,10 +2,10 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.71 — SIM-9: the policy can spend a turn on the plan. autoPlay shakes out a
-//   lane nothing in hand clears once the pump is worth banking (SHAKE_AT), which is where the
-//   burns were dying: 74.6% of failed burns died of pump while the clock never bound at all.
-//   The band cannot feel it (the built deck's rests are feet cards); the climber ladder can.
+// SANDBAGGED v10.72 — CARD-20: Launch, the combination the two Bump cards had promised by
+//   name since they existed. +2 Power while the card in your OTHER hand has held a turn —
+//   Settle turned sideways — and the state it fires off is honest now: a card that blows or
+//   is lifted comes off the wall without its stand, the reset an echo and a spit always made.
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -1244,8 +1244,12 @@ export default function App() {
     if (st.phase !== 'climb') return
     if (!sel) {
       const placed = st.boardP[i]
+      /* CARD-20: lifting a card takes it OFF THE WALL, so its stand comes off with it — the
+         engine's own reset for an echo and a spit. Without this a standing card could be
+         lifted and re-placed still claiming the turns it had held, which mattered the moment
+         `set` became a state a Launch next door can fire off. */
       if (placed) setSt(s => ({ ...s, boardP: s.boardP.map((c, k) => k === i ? null : c),
-        piles: { ...s.piles, hand: [...s.piles.hand, placed] } }))
+        piles: { ...s.piles, hand: [...s.piles.hand, { ...placed, settled: 0, set: false }] } }))
       return
     }
     if (sel.kind === 'bonus') {
@@ -1568,7 +1572,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.71 · RCJ Labs</div>
+          <div className="sfoot">v10.72 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1797,7 +1801,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.71 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.72 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

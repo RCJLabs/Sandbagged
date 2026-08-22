@@ -26,6 +26,8 @@ export type StyleKey = 'jug haul' | 'mixed' | 'slab' | 'crimp ladder' | 'compres
 export type FeetKey = 'easy' | 'normal' | 'hard'
 export type Fx = '' | 'precise' | 'friction' | 'static' | 'snap' | 'commit' | 'balance' | 'hooked'
   | 'tough' | 'settle2' | 'greedy' | 'guard' | 'momentum' | 'weight' | 'echo' | 'peel' | 'cycle'
+  /** CARD-20: fires off the OTHER hand having held a turn — the cross-lane sibling of Settle. */
+  | 'launch'
 export type Rarity = 'starter' | 'common' | 'uncommon' | 'rare' | 'curse' | 'gear' | 'beta'
 export type Tag = '' | 'crimp' | 'sloper' | 'pinch' | 'pocket' | 'dyno' | 'crack'
   | 'feet' | 'rest' | 'mental'

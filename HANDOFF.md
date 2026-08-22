@@ -3,7 +3,7 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.71.** `npm run check` is 197/197 core + 119/119 kept;
+**State at the time of writing: v10.72.** `npm run check` is 198/198 core + 119/119 kept;
 `npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
@@ -50,14 +50,15 @@ where a number appears it is reproducible with the command next to it.
 
 ## The numbers, and how to buy them
 
-| what | command | at v10.71 |
+| what | command | at v10.72 |
 |---|---|---|
-| campaign band (the pin) | `PAGES=14 SHARP_AT=99 node sim/run.mjs campaign 3000` | **60.3%** |
-| known-ending rate | `TRIPS=8 node sim/run.mjs career 240 reads` | **82.1%** |
-| climber ladder | `PROJECTS=0 node sim/run.mjs arch 2000` | 13.1 / 9.7 / 10.3 / 11.4 / 14.2 |
+| campaign band (the pin) | `PAGES=14 SHARP_AT=99 node sim/run.mjs campaign 3000` | **59.0%** |
+| known-ending rate | `TRIPS=8 node sim/run.mjs career 720 reads` | **76.7%** |
+| climber ladder | `PROJECTS=0 node sim/run.mjs arch 2000` | 12.5 / 9.2 / 9.5 / 11.4 / 14.7 |
 
 All three go into `sim/band.mjs` for the version you ship; a release without them fails
-`npm run check`. The band takes ~20 minutes, the ending ~75 seconds, the ladder ~5 minutes.
+`npm run check`. The band takes ~20 minutes, the ending ~4 minutes (CARD-20 bought its resolution — the old
+240-career slice diverges ±6 between nearly-identical engines), the ladder ~5 minutes.
 The harness is seed-fixed, so an honest entry reproduces exactly.
 
 **Sample sizes are not decoration.** Campaign completion has an SE of ~2.9 at n=300 and ~1.3 at
@@ -97,9 +98,6 @@ the ledger row, update the ROADMAP row, commit, push to `main`.
 
 Read the ROADMAP rows for the full argument; this is the shape of it.
 
-- **CARD-20** (P2) — a combination that creates a plan rather than a bigger number. Ground moved
-  under it when LANE-1 added matched hands, and again when SIM-9 measured that a placed hand
-  card stands 1.09 turns — re-read the row before starting.
 - **RUN-15** (P2) — the climbs are the same every run. RUN-14 deliberately varied only the
   support; varying which routes fill a stage needs a pool of interchangeable lines per act,
   which is authoring rather than a rule.

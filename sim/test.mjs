@@ -20,7 +20,7 @@
 import { build } from 'esbuild'
 import { readFileSync, unlinkSync } from 'node:fs'
 import { execSync } from 'node:child_process'
-import { BAND_PIN, ARCH_N, ARCH_FLOOR, ARCH_TOL, BAND_LOG } from './band.mjs'
+import { BAND_PIN, ENDING_N, ARCH_N, ARCH_FLOOR, ARCH_TOL, BAND_LOG } from './band.mjs'
 
 const SLOW = process.argv.includes('slow')
 const HISTORY_CAP_TEST = 35
@@ -3224,7 +3224,7 @@ if (SLOW) {
       ok(rows.length >= 8, `read ${rows.length} expedition rows, not the eight asked for`)
       return { ending: Number(ck[1]), stranger: Number(ep[3]), pages: rows[rows.length - 1] }
     }
-    const reads = career('reads', 240)
+    const reads = career('reads', ENDING_N)
     /* THE BAND, with a date on it, in the shape BAL-14 established and GUARD-10 sharpened:
        what gets defended is the band, and the number here is what somebody last chose.
        Set 2026-08-20 at 62.9% of careers / 11.0 pages, at 240 careers x 8 expeditions, and
@@ -3233,7 +3233,25 @@ if (SLOW) {
        breath with Evan rather than one of them going stale. A player who reads the trail node
        now finishes the story in five careers out of six.
        Re-pinning is allowed and expected — moving the number without saying so is not. */
-    const PIN = 82.5, TOL = 6
+    /* CARD-20 RE-PINNED AND RE-SAMPLED THIS (2026-08-22), and the lesson cost six measurements.
+       At n=240 the CARD-20 tree read 76.3 against the 82.5 pin — 0.2 outside the window — and
+       the "damage" was chased through the launch's drafter term (innocent: 76.0 against 77.1
+       at n=1440, a draw), the rules term at half size (76.3 — whatever it was, it did not
+       scale), a bite-side redesign (78.3, and worth nothing anywhere else), and a carrier buff
+       (80.4 at n=240 that melted to 76.5 at n=720 — noise, the handoff's own warning). The
+       finding: THE FIXED 240-CAREER SLICE DIVERGES +-6 BETWEEN NEARLY-IDENTICAL ENGINES. Same
+       seed, same careers — but an engine change re-deals every climb after its first
+       divergence, and at 240 careers that resampling is as wide as the tolerance policing real
+       damage: strip-only read 82.5 at 240 and 78.2 at 720, and v10.71 itself reads 77.6 at 720
+       against the 82.1 it recorded at 240. The launch's real ending cost is 0.9 against
+       v10.71 at n=720 — a draw — so the guard was firing on the slice, not the game.
+       The resolution is BOUGHT, which is this guard's own precedent (it moved 60 -> 240 once,
+       for exactly this): the sample now reads from band.mjs's ENDING_N (720, ~4 minutes), so
+       the ledger and this guard cannot quietly disagree, and the pin is the shipped tree's own
+       reading at that sample. TOL 5 is ~2.3 SE of a cross-engine comparison at n=720 — tighter
+       as a claim than the old +-6 at 240 ever was — and still catches RUN-14's nine-point
+       step with four points to spare. */
+    const PIN = 76.7, TOL = 5
     ok(Math.abs(reads.ending - PIN) <= TOL,
       `an informed player's story lands ${reads.ending}% of careers against a pin of ${PIN} — ` +
       `re-measure, pay it back, or re-pin here on purpose`)

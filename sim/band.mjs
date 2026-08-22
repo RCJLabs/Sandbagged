@@ -89,9 +89,17 @@ export const BAND_TOL = 2.0
 /** The sample the recorded numbers must be measured at, so a cheap reading cannot be passed off
     as a dear one. */
 export const BAND_N = 3000
-/** NARR-22: the sample the `ending` column is measured at. Kept here rather than in the guard so
-    the ledger and the band in test.mjs cannot quietly disagree about what the number means. */
-export const ENDING_N = 240
+/** NARR-22: the sample the `ending` column is measured at. Kept here rather than in the guard
+    so the ledger and the band in test.mjs cannot quietly disagree about what the number means —
+    and since CARD-20 the guard reads it from here, so they structurally cannot.
+    CARD-20 RAISED IT 240 -> 720 (2026-08-22, ~4 minutes a run, GUARD-6 says state the cost):
+    at 240 the FIXED SLICE DIVERGES +-6 BETWEEN NEARLY-IDENTICAL ENGINES — same seed, same
+    careers, but an engine change re-deals every climb after its first divergence, and at 240
+    that resampling is as wide as the tolerance policing real damage. Strip-only arms read 82.5
+    at 240 and 78.2 at 720; v10.71 itself reads 77.6 at 720 against the 82.1 it recorded at
+    240. Entries from v10.72 on are 720-career readings; the column before that line is 240 and
+    the two are NOT comparable across it. */
+export const ENDING_N = 720
 /** BAL-18: the sample the climber ladder is recorded at, and the one the fine pass re-measures
     at. The floor is asserted in standard errors, so the sample is part of the claim. */
 export const ARCH_N = 2000
@@ -141,5 +149,5 @@ export const BAND_LOG = [
   { version: '10.68.0', band: 45.2, ending: 63.8, arch: { boulderer: 7.7, comp: 7.1, trad: 7.7, alpine: 7.0, onsight: 9.8 }, note: 'QA-1 · the page had two scroll containers and the bar spacer sat mid-page; both fixed in App.tsx and the CSS. src/engine.ts and sim/run.mjs byte-identical to v10.67, so all three columns carry forward' },
   { version: '10.69.0', band: 48.4, ending: 68.8, arch: { boulderer: 9.3, comp: 6.7, trad: 10.1, alpine: 9.3, onsight: 10.4 }, note: 'LANE-4 · the feet cliff softened 7 -> 2. A DELIBERATE JOINT RE-PIN with Evan: band 45 -> 48, ending 62.9 -> 68.8. The removal the row asked for is worth +14.8 and breaks the floor and the spread; this is a fifth of it, with the roster intact' },
   { version: '10.70.0', band: 60.0, ending: 82.5, arch: { boulderer: 9.8, comp: 8.0, trad: 9.7, alpine: 11.3, onsight: 8.6 }, note: 'LANE-5 · the feet urgency is out of the valuation entirely, and the Comp Kid (+1 Power) and Trad Dad (+1 Contact) are paid for. JOINT RE-PIN with Evan: band 48 -> 60, ending 68.8 -> 82.5. Lowest climber 8.0 at 4.95 SE and spread 1.41x, both healthier than before' },
-  { version: '10.71.0', band: 60.3, ending: 82.1, arch: { boulderer: 13.1, comp: 9.7, trad: 10.3, alpine: 11.4, onsight: 14.2 }, note: 'SIM-9 · the policy can pace a burn: autoPlay shakes out a lane nothing in hand clears (SHAKE_AT), worth +21.1 points of session send through the same lever. The BAND cannot feel it and did not move — the built deck\'s two rests are feet cards, so a hand rest is in hand on 6 of 7,610 no-clear lane decisions. The LADDER is the instrument that feels it (every climber loadout carries Shake Out x2) and all five rose — Onsighter +5.6, Boulderer +3.3, Comp Kid +1.7, Trad Dad +0.6, Alpinist +0.1 — the ruler changing, not the climb (SIM-6\'s precedent): no game rule moved, floor cleared by 7 SE, spread 1.46x. Ending inside 0.4 of its pin' },
+  { version: '10.71.0', band: 60.3, ending: 82.1, arch: { boulderer: 13.1, comp: 9.7, trad: 10.3, alpine: 11.4, onsight: 14.2 }, note: 'SIM-9 · the policy can pace a burn: autoPlay shakes out a lane nothing in hand clears (SHAKE_AT), worth +21.1 points of session send through the same lever. The BAND cannot feel it and did not move — the built deck\'s two rests are feet cards, so a hand rest is in hand on 6 of 7,610 no-clear lane decisions. The LADDER is the instrument that feels it (every climber loadout carries Shake Out x2) and all five rose — Onsighter +5.6, Boulderer +3.3, Comp Kid +1.7, Trad Dad +0.6, Alpinist +0.1 — the ruler changing, not the climb (SIM-6\'s precedent): no game rule moved, floor cleared by 7 SE, spread 1.46x. Ending inside 0.4 of its pin' },  { version: '10.72.0', band: 59.0, ending: 76.7, arch: { boulderer: 12.5, comp: 9.2, trad: 9.5, alpine: 11.4, onsight: 14.7 }, note: 'CARD-20 · Launch on Bump and Lock & Bump (+2 Power while the other hand has held a turn), and `set` made honest at every off-the-wall boundary — a blown or lifted card files without its stand. Band -1.0, inside tolerance, and the arms say it is the honesty strip\'s share; the launch is band-flat. THE ENDING COLUMN CHANGES SAMPLE HERE, 240 -> 720 careers — see the ENDING_N note above: at 240 the fixed slice diverges +-6 between nearly-identical engines, so figures before this line are comparable to each other and NOT to this one. Against v10.71 at the new sample the ending moves 77.6 -> 76.7, a draw. Ladder inside noise of v10.71 on all five' },
 ]

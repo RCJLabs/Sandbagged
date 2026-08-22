@@ -2564,6 +2564,108 @@ test('ENG-25: the sim can see opposition — it drafts toward it and seats the p
     'cardValue is blind to a partner already in the deck')
 })
 
+test('CARD-20: a launch fires off the hand that held, and only that hand', () => {
+  /* THE ROW ASKED FOR A COMBINATION THAT CREATES A PLAN, NOT A BIGGER NUMBER, and its stated
+     objection had dissolved by the time it was built: both hands share a card tag on 19.1% of
+     turns now, not the 61% measured on the pre-LANE-2 mono-tag builder. What survived is the
+     constraint list — conditional on setup the player CHOOSES, spanning turns — which SIM-9's
+     measurement sharpened: a placed hand card stands 1.09 turns, so a combination can only
+     honestly span turns on a state that STANDS. Measured on 45,606 campaign turns: a set foot
+     stands on 63.8% of turns (a condition that common is the matched-hands objection in new
+     clothes), a standing hand rest on 0.0% (the built deck's rests are feet cards — SIM-9),
+     and a SET HAND is out on 44.2%, with a hand placement finding the other hand set on 21.1%.
+     Conditional, chosen, durable. So: LAUNCH — Settle turned sideways, a neighbour's stand
+     becoming this card's offence — carried by the two cards whose names had promised exactly
+     this combination since they existed and delivered nothing (Bump, Lock & Bump), rather
+     than by new cards, because CARD-18 measured what adding cards does to every offer roll. */
+  const base = { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null,
+    gear: [], boons: [], mutators: [], pump: 0 }
+  const hold = { uid: 10, name: 'crimp', bite: 3, grip: 9, crux: false, clean: false }
+  const other = { uid: 11, name: 'pinch', bite: 3, grip: 9, crux: false, clean: false }
+  const launch = E.spawn('Bump')
+  eq(launch.fx, 'launch', 'Bump no longer launches — the card whose name promised the combination is vanilla again')
+  eq(E.spawn('Lock & Bump').fx, 'launch', 'Lock & Bump no longer launches')
+
+  // the combination itself: the same card, against the same hold, reads LAUNCH_SET more
+  // Power when the neighbour has held a turn — and exactly that much
+  const stood = { ...E.spawn('Hand Jam'), set: true }
+  const fresh = { ...E.spawn('Hand Jam'), set: false }
+  const stSet = { ...base, boardH: [hold, other, null], boardP: [null, stood, null] }
+  const stFresh = { ...base, boardH: [hold, other, null], boardP: [null, fresh, null] }
+  eq(E.powerAgainst(stSet, launch, hold, 0) - E.powerAgainst(stFresh, launch, hold, 0),
+    E.LAUNCH_SET, 'a launch does not read the other hand having held — the combination is not firing')
+
+  /* and ONLY that hand. A set FOOT stands on 63.8% of measured turns — fire off that and the
+     condition is near-constant, which is the exact shape the row already rejected once. The
+     control is an equal-Power vanilla card in the same state, so feet Support cancels out. */
+  const plain = E.spawn('Half Crimp')
+  eq(plain.power, launch.power, 'the Half Crimp control no longer matches Bump for Power, so the foot check below compares nothing')
+  const foothold = { uid: 12, name: 'smear', bite: 1, grip: 4, crux: false, clean: false }
+  const setFoot = { ...E.spawn('Smear'), set: true }
+  const stFoot = { ...base, boardH: [hold, null, foothold], boardP: [null, null, setFoot] }
+  eq(E.powerAgainst(stFoot, launch, hold, 0), E.powerAgainst(stFoot, plain, hold, 0),
+    'a set FOOT fires the launch — the near-constant condition the row rejected, in new clothes')
+
+  // one formula: the preview turns a non-clear into a clear exactly when the neighbour stands
+  const grip = launch.power + E.LAUNCH_SET
+  const tight = { ...hold, grip }
+  const pv = (board1) => E.previewLane({ ...base,
+    boardH: [tight, other, null], boardP: [launch, board1, null], order: [0] }, 0)
+  ok(pv(stood).clears && !pv(fresh).clears,
+    'the preview and the resolution disagree about a launch — the term is not in the one formula')
+
+  // the policy can execute the plan it is being offered (ENG-25's law) — offered a launch
+  // and an equal-Power vanilla card with the neighbour standing, it seats the launch
+  const seated = E.autoPlay({ ...base, boardH: [hold, null, null], boardP: [null, stood, null],
+    piles: { ...base.piles, hand: [plain, launch] } }, new E.RNG(3))
+  eq(seated.boardP[0]?.fx, 'launch',
+    'offered a launch with the neighbour standing, the policy seats the vanilla card instead')
+
+  // the drafter prices the state at its measured rate — not zero, not a rule
+  const vanilla = { ...launch, fx: '' }
+  const dv = E.cardValue(base, launch, []) - E.cardValue(base, vanilla, [])
+  ok(Math.abs(dv - E.LAUNCH_SET * 2 * E.LAUNCH_RATE) < 1e-9,
+    `the drafter prices launch at ${dv.toFixed(2)} against the measured ${(E.LAUNCH_SET * 2 * E.LAUNCH_RATE).toFixed(2)} — blind or inventing`)
+
+  /* AND THE STATE IS HONEST, which is what made this ticket touch resolve at all: the moment
+     `set` became a state another card fires off, a card recycling with its old stand became a
+     rules bug rather than a cosmetic one. A card that blows is OFF THE WALL: it files without
+     its stand (the reset an echo and a spit already made), while `spent` survives, which is
+     COND-3's deliberate rule about wear. */
+  const worn = { ...E.spawn('Shake Out'), set: true, settled: 2, spent: 5 }   // anchor: recycles
+  const burnt = { ...E.spawn('Half Crimp'), set: true, settled: 1, spent: 4 } // no anchor: exhausts
+  const blowSt = { ...base, boardH: [{ ...hold, grip: 99, bite: 9 }, { ...other, grip: 99, bite: 9 }, null],
+    boardP: [worn, burnt, null], order: [0, 1],
+    piles: { draw: [], discard: [], exhaust: [], hand: [] } }
+  const blown = E.resolve(blowSt, new E.RNG(5))
+  /* the anchored card recycles IMMEDIATELY here — the empty draw pile makes refillAndDraw
+     reshuffle the discard and deal it straight back to hand, which is exactly the round trip
+     the reset exists for — so the filed cards are found wherever they landed */
+  const allPiles = [...blown.piles.hand, ...blown.piles.draw, ...blown.piles.discard, ...blown.piles.exhaust]
+  const filedD = allPiles.find(c => c.uid === worn.uid)
+  const filedX = allPiles.find(c => c.uid === burnt.uid)
+  ok(filedD && filedX && !blown.boardP[0] && !blown.boardP[1],
+    'the blow fixture no longer blows both cards, so nothing below is tested')
+  ok(!filedD.set && (filedD.settled ?? 0) === 0 && !filedX.set && (filedX.settled ?? 0) === 0,
+    'a card that blew was filed with its stand — it will come back claiming turns it is not holding')
+  ok(filedD.spent === worn.spent && filedX.spent === burnt.spent,
+    'the off-the-wall reset took the WEAR too — spent is the one field COND-3 says survives the piles')
+
+  // the screen's lift makes the same reset — a standing card picked back up has let go
+  const app = stripComments(readFileSync('src/App.tsx', 'utf8'))
+  const lift = region(app, 'function tapLane', ['function commit'], { min: 400, what: 'tapLane' })
+  ok(/\{ \.\.\.placed, settled: 0, set: false \}/.test(lift),
+    'lifting a standing card keeps its stand, so a Launch can fire off a hold nobody is holding')
+
+  // and the vocabulary: the keyword says what it does, and both carriers say the number
+  ok(E.KEYWORDS.some(k => k.name === 'Launch' && /other hand/.test(k.text)
+      && k.text.includes(`+${E.LAUNCH_SET} Power`)),
+    'the Launch keyword is gone or no longer says what it does')
+  for (const n of ['Bump', 'Lock & Bump'])
+    ok(E.CARDS[n].text.includes('Launch') && E.CARDS[n].text.includes(`+${E.LAUNCH_SET} Power`),
+      `${n} launches and its text does not say so — the card undersells itself (CARD-17's rule)`)
+})
+
 test('BAL-13: the early bosses are fights, not flat routes', () => {
   /* The fourth audit found The Priest (act 1) and The Hourglass (act 2) were
      single-phase — a slightly harder route — against the two- and three-phase
