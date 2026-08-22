@@ -5023,6 +5023,76 @@ test('ROPE-2 second row: the rope is provisioned off the trip you are on', () =>
     'the card still tells the player "there is rope on this trip" off the static table — the one place it is a lie rather than a mispricing')
 })
 
+test('HOLD-2: a flake gives to whoever lets the other hand go first', () => {
+  /* THE BOARD HAS HELD THREE HOLDS THAT IGNORE EACH OTHER SINCE v0, and the obvious fix was
+     measured dead before it was built. Over 45,488 turns of the real campaign both hand holds
+     are up on 97.2% and a lane clears with the other hold still standing on 97.7% — so "the
+     neighbour went" is not a condition here, it is the default, and CARD-20 already paid to
+     learn what a near-constant condition is worth. What varies is the ORDER: both hand lanes
+     are clearable on 34.7% of turns, which is a decision the player already makes and the game
+     has never paid for.
+
+     WORTH, decomposed the way CARD-18 insists (three arms, same seeds, n=900): the baseline
+     reads 61.9%, adding the flake with its ability STRIPPED reads 57.0% — the hold type alone
+     is -4.9, because a grip-6 flake is simply a hard hold — and the shipped pair reads 60.1%,
+     so the ABILITY is worth +3.1. Reported as two numbers rather than the -1.8 net, because
+     the net hides both of them.
+
+     ORDER, NOT THE CLEAR, and that is what keeps the preview honest: a dyno's clear is an RNG
+     roll, so a rule firing on "the neighbour cleared" could not be previewed exactly, and
+     UX-4's 100%-accurate preview is a pillar this project guards in three places. */
+  const flake = Object.entries(E.HOLD_STATS).find(([, d]) => d.ability === 'Chained')
+  ok(flake, 'no hold carries Chained, so the mechanic is gone')
+  const [flakeName, flakeDef] = flake
+  const H = (name, grip, bite = 3) => ({ uid: 40 + grip, name, grip, bite, crux: false, clean: false })
+  const base = { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null,
+    gear: [], boons: [], mutators: [], pump: 0, beta: [], assist: true }
+  const mover = E.synth(3, 8)
+  const hold = H(flakeName, flakeDef.grip)
+  const other = H('jug', 3)
+
+  /* THE PREDICATE. Second in the order gives; first does not; and the feet lane is not a hand,
+     so it can neither grant the chain nor claim it. */
+  const at = arr => new Map(arr.map((l, k) => [l, k]))
+  ok(E.chainGive(hold, 0, at([1, 0, 2])), 'the flake does not give when the other hand went first')
+  ok(!E.chainGive(hold, 0, at([0, 1, 2])), 'the flake gives to the hand that went FIRST — the order buys nothing')
+  ok(!E.chainGive(hold, 2, at([0, 2, 1])), 'a foot is claiming the chain, and the chain is about the other HAND')
+  ok(!E.chainGive(other, 0, at([1, 0, 2])), 'a hold with no Chained ability is giving ground')
+  ok(!E.chainGive({ ...hold, clean: true }, 0, at([1, 0, 2])),
+    'a brushed flake still chains, so brushing does not strip this ability as it strips every other')
+
+  /* IT IS WORTH EXACTLY CHAIN_GIVE, AND THE PREVIEW SAYS SO BEFORE YOU COMMIT. The grip is set
+     so the card clears only with the discount — the whole point is a turn that goes one way or
+     the other on the order alone. */
+  const tight = H(flakeName, mover.power + E.CHAIN_GIVE)
+  const stFirst = { ...base, boardH: [tight, other, null], boardP: [mover, E.synth(2, 8), null], order: [0, 1] }
+  const stSecond = { ...stFirst, order: [1, 0] }
+  ok(!E.previewLane(stFirst, 0).clears && E.previewLane(stSecond, 0).clears,
+    'the order does not change what the preview says about a flake, so the ability is invisible where the player reads it')
+  const gone = E.resolve(stSecond, new E.RNG(3))
+  const stayed = E.resolve(stFirst, new E.RNG(3))
+  ok(!gone.boardH[0] && stayed.boardH[0],
+    'the resolution disagrees with the preview about the flake — one formula, two answers')
+
+  /* AND THE POLICY CAN USE IT, which is the difference between a mechanic and a dead one:
+     ENG-25's failure has been hit five times here, so the ordering clause is asserted. */
+  const played = E.autoPlay({ ...base, boardH: [tight, other, null], boardP: [null, null, null],
+    piles: { ...base.piles, hand: [mover, E.synth(2, 8)] } }, new E.RNG(3))
+  eq(played.order[0], 1,
+    'the policy still resolves 0, 1, 2 with a flake on the board — every measurement through it prices the ability at zero')
+
+  // a characteristic, not the wall: FEET-1's lesson about Solid at 5 of 10
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const styles = region(eng, 'const STYLES', ['export const CRUX_CHAR', '\nexport const ', '\nconst '],
+    { min: 200, what: 'the style weights' })
+  const flakeW = [...styles.matchAll(new RegExp(`'${flakeName}': (\\d+)`, 'g'))].map(m => Number(m[1]))
+  ok(flakeW.length >= 1, 'the flake is on no style at all, so no route can deal one')
+  ok(Math.max(...flakeW) <= 3,
+    `the flake is weighted ${Math.max(...flakeW)} on some style — FEET-1 measured what happens when a characterful hold becomes the default`)
+  ok(E.KEYWORDS.some(k => k.name === 'Chained' && /other hand/.test(k.text)),
+    'Chained is not in the glossary, so the one rule on the board about ORDER is unexplained')
+})
+
 test('ROUTE-16: no line is another line wearing a different name', () => {
   /* THE CORNICE AND THE HANGING SLAB WERE THE SAME ROUTE. Identical grade, style, clear,
      crux, feet, roped and pitches — and signatures with identical stats as well

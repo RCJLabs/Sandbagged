@@ -901,6 +901,7 @@ export const HOLD_STATS: Record<string, HoldDef> = {
   'sloper':      { bite: 2, grip: 6, ability: 'Greasy',     text: '−1 Power without feet. Sweats up if you leave it.' },
   'pinch':       { bite: 3, grip: 5, ability: 'Squeeze',    text: '+1 Bite while both hands are busy.' },
   'pocket':      { bite: 4, grip: 4, ability: 'Two-finger', text: 'Ignores Support.' },
+  'flake':       { bite: 3, grip: 6, ability: 'Chained',    text: 'Let the other hand go first and it gives 2 Grip.' },
   'crux':        { bite: 4, grip: 8, ability: 'Committing', text: 'Needs Power 2+. +1 hang tax.' },
 }
 /* ROUTE-10: the crux's character by style. `label` is what it reads as on the
@@ -1078,10 +1079,15 @@ const FEET_POOLS: Record<FeetKey, Record<string, number>> = {
 }
 const STYLES: Record<StyleKey, { w: Record<string, number>; dgrip: number; dbite: number }> = {
   'jug haul': { w: { 'jug': 8, 'crimp': 1, 'sloper': 1 }, dgrip: 0, dbite: 0 },
-  'mixed': { w: { 'jug': 3, 'crimp': 3, 'sloper': 3, 'pinch': 2, 'pocket': 2 }, dgrip: 0, dbite: 0 },
-  'slab': { w: { 'sloper': 5, 'crimp': 4, 'jug': 2 }, dgrip: 0, dbite: -1 },
+  /* HOLD-2: the flake is weighted like a feature rather than a staple — FEET-1 measured what
+     happens when a characterful hold becomes the default (Solid at 5 of 10 took the band 44.3
+     to 45.9 and made half of act 1 a footwork route), so this sits at 2 against the 3s beside
+     it and appears on the three styles a flake belongs to. Absent from the crimp ladder and
+     the jug haul on purpose: both are named for the hold they are made of. */
+  'mixed': { w: { 'jug': 3, 'crimp': 3, 'sloper': 3, 'pinch': 2, 'pocket': 2, 'flake': 2 }, dgrip: 0, dbite: 0 },
+  'slab': { w: { 'sloper': 5, 'crimp': 4, 'jug': 2, 'flake': 2 }, dgrip: 0, dbite: -1 },
   'crimp ladder': { w: { 'crimp': 5, 'sharp crimp': 4, 'jug': 1 }, dgrip: 0, dbite: 1 },
-  'compression': { w: { 'sloper': 6, 'pinch': 4, 'jug': 1 }, dgrip: 1, dbite: -1 },
+  'compression': { w: { 'sloper': 6, 'pinch': 4, 'jug': 1, 'flake': 2 }, dgrip: 1, dbite: -1 },
   'power': { w: { 'pocket': 4, 'sharp crimp': 4, 'pinch': 3, 'crimp': 2 }, dgrip: 1, dbite: 1 },
 }
 
@@ -4886,6 +4892,28 @@ export function matched(boardH: (Hold | null)[], boardP: (Card | null)[]): boole
   const [a, b] = [boardH[0], boardH[1]]
   return !!a && !!b && a.name === b.name && !!boardP[0] && !!boardP[1]
 }
+/* HOLD-2. CHAINED — the first rule in this game that makes the ORDER you resolve in pay.
+   The board has held three holds that ignore each other since v0: the only relationships were
+   matched hands, chip, and the feet lane's Support. The obvious fix — a hold that eases when
+   its neighbour clears — was measured before it was built and is DEAD: over 45,488 campaign
+   turns both hand holds are up on 97.2% and a lane clears with the other hold still standing
+   on 97.7%, so "the neighbour went" is not a condition in this game, it is the default, and
+   CARD-20 already recorded what a near-constant condition is worth (nothing, dearly).
+
+   WHAT DOES VARY IS THE ORDER: both hand lanes are clearable on 34.7% of turns, so a third of
+   the time WHICH ONE GOES FIRST is a real decision the player is already making and the game
+   has never paid for. ENG-18 made the order the player's (`s.order`), and it currently matters
+   only for blow-outs — a hand that comes off first stops opposing the other. So a Chained hold
+   gives ground to whoever lets the other hand go first, and the cost is exactly that existing
+   rule: the lane you send first may blow before the second one resolves, taking its opposition
+   and its `weight` with it. A trade, not a discount.
+
+   KEYED ON THE ORDER AND NOT ON THE CLEAR, and that is what keeps the preview honest. A rule
+   that fires when the neighbour CLEARS cannot be previewed exactly: a dyno's clear is an RNG
+   roll, so the preview would have to guess, and UX-4's 100%-accurate preview is a stated
+   pillar this project has broken twice and guards in three places. Order is known at commit
+   time, so `resolve` and `previewLane` read the same array and cannot diverge. */
+export const CHAIN_GIVE = 2
 export const OPPOSE_ALONE = -2
 export const OPPOSE_PAIR = 2
 /* CARD-20. LAUNCH — the combination that spans a turn. The row asked for a combination that
@@ -5409,6 +5437,9 @@ export function resolve(s: GameState, rng: RNG): GameState {
   // ENG-18: the order you placed them is the order they go
   const laneOrder = [...s.order.filter(i => i >= 0 && i < 3),
     ...[0, 1, 2].filter(i => !s.order.includes(i))]
+  /* HOLD-2: where each lane sits in the order, so a Chained hold can ask whether the other
+     hand went first. Built once from the same array the loop walks. */
+  const laneAt = new Map(laneOrder.map((l, k) => [l, k]))
   for (const i of laneOrder) {
     const hold = boardH[i], card = boardP[i]
     if (!hold) continue
@@ -5424,7 +5455,8 @@ export function resolve(s: GameState, rng: RNG): GameState {
       power = 0
       log.push(`${hold.name}: too committing for ${card.name}.`)
     }
-    const target = gripFor(s, hold)
+    // HOLD-2: it gives to whoever let the other hand go first
+    const target = Math.max(0, gripFor(s, hold) - (chainGive(hold, i, laneAt) ? CHAIN_GIVE : 0))
     const snapped = card.fx === 'snap' && target <= 3
     // the commitment check: rolled from the run RNG, so a seed still replays
     const isDyno = card.fx === 'commit'
@@ -5909,6 +5941,19 @@ export function autoPlay(s: GameState, rng: RNG, shakeAt: number = SHAKE_AT,
     } else pick = rests[0]
     st.boardP[i] = pick; st.piles = pileFromHand(st.piles, pick.uid)
   }
+  /* HOLD-2: THE POLICY HAS TO BE ABLE TO USE THE ORDER, or the mechanic measures as dead —
+     ENG-25's failure mode, which this project has now hit five times (opposition, restChip,
+     `read`, the feet lane, Launch). `s.order` is the screen's, set by tapping lanes; the
+     policy never touched it, so it always resolved 0, 1, 2 and a Chained hold could never
+     give. It sends the OTHER hand first when this one is chained, which is the whole decision
+     the ability exists to create — and it costs what the ability costs: the lane sent first
+     may blow before the second resolves, taking its opposition with it. Only when exactly one
+     hand hold is chained; two chained holds cannot both go second. */
+  const chainedLane = [0, 1].filter(i => st.boardH[i] && abilityOf(st.boardH[i]!) === 'Chained')
+  if (chainedLane.length === 1) {
+    const c = chainedLane[0]
+    st = { ...st, order: [1 - c, c, 2] }
+  }
   // bonuses last, once we know which lanes need help. The POLICY lives here —
   // which card, which lane, whether it is worth the pump — but the RULES are
   // `playBonusStep`, the same function the screen calls. See SIM-5.
@@ -6064,6 +6109,22 @@ export type LanePreview = {
 /* ENG-19. Whether a lane comes off was written out twice — once for the lane
    itself and once inside the simulation of the lanes before it — and two
    copies of one formula drift. They are one function now, so they cannot. */
+/* HOLD-2: does this Chained hold give? ONE function, called by `resolve` and by
+   `previewLane`, for the reason ENG-19 made `laneBlows` one function: two copies of a rule
+   drift, and this one decides a number the player is shown before committing. Hands only —
+   the chain is about the other HAND having gone, and the feet lane is not a hand. */
+export function chainGive(hold: Hold, i: number, laneAt: Map<number, number>): boolean {
+  if (abilityOf(hold) !== 'Chained') return false
+  /* ONE mechanism, and it is this line: the chain is about the other HAND, so the feet lane
+     has no partner and can neither grant it nor claim it. Written as an explicit partner
+     rather than as a second `i > 1` guard beside a `1 - i` lookup — those two were redundant,
+     each short-circuited the other, and whichever ran first made the other impossible to
+     break, so one of them could never have been tested. A branch that cannot fail is the
+     shape GUARD-9's header exists to complain about. */
+  const partner = i === 0 ? 1 : i === 1 ? 0 : -1
+  const mine = laneAt.get(i), other = laneAt.get(partner)
+  return mine !== undefined && other !== undefined && other < mine
+}
 export function laneBlows(s: GameState, i: number): boolean {
   const c = s.boardP[i], h = s.boardH[i]
   if (!c || !h) return false
@@ -6107,7 +6168,11 @@ export function previewLane(s0: GameState, i: number): LanePreview {
   if (bmL.restChips && card.shed > 0) g0 = Math.max(0, g0 - bmL.restChips)
   if (!noRestL && card.restChip) g0 = Math.max(0, g0 - card.restChip)
   if (card.hex) g0 = g0 + card.hex
-  const target = gripFor(s, g0 === hold.grip ? hold : { ...hold, grip: g0 })
+  /* HOLD-2: the same order array the loop above already built, through the same predicate
+     `resolve` uses — so what the player is shown before committing is what happens. */
+  const laneAtP = new Map(order.map((l, k) => [l, k]))
+  const target = Math.max(0, gripFor(s, g0 === hold.grip ? hold : { ...hold, grip: g0 })
+    - (chainGive(hold, i, laneAtP) ? CHAIN_GIVE : 0))
   const snapped = card.fx === 'snap' && target <= 3
   const isDyno = card.fx === 'commit'
   const gripLeft = snapped ? 0 : target - power
@@ -7095,6 +7160,10 @@ export const KEYWORDS: { name: string; text: string }[] = [
   { name: 'Snap', text: 'Outright clears any hold at Grip 3 or less.' },
   { name: 'Commit', text: 'A dyno. Roll to stick it — better fresh, worse pumped, better with feet on. Stick it and you skip the next hold as well. Miss and you are off it.' },
   { name: 'Guard', text: 'While it survives, the other hand lane takes 1 less Bite.' },
+  { name: 'Chained', text: 'A flake gives ground to whoever lets the other hand go first: '
+    + 'resolve it second and it is 2 Grip easier. The catch is the rule that already exists — '
+    + 'a hand that comes off stops holding for the other one, so the lane you send first may '
+    + 'not be there when the second one goes.' },
   { name: 'Matching', text: 'Both hands on the same kind of hold, with a card on each. You have '
     + 'worked the move once, so you get a breath — shed 1 pump. But you are square to the wall, '
     + 'and opposition needs something to pull against: while you are matched, a sideways move is '
