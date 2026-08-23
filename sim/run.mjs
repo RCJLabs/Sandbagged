@@ -492,21 +492,58 @@ if (mode === 'cards') {
      which is why nobody ran it. CARDS_ONLY='A|B' probes just the ones you are
      asking about, so pricing one keyword costs seconds instead. */
   const only = process.env.CARDS_ONLY ? process.env.CARDS_ONLY.split('|') : null
+  /* CARD-22. THIS PROBE WAS WRONG IN TWO INDEPENDENT WAYS AND BOTH ARE FIXED HERE.
+
+     ONE: IT ADDED THREE COPIES OF EVERYTHING. `copyLimit` is 1 for a rare and 2 for an
+     uncommon, so every rare and uncommon in the table was priced on a deck no player can
+     hold — SIM-8's failure exactly, which this project has already paid for once when the
+     band pin was set on a deck carrying six illegal beta cards. It fabricated outliers:
+     Quiet Feet and Second Skin read -11.3 each at three copies and +1.4 and +10.9 at one.
+     Copies are `copyLimit(rarity)` now.
+
+     TWO: IT ADDED RATHER THAN REPLACED. A shell of 14 plus 3 copies is a 17-card deck, so
+     every delta carried a dilution term that scaled with how good the shell already was —
+     the same card read -11.3 against a 70.2% shell and -24.6 against an 81.4% one. Swapping
+     holds the deck size fixed, so what is measured is the card against the card it replaced.
+     It is not a small correction: Sidepull reads -11.3 added and -28.5 swapped on the SAME
+     shell, and swapped it is the worst card measured here — a common the additive table never
+     flagged, while three of the six it did flag were legality artefacts.
+
+     CARDS_ADD=1 reproduces the old additive three-copy probe, kept the way REST_AT and
+     SHARP_AT are: so every number measured before this can be reproduced rather than argued
+     about. Curses and beta cards are priced at 3 because that is their copy limit, but
+     `buildable()` refuses both from a loadout — for those two the number is "what carrying it
+     would cost you", not a draft choice. */
+  const ADD = process.env.CARDS_ADD === '1'
+  const swapIn = (deck, name, k) => {
+    const d = deck.slice()
+    const step = Math.floor(d.length / k)
+    for (let i = 0; i < k; i++) d[i * step] = E.spawn(name)
+    return d
+  }
   for (const name of Object.keys(E.CARDS)) {
     const c = E.CARDS[name]
     if (only && !only.includes(name)) continue
     if (c.rarity === 'starter') continue
-    const d = base(); for (let k = 0; k < 3; k++) d.push(E.spawn(name))
+    const k = ADD ? 3 : E.copyLimit(c.rarity)
+    const d = ADD ? [...base(), ...Array(3).fill(name).map(E.spawn)] : swapIn(base(), name, k)
     rows.push({ name, r: c.rarity, d: score(d) - ctrl })
   }
   rows.sort((a, b) => b.d - a.d)
-  console.log(`control ${ctrl.toFixed(1)}% · delta from adding 3 copies\n`)
+  console.log(`control ${ctrl.toFixed(1)}% · delta from ${ADD
+    ? 'ADDING 3 copies (CARD-22: illegal for rares and uncommons, kept for reproducing old numbers)'
+    : 'SWAPPING IN copyLimit() copies — deck size held fixed'}\n`)
   console.log('STRONGEST'); rows.slice(0, 8).forEach(r => console.log(`  ${(r.d >= 0 ? '+' : '') + r.d.toFixed(1)}pt  ${r.name} (${r.r})`))
   console.log('\nWEAKEST'); rows.slice(-8).forEach(r => console.log(`  ${(r.d >= 0 ? '+' : '') + r.d.toFixed(1)}pt  ${r.name} (${r.r})`))
   // absolute deltas are dominated by shell weakness, so compare WITHIN rarity
   const byR = {}
   for (const r of rows) (byR[r.r] ??= []).push(r)
-  console.log('\nmean delta by rarity (the shell is weak, so absolutes run high):')
+  /* CARD-22: the caveat changed with the instrument. Added, absolutes ran high because the
+     shell was weak. SWAPPED, a card is measured against the shell card it replaced — and the
+     shell is built out of strong COMMONS, so the common row is "against the best commons in
+     the game", not "against nothing". Compare within a rarity; across rarities the number is
+     still relative to what it displaced. */
+  console.log('\nmean delta by rarity (swapped in, so each is against the shell card it replaced):')
   const stats = {}
   for (const k of Object.keys(byR)) {
     const v = byR[k].map(x => x.d)

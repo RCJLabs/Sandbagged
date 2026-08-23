@@ -3,7 +3,7 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.85.** `npm run check` is 208/208 core + 119/119 kept;
+**State at the time of writing: v10.86.** `npm run check` is 209/209 core + 119/119 kept;
 `npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
@@ -122,6 +122,20 @@ reversing, and it was paid knowingly: seven arms at n=3000 said the policy is no
 for the price is worse still (floor 8.8). **If a later ticket tightens the roster, re-measure
 the flake first** — it is the newest thing pulling the other way, and `CHAIN_HANG` is one
 constant.
+
+## Before you trust a per-card number
+
+`node sim/run.mjs cards` swaps in `copyLimit()` copies and holds the deck size fixed. It used
+to ADD three copies of everything, which is illegal for every rare (limit 1) and uncommon
+(limit 2) and which fabricated three of the six outliers an audit reported — CARD-22 has the
+numbers. **`CARDS_ADD=1` reproduces the old probe**, so anything measured before v10.86 can be
+re-derived rather than argued about; assume any per-card figure quoted from before then is on
+the additive scale.
+
+Two things the fixed instrument still does not tell you: the shell is built from strong commons,
+so a common swapped in is measured against a good common, and beta and curse cards are priced
+at 3 copies although `buildable()` refuses both from a loadout — for those the number is what
+carrying it would cost, not a draft choice.
 
 ## If you add a climber
 

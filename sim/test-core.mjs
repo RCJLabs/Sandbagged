@@ -3662,6 +3662,58 @@ test('the tuning policy can see the feet lane (SIM-6)', () => {
   const simCode = sim.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
   ok(!/support/i.test(simCode), 'the harness grew its own opinion about the feet')
 })
+test('CARD-22: the per-card probe prices a deck a player could hold', () => {
+  /* SIM-8's SIBLING, and the same bug one instrument along. SIM-8 found the BAND pinned on an
+     illegal deck — six of fifteen slots were beta cards `buildable()` refuses, worth +10.5.
+     The per-card probe in `cards` mode had it too, and nobody looked: it added THREE copies of
+     every card while `copyLimit` is 1 for a rare and 2 for an uncommon, so every rare and
+     uncommon it has ever priced was priced on a deck no player can hold.
+
+     IT FABRICATED FINDINGS, which is how this was caught. An audit read six cards as more than
+     2sd below their own rarity and named three RARES among them. Re-measured at one copy:
+     Quiet Feet -11.3 -> +1.4, Second Skin -11.3 -> +10.9, Local Knowledge -20.9 -> -4.9. Three
+     of the six were arithmetic on an impossible deck.
+
+     AND IT ADDED RATHER THAN REPLACED, which is a second, independent error. A 14-card shell
+     plus 3 copies is a 17-card deck, so every delta carried a dilution term scaling with how
+     good the shell already was — the same card read -11.3 against a 70.2% shell and -24.6
+     against an 81.4% one. Swapping holds the size fixed. Sidepull reads -11.3 added and -28.5
+     swapped on the SAME shell, which is the worst card measured and one the additive table
+     never flagged.
+
+     On the fixed instrument the within-rarity outlier count went from six to ONE, and that one
+     is positive (Precise Feet +24). The rarity ladder came out cleanly monotonic instead:
+     common -10.9, uncommon +6.9, rare +12.7. */
+  /* STRIPPED SOURCE, and that is not tidiness. Written against raw source first, the
+     CARDS_ADD assertion below passed on a mutant that had DELETED the flag — because the
+     comment beside it still says the words `CARDS_ADD=1`. A guard that matches its own prose
+     verifies nothing, which is ART-4's class and the second time this project has hit it. */
+  const sim = stripComments(readFileSync('sim/run.mjs', 'utf8'))
+  const cards = region(sim, "if (mode === 'cards')", ['\nif (mode', '\nfunction '],
+    { min: 400, what: "the per-card probe" })
+  ok(/E\.copyLimit\(/.test(cards),
+    'the per-card probe no longer asks copyLimit how many copies are legal, so it is free to price a deck nobody can hold — SIM-8, one instrument along')
+  ok(/CARDS_ADD/.test(cards),
+    'the flag that reproduces the old additive three-copy probe is gone, so every number measured before CARD-22 becomes unreproducible rather than merely wrong')
+  /* SWAP, not push. Checked on the helper rather than the whole block, because the block
+     legitimately pushes under the CARDS_ADD branch — a file-wide ban would fail on the
+     compatibility path this ticket deliberately kept. */
+  const helper = region(cards, '  const swapIn =', ['\n  for (', '\n  const '],
+    { min: 60, what: 'the probe swap' })
+  ok(/=\s*E\.spawn\(name\)/.test(helper) && !/\.push\(/.test(helper),
+    'the probe adds copies instead of replacing them, so every delta is a dilution term as much as a card')
+
+  /* THE BEHAVIOURAL HALF, and it is the rule the bug actually broke: the copy count the probe
+     uses has to be one a LOADOUT could carry. `copyLimit` caps copies of one card and
+     RARE_SLOTS / UNCOMMON_SLOTS cap the rarity across the deck, so both have to allow it —
+     three copies of a rare failed the first and the second at once. */
+  for (const [r, slots] of [['rare', E.RARE_SLOTS], ['uncommon', E.UNCOMMON_SLOTS]]) {
+    const k = E.copyLimit(r)
+    ok(k <= slots,
+      `the probe would price ${k} copies of a ${r} into a loadout that may hold ${slots} of that rarity at all`)
+    ok(k >= 1, `copyLimit('${r}') is ${k}, so the probe would price nothing`)
+  }
+})
 test('SIM-8: the band measures a deck a player can actually hold', () => {
   /* SIM-8. The pinned band was measured on an ILLEGAL deck for as long as there has been a
      pin. run.mjs had its own builder — sort every card by `power * 2 + contact`, take the
