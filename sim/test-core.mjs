@@ -3662,6 +3662,69 @@ test('the tuning policy can see the feet lane (SIM-6)', () => {
   const simCode = sim.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
   ok(!/support/i.test(simCode), 'the harness grew its own opinion about the feet')
 })
+test('HOLD-4: brushing takes the grease off, not the wall', () => {
+  /* THE ROW SAID THE WALL WAS TWO ABILITIES AND THAT WAS AN ARITHMETIC ERROR IN THE AUDIT that
+     wrote it — holds-per-turn across three lanes read as a share of turns. Corrected over
+     142,919 hand holds of a drafted campaign the spread is flat: Greasy 14.1%, Sharp 13.3%,
+     Squeeze 10.9%, Committing 8.5%, Two-finger 7.4%, Razor 6.9%, Rest 5.8%, Chained 3.9%.
+
+     WHAT THE CENSUS FOUND INSTEAD is that the biggest category on a hand lane was NO ability,
+     28.5%, and `abilityOf` returns '' only for a brushed hold. Counted as transitions rather
+     than inferred: the player brushed on 42.98% of turns, the route move on 0.16%. One card
+     was deleting the work of HOLD-1, HOLD-2 and HOLD-3 on three hand holds in ten.
+
+     DECOMPOSED AT n=1500 — shipped 60.9, ability-survives 58.3, never-brush 49.9 — so the cut
+     is worth +8.4 and the erasure only +2.6. Stripping Greasy alone reads 57.7, the same as
+     stripping nothing inside half an SE, which says the strip's value was entirely in the
+     abilities brushing has no business answering. Greasy-only plus one Grip reads 60.7 against
+     60.9: the card keeps its strength, the wall keeps its character, the band does not move. */
+  const H = (name, extra = {}) => ({ uid: 1, name, grip: 6, bite: 3, crux: false, clean: false, ...extra })
+  const base = { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null, gear: [], boons: [],
+    mutators: [], pump: 0, beta: [], assist: true }
+  const brush = Object.values(E.CARDS).find(c => c.cleans)
+  ok(brush, 'no card brushes at all any more')
+
+  const greasy = Object.entries(E.HOLD_STATS).find(([, d]) => d.ability === 'Greasy')
+  const sharp = Object.entries(E.HOLD_STATS).find(([, d]) => d.ability === 'Sharp')
+  ok(greasy && sharp, 'the two holds this rule is about are gone')
+
+  const play = (holdName) => {
+    const st = { ...base, boardH: [H(holdName), null, null], boardP: [null, null, null],
+      piles: { ...base.piles, hand: [E.spawn(brush.name)] } }
+    const after = E.playBonusStep(st, E.spawn(brush.name), 0, new E.RNG(1))
+    return after.boardH[0]
+  }
+  /* IT STILL ANSWERS A GREASY HOLD, which is what HOLD-1 named as the counterplay to a hold
+     that sweats up while you leave it hanging. Removing that would have broken a shipped
+     mechanic to fix a measurement. */
+  eq(E.abilityOf(play(greasy[0])), '',
+    'brushing no longer takes the grease off, so HOLD-1 lost the counterplay it was designed with')
+  /* AND IT TAKES NOTHING OFF ANYTHING ELSE. */
+  eq(E.abilityOf(play(sharp[0])), 'Sharp',
+    'brushing strips an ability it has no business answering again — 28.5% of hand holds had no ability because of this')
+
+  /* THE CUT PAYS FOR WHAT THE STRIP NO LONGER TAKES. Asserted as a floor per rarity rather
+     than as five literals, so a re-priced card fails only if it drops below what this ticket
+     bought the band back with. */
+  const floors = { common: 3, uncommon: 4, rare: 5, beta: 6 }
+  for (const c of Object.values(E.CARDS).filter(x => x.cleans)) {
+    const f = floors[c.rarity]
+    ok(f === undefined || c.gripCut >= f,
+      `${c.name} cuts ${c.gripCut} Grip against a floor of ${f} — the strip was removed and paid for in Grip, and unpaying it drops the band 2.6`)
+    ok(!/strip/i.test(c.text ?? ''),
+      `${c.name} still promises to strip an ability it no longer strips`)
+  }
+  /* THE DIRT STILL COMES OFF WHATEVER IT IS — that half of brushing was never about abilities
+     and a first ascent is a grip of dirt on every hold. Written against a hold that ACTUALLY
+     CARRIES DIRT, because the first cut of this assertion used the fixture above, which has
+     none, and passed by testing nothing. */
+  const st = { ...base, boardH: [H(sharp[0], { dirt: E.DIRT_GRIP, grip: 6 + E.DIRT_GRIP }), null, null],
+    boardP: [null, null, null], piles: { ...base.piles, hand: [E.spawn(brush.name)] } }
+  ok(E.DIRT_GRIP > 0, 'a first ascent carries no dirt, so this checks nothing')
+  const cleaned = E.playBonusStep(st, E.spawn(brush.name), 0, new E.RNG(1)).boardH[0]
+  eq(cleaned.dirt, 0, 'brushing stopped clearing dirt, which is the part of it that was never about abilities')
+  eq(E.abilityOf(cleaned), 'Sharp', 'clearing the dirt took the ability with it after all')
+})
 test('CARD-23: a firing rate belongs to a deck, not to the game', () => {
   /* CARD-23 ASKED WHETHER ELEVEN CARD EFFECTS EVER REACH THE BOARD AND THE ANSWER IS THAT THE
      QUESTION WAS UNDER-SPECIFIED. Measured over drafted campaigns instead of starting decks —

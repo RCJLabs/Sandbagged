@@ -1188,7 +1188,7 @@ for (const c of [
   // ---------- COMMON · technique ----------
   bn('Breathe', 0, 'common', { shed: 2, text: 'Shed 2 pump.' }),
   bn('Deep Breath', 1, 'common', { shed: 4, text: 'Shed 4 pump.' }),
-  bn('Brush', 0, 'common', { gripCut: 2, cleans: true, targeted: true, text: '−2 Grip, strip its ability.' }),
+  bn('Brush', 0, 'common', { gripCut: 3, cleans: true, targeted: true, text: '−3 Grip. A greasy hold stops being greasy.' }),
   bn('Tick Marks', 0, 'common', { gripCut: 2, targeted: true, text: '−2 Grip to one hold.' }),
   bn('Read the Sequence', 0, 'common', { draw: 2, text: 'Draw 2.' }),
   /* INFO-1: both read cards cost a pump more than they did, and the reason is that they were
@@ -1303,7 +1303,7 @@ for (const c of [
   ft('Bat Hang', 0, 10, 'rare', { support: 2, shed: 3, anchor: true, text: 'Support 2 · rest · shed 3.' }),
   ft('Silent Feet', 2, 8, 'rare', { support: 2, anchor: true, text: 'Support 2. Anchor.' }),
   ft('Hands-Free Rest', 0, 9, 'rare', { support: 2, shed: 4, anchor: true, text: 'Support 2 · shed 4.' }),
-  bn('Perfect Beta', 0, 'rare', { gripCut: 4, cleans: true, targeted: true, text: '−4 Grip, strip its ability.' }),
+  bn('Perfect Beta', 0, 'rare', { gripCut: 5, cleans: true, targeted: true, text: '−5 Grip. A greasy hold stops being greasy.' }),
   bn('Send Train', 1, 'rare', { powerAll: 2, text: '+2 Power to every lane.' }),
   bn('Local Knowledge', 0, 'rare', { draw: 3, text: 'Draw 3.' }),
   bn('Flash Pump', 0, 'rare', { shed: 6, text: 'Shed 6 pump.' }),
@@ -1396,7 +1396,7 @@ for (const c of [
      thing you are paying for, so a foot that slips and catches keeps the hands paid
      for a turn they would otherwise have climbed alone. */
   ft('Rand Smear', 1, 6, 'uncommon', { support: 2, latch: true, text: 'Support 2 · Latch.' }),
-  bn('Wire Brush Pro', 0, 'uncommon', { gripCut: 3, cleans: true, targeted: true, text: '−3 Grip, strip its ability.' }),
+  bn('Wire Brush Pro', 0, 'uncommon', { gripCut: 4, cleans: true, targeted: true, text: '−4 Grip. A greasy hold stops being greasy.' }),
   bn('Spotter', 1, 'uncommon', { shed: 2, draw: 1, text: 'Shed 2. Draw 1.' }),
   bn('Crash Pad', 1, 'uncommon', { shed: 4, text: 'Shed 4 pump.' }),
   bn('Fresh Shoes', 0, 'uncommon', { powerAll: 1, text: '+1 Power to every lane.' }),
@@ -1437,7 +1437,7 @@ for (const c of [
   ft('No-Hands Rest', 0, 11, 'rare', { support: 2, shed: 5, anchor: true, text: 'Support 2 · shed 5.' }),
   ft('Ghost Feet', 3, 9, 'rare', { support: 2, text: 'Support 2. Nobody hears you.' }),
   bn('Beta Flash', 0, 'rare', { draw: 3, shed: 1, text: 'Shed 1. Draw 3.' }),
-  bn('The Right Sequence', 0, 'rare', { gripCut: 4, cleans: true, targeted: true, text: '−4 Grip, strip its ability.' }),
+  bn('The Right Sequence', 0, 'rare', { gripCut: 5, cleans: true, targeted: true, text: '−5 Grip. A greasy hold stops being greasy.' }),
   bn('Full Rack', 1, 'rare', { powerAll: 2, draw: 1, text: '+2 Power everywhere. Draw 1.' }),
   bn('Skin Like Leather', 0, 'rare', { restore: 3, shed: 2, text: 'Shed 2. Return 3 burnt cards.' }),
   bn('Deep Focus', 1, 'rare', { power: 5, targeted: true, text: '+5 Power to one lane.' }),
@@ -1506,7 +1506,7 @@ for (const c of [
   bn('Beta · The Grade', 0, 'beta', { draw: 2, shed: 1, text: 'Shed 1. Draw 2.' }),
   bn('Beta · Conditions', 0, 'beta', { powerAll: 1, text: '+1 Power to every lane.' }),
   mv('Beta · Going Alone', 4, 8, 'beta', { fx: 'tough', text: 'Tough · nobody is coming.' }),
-  bn('Beta · The Crux', 0, 'beta', { gripCut: 5, cleans: true, targeted: true, text: '−5 Grip, strip its ability.' }),
+  bn('Beta · The Crux', 0, 'beta', { gripCut: 6, cleans: true, targeted: true, text: '−6 Grip. A greasy hold stops being greasy.' }),
   bn('Beta · Last Entry', 1, 'beta', { powerAll: 2, text: '+2 Power to every lane.' }),
   // NARR-11: the eight new pages. Deliberately smaller than the original six —
   // fifteen pages means fifteen of these on the finale, and NARR-7 measured the
@@ -5679,11 +5679,46 @@ export function playBonusStep(s: GameState, c: Card, lane: number, rng: RNG): Ga
     boardP[lane] = { ...boardP[lane]!, power: boardP[lane]!.power + c.power }
     log.push(`${c.name}. +${c.power} Power.`)
   }
+  /* HOLD-4. BRUSHING STRIPS GREASY AND NOTHING ELSE, and the Grip cut it already had went up
+     one to pay for the abilities it no longer takes.
+
+     THE PREMISE THIS TICKET WAS WRITTEN ON WAS WRONG AND THE MEASUREMENT REPLACED IT. The row
+     said the wall was two abilities, on half the turns each; that was holds-per-turn across
+     three lanes read as a share of turns. Corrected, on 142,919 hand holds of a drafted
+     campaign, the spread is FLAT — Greasy 14.1%, Sharp 13.3%, Squeeze 10.9%, Committing 8.5%,
+     Two-finger 7.4%, Razor 6.9%, Rest 5.8%, Chained 3.9%. No ability dominates anything.
+
+     WHAT THE CENSUS FOUND INSTEAD: THE LARGEST CATEGORY ON A HAND LANE WAS NO ABILITY AT ALL,
+     28.5%, and `abilityOf` only returns '' for a brushed hold. Attributed by counting the
+     transitions rather than guessing: the player brushed a hold on 42.98% of turns and the
+     telegraphed route move did it on 0.16%. So a card was switching the wall off on nearly
+     three hand holds in ten, and every ability HOLD-1, HOLD-2 and HOLD-3 built was being
+     deleted at that rate.
+
+     DECOMPOSED AT n=1500, because a strong card is not a defect and the two halves had to be
+     told apart:
+       shipped, the policy brushes freely            60.9
+       the cut still lands, the ability SURVIVES     58.3    <- the strip is worth +2.6
+       the policy never brushes at all               49.9    <- the CUT is worth +8.4
+     So the card is enormous and the erasure is the small half of it.
+
+     AND THE NARROW VERSIONS WERE MEASURED, NOT ASSUMED. Stripping only Greasy reads 57.7,
+     which is the same number as stripping nothing (58.3) inside half a standard error — so
+     the strip's value is entirely in the abilities brushing has no business answering:
+     Committing on a crux, Sharp on a crimp. Removing it outright reads 58.3 and would put the
+     band 3.7 from a pin Evan set at 62, which is a re-pin, not a fix.
+
+     WHAT SHIPS IS THE ONE ARM THAT COSTS NOTHING: Greasy-only, +1 Grip. 60.7 against 60.9, a
+     fifth of a standard error. HOLD-1's counterplay is kept exactly — it named brushing as the
+     answer to a sweating hold and that still works — the other seven abilities stay on the
+     wall, and the card keeps its strength through the cut rather than through deletion. */
   if (c.gripCut && lane >= 0 && boardH[lane]) {
+    const greasy = c.cleans && abilityOf(boardH[lane]!) === 'Greasy'
     boardH[lane] = { ...boardH[lane]!, grip: Math.max(1, boardH[lane]!.grip - c.gripCut),
-      clean: c.cleans ? true : boardH[lane]!.clean }
+      clean: greasy ? true : boardH[lane]!.clean }
+    // the dirt comes off whatever it is: that is brushing, and it is not the ability
     if (c.cleans) boardH[lane] = clearDirt(boardH[lane]!)
-    log.push(`${c.name}. −${c.gripCut} Grip${c.cleans ? ', ability stripped' : ''}.`)
+    log.push(`${c.name}. −${c.gripCut} Grip${greasy ? ', and it is not greasy any more' : ''}.`)
   }
   /* CARD-17: a curse you have paid for is WRITTEN OFF — exhausted, not discarded, so
      it cannot come back round this burn. Every other bonus recycles as it always has. */
@@ -6153,7 +6188,7 @@ export function actTicked(book: Record<string, LogEntry>, act: number): boolean 
   return lines.length > 0 && lines.every(r => book[r.name])
 }
 export const ACT_XP = 120
-/** Brushing a hold takes the season off it as well as stripping its ability. */
+/** Brushing a hold takes the season off it as well as its grease (HOLD-4). */
 export const clearDirt = (h: Hold): Hold =>
   h.dirt ? { ...h, grip: Math.max(1, h.grip - h.dirt), dirt: 0 } : h
 /** What the rock says about the grade you claimed. */

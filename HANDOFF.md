@@ -3,7 +3,7 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.87.** `npm run check` is 210/210 core + 119/119 kept;
+**State at the time of writing: v10.88.** `npm run check` is 211/211 core + 119/119 kept;
 `npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
@@ -122,6 +122,19 @@ reversing, and it was paid knowingly: seven arms at n=3000 said the policy is no
 for the price is worse still (floor 8.8). **If a later ticket tightens the roster, re-measure
 the flake first** — it is the newest thing pulling the other way, and `CHAIN_HANG` is one
 constant.
+
+## The roster floor has fallen three releases running — read this first
+
+**10.5 → 9.2 → 8.0.** HOLD-3 (v10.85) took 1.3 of it and HOLD-4 (v10.88) took 1.2 more, both
+knowingly, both inside `ARCH_FLOOR` (which is 5 and has not moved since the roster spanned 3.3
+to 29.8). Neither was a pin move and neither failed a guard, which is precisely the problem:
+**the band is policed release by release and the floor is not.** ARCH-2 is the open row and it
+is P0 now.
+
+HOLD-4's share of it is worth understanding before the next balance change: raising a Grip cut
+to pay for a removed ability is **regressive**. It pays a strong deck that converts the extra
+cut and does not cover a weak one that needed the ability gone. The band's player (`buildBest`)
+came out flat; every climber on the ladder fell.
 
 ## A firing rate is a property of a deck
 
