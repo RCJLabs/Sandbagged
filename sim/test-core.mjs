@@ -5039,11 +5039,10 @@ test('HOLD-2: a flake gives to whoever lets the other hand go first', () => {
      are clearable on 34.7% of turns, which is a decision the player already makes and the game
      has never paid for.
 
-     WORTH, decomposed the way CARD-18 insists (three arms, same seeds, n=900): the baseline
-     reads 61.9%, adding the flake with its ability STRIPPED reads 57.0% — the hold type alone
-     is -4.9, because a grip-6 flake is simply a hard hold — and the shipped pair reads 60.1%,
-     so the ABILITY is worth +3.1. Reported as two numbers rather than the -1.8 net, because
-     the net hides both of them.
+     WORTH: BAND-NEUTRAL, and the decomposition this comment used to carry is retracted. Three
+     arms at n=3000 read 58.9 stripped / 59.0 with the flake / 59.1 shipped — every gap inside
+     0.2. The -4.9 / +3.1 story it reported first was measured at n=900, where the band cannot
+     resolve a texture change; the v10.77 ledger row retracts it with both sets of numbers.
 
      ORDER, NOT THE CLEAR, and that is what keeps the preview honest: a dyno's clear is an RNG
      roll, so a rule firing on "the neighbour cleared" could not be previewed exactly, and
@@ -5061,11 +5060,13 @@ test('HOLD-2: a flake gives to whoever lets the other hand go first', () => {
   /* THE PREDICATE. Second in the order gives; first does not; and the feet lane is not a hand,
      so it can neither grant the chain nor claim it. */
   const at = arr => new Map(arr.map((l, k) => [l, k]))
-  ok(E.chainGive(hold, 0, at([1, 0, 2])), 'the flake does not give when the other hand went first')
-  ok(!E.chainGive(hold, 0, at([0, 1, 2])), 'the flake gives to the hand that went FIRST — the order buys nothing')
-  ok(!E.chainGive(hold, 2, at([0, 2, 1])), 'a foot is claiming the chain, and the chain is about the other HAND')
-  ok(!E.chainGive(other, 0, at([1, 0, 2])), 'a hold with no Chained ability is giving ground')
-  ok(!E.chainGive({ ...hold, clean: true }, 0, at([1, 0, 2])),
+  // HOLD-3: the predicate reads the committed board too, because an empty lane cannot go first
+  const both = [E.synth(1, 8), E.synth(1, 8), null]
+  ok(E.chainGive(hold, 0, at([1, 0, 2]), both), 'the flake does not give when the other hand went first')
+  ok(!E.chainGive(hold, 0, at([0, 1, 2]), both), 'the flake gives to the hand that went FIRST — the order buys nothing')
+  ok(!E.chainGive(hold, 2, at([0, 2, 1]), both), 'a foot is claiming the chain, and the chain is about the other HAND')
+  ok(!E.chainGive(other, 0, at([1, 0, 2]), both), 'a hold with no Chained ability is giving ground')
+  ok(!E.chainGive({ ...hold, clean: true }, 0, at([1, 0, 2]), both),
     'a brushed flake still chains, so brushing does not strip this ability as it strips every other')
 
   /* IT IS WORTH EXACTLY CHAIN_GIVE, AND THE PREVIEW SAYS SO BEFORE YOU COMMIT. The grip is set
@@ -5098,6 +5099,115 @@ test('HOLD-2: a flake gives to whoever lets the other hand go first', () => {
     `the flake is weighted ${Math.max(...flakeW)} on some style — FEET-1 measured what happens when a characterful hold becomes the default`)
   ok(E.KEYWORDS.some(k => k.name === 'Chained' && /other hand/.test(k.text)),
     'Chained is not in the glossary, so the one rule on the board about ORDER is unexplained')
+})
+
+test('HOLD-3: going second costs a pump, and the policy pays it only where it buys a hold', () => {
+  /* HOLD-2 SHIPPED SAYING THE ORDER WAS A TRADE AND IT WAS NOT, and this ticket measured that
+     rather than arguing it. Every turn where the policy reorders, resolved TWICE from a forked
+     RNG over 84,346 campaign turns and 7,255 decisions: the lane sent first blew on 69.0% of
+     them and that changed how many cards you lost on 0.0%. STRUCTURAL, not a sample — whether a
+     lane blows is Contact against Bite, and `biteAgainst` reads the committed board, which is
+     fixed for the whole lane loop (ENG-18 says so, because that is what lets the preview
+     resolve in one pass). The two orders produced an identical turn on 88.7%, taking was better
+     on 11.0%, and declining on 0.3% — 22 turns, every one an `opposes` card losing its partner.
+
+     So the cost is BUILT out of the condition HOLD-2 named and could not make pay: the hand you
+     sent first comes off, and you are hanging there alone. CHAIN_HANG pump, on 69.0% of the
+     turns the chain gives. Deterministic and order-independent, so it previews exactly. */
+  const flake = Object.entries(E.HOLD_STATS).find(([, d]) => d.ability === 'Chained')
+  ok(flake, 'no hold carries Chained, so there is nothing here to price')
+  const [flakeName] = flake
+  const H = (name, grip, bite = 3) => ({ uid: 60 + grip, name, grip, bite, crux: false, clean: false })
+  const base = { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null,
+    gear: [], boons: [], mutators: [], pump: 0, beta: [], assist: true }
+  const mover = E.synth(3, 8)
+  const other = H('jug', 3)
+  const partner = E.synth(2, 8)
+
+  ok(E.CHAIN_HANG > 0,
+    'the chain gives 2 Grip for nothing, so it is a discount with a skill floor and not a decision — which is the limit HOLD-2 recorded in its own row and this ticket exists to close')
+
+  /* THE PRICE, ISOLATED. A flake this card clears from either side, so the ONLY thing the order
+     changes is the hang — and the hand sent first is on a hold that takes it off, which is the
+     condition the charge fires on. The gap between the two resolutions is exactly CHAIN_HANG. */
+  const easy = H(flakeName, mover.power)
+  const doomed = E.synth(2, 1)                       // 1 Contact against a 3-Bite jug: it goes
+  const stTake = { ...base, boardH: [easy, other, null], boardP: [mover, doomed, null], order: [1, 0] }
+  const stFirst = { ...stTake, order: [0, 1] }
+  ok(E.laneBlows(stTake, 1), 'the hand sent first is holding on, so this fixture never charges the hang')
+  const took = E.resolve(stTake, new E.RNG(3)), went = E.resolve(stFirst, new E.RNG(3))
+  ok(!took.boardH[0] && !went.boardH[0],
+    'the fixture stopped clearing both ways, so it is no longer isolating the hang from the clear')
+  eq(took.pump - went.pump, E.CHAIN_HANG,
+    'resolving second costs nothing, so the chain is free again and the order is not a decision')
+
+  /* AND NOT WHEN THAT HAND HOLDS ON. That is the whole shape of it: the same 2 Grip, and
+     whether it costs anything is a thing the player can read off the other lane. A charge that
+     fired either way would be a flat tax on using the ability. */
+  const safeTake = { ...stTake, boardP: [mover, partner, null] }
+  ok(!E.laneBlows(safeTake, 1), 'the partner is coming off, so this fixture cannot test the free case')
+  eq(E.resolve(safeTake, new E.RNG(3)).pump,
+    E.resolve({ ...safeTake, order: [0, 1] }, new E.RNG(3)).pump,
+    'the chain charges a pump even when the hand sent first holds on, so it is a flat tax and not a condition on the board')
+
+  /* AND IT IS CHARGED WHATEVER THIS LANE THEN DOES. The hang already happened — a rule that
+     refunded it on a miss would make taking the chain free on exactly the turns it does not
+     pay, which is the same discount wearing a different shape. */
+  const hard = H(flakeName, mover.power + E.CHAIN_GIVE + 3)
+  const missTake = { ...base, boardH: [hard, other, null], boardP: [mover, doomed, null], order: [1, 0] }
+  const missFirst = { ...missTake, order: [0, 1] }
+  const mT = E.resolve(missTake, new E.RNG(3)), mF = E.resolve(missFirst, new E.RNG(3))
+  ok(mT.boardH[0] && mF.boardH[0], 'the fixture is clearing, so it is not measuring a miss')
+  eq(mT.pump - mF.pump, E.CHAIN_HANG,
+    'the hang is refunded when the lane misses, so taking the chain costs nothing on the turns it does not pay')
+
+  /* THE PREVIEW PROMISES THE PUMP IT CHARGES — UX-4. The flag comes first because `previewPump`
+     reads it off `LanePreview` rather than recomputing the predicate: one answer, not two, and
+     the two failures are told apart rather than both arriving as a pump disagreement. */
+  ok(E.previewLane(stTake, 0).hang && !E.previewLane(stFirst, 0).hang,
+    'the preview does not report which lane is paying the hang, so the screen cannot show the player what is charging them')
+  ok(!E.previewLane(safeTake, 0).hang,
+    'the preview charges the hang against a hand that holds on, so it promises a pump the resolution does not take')
+  ok(!E.previewLane(stTake, 1).hang,
+    'a lane with no Chained hold is reported as hanging, so the pump lands on the wrong lane')
+  for (const st of [stTake, stFirst, safeTake, missTake, missFirst]) {
+    const lanes = [0, 1, 2].map(i => E.previewLane(st, i))
+    eq(E.previewPump(st, lanes), E.resolve(st, new E.RNG(3)).pump,
+      'the preview and the resolution disagree on what the chain costs')
+  }
+
+  /* AN EMPTY HAND CANNOT GO FIRST. `laneAt` indexes all three lanes whether or not anything is
+     in them, so before this the chain gave against an empty lane — 2.4% of every give, 0.8% of
+     them with no hold there at all. Free was harmless; charging a pump to hang and wait for a
+     hand that is not on the wall is not. */
+  const at = arr => new Map(arr.map((l, k) => [l, k]))
+  const hold = H(flakeName, 6)
+  ok(E.chainGive(hold, 0, at([1, 0, 2]), [null, partner, null]),
+    'the chain does not give with the other hand carded and resolving first, so the rule is gone')
+  ok(!E.chainGive(hold, 0, at([1, 0, 2]), [null, null, null]),
+    'an EMPTY hand lane counts as having gone first, so the flake gives — and now charges a pump — for a hand that is not on the wall')
+
+  /* THE POLICY PRICES IT, which is the whole ticket: it took the discount on 99.7% of the turns
+     it was offered because the discount was free. It buys the 2 Grip only where the 2 Grip
+     converts THIS lane. Both hand lanes are carded and the hand is empty, so the fill loop has
+     nothing to do and the ordering clause is the only thing under test; `moveUsed` is set
+     because a signature that reads a hold would move the span this decision is made against. */
+  const play = (grip, c = mover) => E.autoPlay({ ...base, moveUsed: true,
+    boardH: [H(flakeName, grip), other, null], boardP: [c, partner, null],
+    piles: { ...base.piles, hand: [] } }, new E.RNG(3))
+  eq(play(mover.power + E.CHAIN_GIVE).order[0], 1,
+    'the policy will not send the other hand first even where the chain turns a miss into a clear — ENG-25, and every measurement through it prices the ability at zero')
+  ok(play(mover.power).order[0] !== 1,
+    'the policy pays a pump for a chain on a hold it already clears, which is the free discount this ticket priced')
+  ok(play(mover.power + E.CHAIN_GIVE + 4).order[0] !== 1,
+    'the policy pays a pump for a chain on a hold it misses anyway, so the price buys nothing')
+  ok(play(mover.power + E.CHAIN_GIVE, { ...mover, fx: 'commit' }).order[0] !== 1,
+    'the policy buys 2 Grip for a DYNO, whose clear is the roll and never the target, so the pump is spent on a number the resolution does not consult')
+
+  ok(E.KEYWORDS.some(k => k.name === 'Chained' && /pump/.test(k.text)),
+    'the glossary still describes Chained as a free 2 Grip, so the player is not told what it costs')
+  ok(/pump/.test(E.HOLD_STATS[flakeName].text),
+    'the flake on the board does not say it costs a pump, and a price the player only sees in the total is not a decision')
 })
 
 test('CARD-21: the lane carries the combination, because nothing else lasts', () => {

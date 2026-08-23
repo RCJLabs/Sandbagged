@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.81 — the band is re-pinned 60 -> 62 and the known ending 76.7 -> 81, agreed
+// SANDBAGGED v10.82 — HOLD-3: going second costs a pump, so the chain is a decision
 //   with Evan on 2026-08-22 and moved together because they share a lever. ARCH-1 is the whole
 //   move: five signature moves lifted the game +3.0 while TIGHTENING the roster (floor 8.3 to
 //   10.8, spread 1.60x to 1.35x), so it is a game that got better, not a leak. No rule changed.
@@ -36,7 +36,7 @@ import {
   jit, leaveEventStep, leaveShopStep, lineCanVary, loadGame, loadoutDeck, mapCliff,
   mapContours, mapPoints, mutMods, newRun, nextPhase, phaseOf, phaseSummary,
   pickGearStep, pileFromHand, playBonusStep, postOpen, postTalk, powerAgainst, repliesFor,
-  previewLane, previewPump, priceOf, recordRun, rerollCost, rerollStep, resolve,
+  CHAIN_HANG, previewLane, previewPump, priceOf, recordRun, rerollCost, rerollStep, resolve,
   rollEvent, roughPath, saveGame, seedCode, seqById, seqNeedText, SEQ_GRACE, sigById,
   slotSummary, slotsUsed, spawn, specFromEstablished, specOf, startBurn, stockShop, windowNear, windowOf,
   matched, MATCH_SHED,
@@ -1572,7 +1572,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.81 · RCJ Labs</div>
+          <div className="sfoot">v10.82 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1801,7 +1801,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.81 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.82 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -3974,9 +3974,16 @@ export default function App() {
                 const pv = lanes![i]
                 if (!pv.card) return pv.biteToPump
                   ? <div className="pv bad">+{pv.biteToPump} PUMP</div> : null
-                return pv.clears
-                  ? <div className="pv good">WORKS IT</div>
-                  : <div className="pv mid">{pv.gripLeft} GRIP LEFT</div>
+                /* HOLD-3: the chain is 2 Grip, and a pump if the hand you sent first comes
+                   off. The grip half is already in `gripLeft`; without this line the pump half
+                   only ever showed up in the committed total, which is a price the player pays
+                   without being told which lane charged it or why. */
+                return <>
+                  {pv.clears
+                    ? <div className="pv good">WORKS IT</div>
+                    : <div className="pv mid">{pv.gripLeft} GRIP LEFT</div>}
+                  {pv.hang && <div className="pv bad">HANGING +{CHAIN_HANG}</div>}
+                </>
               })()}
             </div>
           )

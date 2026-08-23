@@ -910,7 +910,7 @@ export const HOLD_STATS: Record<string, HoldDef> = {
   'sloper':      { bite: 2, grip: 6, ability: 'Greasy',     text: '−1 Power without feet. Sweats up if you leave it.' },
   'pinch':       { bite: 3, grip: 5, ability: 'Squeeze',    text: '+1 Bite while both hands are busy.' },
   'pocket':      { bite: 4, grip: 4, ability: 'Two-finger', text: 'Ignores Support.' },
-  'flake':       { bite: 3, grip: 6, ability: 'Chained',    text: 'Let the other hand go first and it gives 2 Grip.' },
+  'flake':       { bite: 3, grip: 6, ability: 'Chained',    text: 'Let the other hand go first: 2 Grip. If it comes off, +1 pump.' },
   'crux':        { bite: 4, grip: 8, ability: 'Committing', text: 'Needs Power 2+. +1 hang tax.' },
 }
 /* ROUTE-10: the crux's character by style. `label` is what it reads as on the
@@ -4976,6 +4976,67 @@ export const SETUP_GIVE = 1
     on a proxy for it. */
 export const SETUP_RATE = 0.87
 export const CHAIN_GIVE = 2
+/* HOLD-3. THE CHAIN HAD NO COST, AND THAT WAS MEASURED, NOT ARGUED. HOLD-2 shipped saying the
+   price of going second was the rule that already existed — the lane you send first may blow
+   before the second resolves, taking its opposition with it — and left an honest limit in its
+   own row: the policy takes the discount on 99.7% of the turns it is offered, so as measured
+   it is a discount with a skill floor rather than a dilemma. This ticket measured that limit
+   instead of inferring it. Every turn where the policy reorders, resolved TWICE from a forked
+   RNG, over 84,346 campaign turns and 7,255 decisions:
+
+     the lane sent first BLEW                        69.0% of decisions
+     ...and it changed how many cards you lost         0.0%
+     taking the chain was better                      11.0%
+     DECLINING was better                              0.3%   (n=22, every one an `opposes` card)
+     the two orders produced an identical turn        88.7%
+
+   THE 0.0% IS THE FINDING AND IT IS STRUCTURAL, not a sample. Whether a lane blows is Contact
+   against Bite (`laneBlows`), and neither term reads the live board — `biteAgainst` takes the
+   committed `boardP`, which is fixed for the whole lane loop. ENG-18's note says so in as many
+   words, because that is what lets the preview resolve in one pass without recursion. So the
+   lane that goes first blows in EITHER order. Nothing is lost by sending it. And `weight`
+   reads the committed board too (ENG-21, deliberately), so HOLD-2's row naming `weight` as
+   part of the cost is wrong on the code — the only order-sensitive term in `powerAgainst` is
+   opposition, and it flips the turn on 0.3% of decisions.
+
+   A POLICY THAT PRICED THAT WOULD BE PRICING NOTHING — 0.3% of decisions is 0.026% of turns,
+   and a branch that fires there is the dead branch GUARD-9's header exists to complain about.
+   SO THE COST IS BUILT, out of the condition HOLD-2 named and could not make pay: the hand you
+   sent first comes off. It fires on 69.0% of the turns the chain gives, it is deterministic and
+   order-independent, `previewLane` already computes it for every lane, and the player reads it
+   off the board as "This burns out" before committing. You let the other hand go, it came off,
+   and you are hanging there alone: CHAIN_HANG pump.
+
+   THAT IS WHAT MAKES IT A DECISION. The 88.7% of turns where the order changed nothing become
+   turns where taking it can only cost, and the policy's answer splits instead of always taking.
+   Two things the player can now read and route around rather than one.
+
+   SEVEN ARMS AT n=3000, because the first version of this was a flat pump and the choice
+   between them is not visible in a single number (band · then the ladder floor and spread):
+
+     free chain, blind policy (v10.81)   62.0    floor 10.5   spread 1.36x
+     flat pump, blind policy             58.6
+     flat pump, policy prices it         60.7    floor  9.2   spread 1.41x
+     flat pump, window widened           60.7
+     flat pump, window narrowed          60.8
+     flat pump, pump-headroom gate       60.6    floor  9.2   spread 1.41x
+     flat pump, give raised to 3         61.1    floor  8.8   spread 1.51x
+     SHIPPED: charged on the blow-out    61.0    floor  9.2   spread 1.50x
+
+   THE POLICY IS NOT THE LEVER AND THAT IS FOUR MEASUREMENTS SAYING SO: three windows and a
+   headroom gate all land inside 0.2 of each other. What is worth 2.1 points is HAVING a rule
+   rather than always taking; which rule is below what the band can resolve. The price is the
+   lever, and raising the give to pay for it is worse than either (floor 8.8).
+
+   THE LAST TWO ARMS ARE STATISTICALLY THE SAME BAND AND THIS ONE WAS CHOSEN ON DESIGN, WHICH
+   IS SAID HERE RATHER THAN DRESSED UP AS A MEASUREMENT: 61.0 against 60.7 is 0.3 at an SE of
+   0.9, and every per-climber gap between them is inside one SE. The flat pump is a tax on using
+   the ability; this is a condition on the board that the player can read and route around, which
+   is what the seventh set is for. It also makes HOLD-2's stated cost TRUE rather than replacing
+   it. The cost of the choice is the spread, 1.41x against 1.50x — inside its guard either way,
+   both of them wider than the 1.36x this started at, and if the roster tightens again it is the
+   first thing to re-measure. */
+export const CHAIN_HANG = 1
 export const OPPOSE_ALONE = -2
 export const OPPOSE_PAIR = 2
 /* CARD-20. LAUNCH — the combination that spans a turn. The row asked for a combination that
@@ -5543,7 +5604,24 @@ export function resolve(s: GameState, rng: RNG): GameState {
       log.push(`${hold.name}: too committing for ${card.name}.`)
     }
     // HOLD-2: it gives to whoever let the other hand go first
-    const target = Math.max(0, gripFor(s, hold) - (chainGive(hold, i, laneAt) ? CHAIN_GIVE : 0))
+    /* HOLD-3: and going second COSTS, because until this ticket it did not — measured, the
+       order changed how many cards you lost on 0.0% of 7,255 decisions, so there was nothing
+       to trade against. You hung here while the other hand moved; the hang is charged whatever
+       this lane then does, because it already happened. Read off the COMMITTED board through
+       the same one predicate `previewLane` calls, so the pump the player was shown is the pump
+       they pay — see `previewPump`, which charges it off `LanePreview.chained`. */
+    const gave = chainGive(hold, i, laneAt, sMove.boardP)
+    /* AND THE HANG IS CHARGED WHEN THE HAND YOU SENT FIRST COMES OFF, which is the condition
+       HOLD-2 named and could not make load-bearing. `laneBlows` off the COMMITTED board, so it
+       is the same answer in either order and the same one `previewLane` already computes for
+       every lane — one function, ENG-19's whole point, and the player reads it as "This burns
+       out" before committing. */
+    const hung = gave && laneBlows(sMove, 1 - i)
+    if (hung) {
+      pump += CHAIN_HANG
+      log.push(`The other hand goes. Hanging on the ${hold.name} alone. +${CHAIN_HANG} pump.`)
+    }
+    const target = Math.max(0, gripFor(s, hold) - (gave ? CHAIN_GIVE : 0))
     const snapped = card.fx === 'snap' && target <= 3
     // the commitment check: rolled from the run RNG, so a seed still replays
     const isDyno = card.fx === 'commit'
@@ -6191,10 +6269,37 @@ export function autoPlay(s: GameState, rng: RNG, shakeAt: number = SHAKE_AT,
       : false
     if (wantsIt) st = signatureStep(st)
   }
+  /* HOLD-3: AND NOW IT HAS TO PRICE IT. The clause above sent the other hand first every single
+     time, because before this ticket going second was free — and that is what made the take-rate
+     99.7% and the ability a discount rather than a decision. It pays CHAIN_HANG pump now, so the
+     policy buys the 2 Grip only where the 2 Grip CONVERTS this lane: a hold it does not already
+     clear and does clear with the give. Measured, that is 11% of the decisions it is offered,
+     against 89% where the two orders produce an identical turn and the pump would buy nothing.
+     Read through `seen`, not `gripFor`, because INFO-2 made this policy see the span the screen
+     shows rather than the truth behind it, and a chain decision is exactly the kind that would
+     otherwise be made clairvoyantly. Against the HIGH edge on both sides, so what it buys is a
+     SURE clear — from a miss or from a coin flip — never a better gamble.
+     IT DOES NOT WEIGH WHETHER THE HAND IT SENDS FIRST WILL BLOW, and that is deliberate: the
+     chain is free when that hand holds, so declining there would forfeit a hold for nothing,
+     and when it blows the pump is the price of a hold it would otherwise miss. Either way the
+     conversion is the question. Measured, the four policy variants tried here land inside 0.2
+     of one another, so this is not where the points are.
+     TWO THINGS IT DELIBERATELY DOES NOT MODEL, both stated rather than hidden:
+       · a dyno, whose clear is the roll and never the target, so the give is worth nothing
+         there — excluded outright rather than left to score as if it converted something;
+       · Snap, which clears a target of 3 or less outright, so the give converts it over a
+         grip of 4 or 5 by a rule this power comparison cannot see. Two cards of 248. Modelling
+         it would add a branch that fires too rarely for any measurement here to resolve, which
+         is the dead branch HOLD-2 found in its own code and GUARD-9's header complains about. */
   const chainedLane = [0, 1].filter(i => st.boardH[i] && abilityOf(st.boardH[i]!) === 'Chained')
   if (chainedLane.length === 1) {
     const c = chainedLane[0]
-    st = { ...st, order: [1 - c, c, 2] }
+    const hold = st.boardH[c]!, card = st.boardP[c]
+    const shown = seen(hold)
+    const pow = card ? powerAgainst(st, card, hold, c, st.boardP) : 0
+    const converts = !!card && !!st.boardP[1 - c] && card.fx !== 'commit'
+      && pow < shown.hi && pow >= shown.hi - CHAIN_GIVE
+    if (converts) st = { ...st, order: [1 - c, c, 2] }
   }
   // bonuses last, once we know which lanes need help. The POLICY lives here —
   // which card, which lane, whether it is worth the pump — but the RULES are
@@ -6347,6 +6452,11 @@ export type LanePreview = {
   hold: boolean; clears: boolean; gripLeft: number
   card: boolean; blows: boolean; contactLeft: number
   biteToPump: number
+  /** HOLD-3: this lane took the chain AND the hand it sent first comes off, so it pays
+      CHAIN_HANG. Named for the charge and not for the chain, because the 2 Grip and the pump
+      fire on different conditions and a field named for one of them would drift into the other.
+      `previewPump` charges it from here rather than recomputing — UX-4, the ENG-19 shape. */
+  hang: boolean
 }
 /* ENG-19. Whether a lane comes off was written out twice — once for the lane
    itself and once inside the simulation of the lanes before it — and two
@@ -6355,7 +6465,8 @@ export type LanePreview = {
    `previewLane`, for the reason ENG-19 made `laneBlows` one function: two copies of a rule
    drift, and this one decides a number the player is shown before committing. Hands only —
    the chain is about the other HAND having gone, and the feet lane is not a hand. */
-export function chainGive(hold: Hold, i: number, laneAt: Map<number, number>): boolean {
+export function chainGive(hold: Hold, i: number, laneAt: Map<number, number>,
+  boardP: (Card | null)[]): boolean {
   if (abilityOf(hold) !== 'Chained') return false
   /* ONE mechanism, and it is this line: the chain is about the other HAND, so the feet lane
      has no partner and can neither grant it nor claim it. Written as an explicit partner
@@ -6364,8 +6475,20 @@ export function chainGive(hold: Hold, i: number, laneAt: Map<number, number>): b
      break, so one of them could never have been tested. A branch that cannot fail is the
      shape GUARD-9's header exists to complain about. */
   const partner = i === 0 ? 1 : i === 1 ? 0 : -1
-  const mine = laneAt.get(i), other = laneAt.get(partner)
-  return mine !== undefined && other !== undefined && other < mine
+  /* HOLD-3: AND THE OTHER HAND HAS TO BE ON THE WALL TO GO FIRST. `laneAt` indexes all three
+     lanes whether or not anything is in them, so an EMPTY hand lane counted as having gone and
+     the chain gave for free — measured at 2.4% of every give, 0.8% of them with no hold there
+     at all. Harmless while the give was free; not harmless now that it charges a pump for a
+     hang, because there is nothing to hang and wait for. Reads the COMMITTED board, not the
+     live one: a hand that moves and then blows still moved, and the committed board is the one
+     `weight` and `matched` already read (ENG-21), so this stays exact in the preview without
+     the preview having to simulate anything.
+     `went` ALSO CARRIES THE FEET LANE, which used to be an `other !== undefined` on the line
+     below. Two ways of saying "there is no partner here" would have short-circuited each other
+     and left one untestable — the redundancy this function's own header was written about. */
+  const went = partner >= 0 && !!boardP[partner]
+  const mine = laneAt.get(i)!, other = laneAt.get(partner)!
+  return went && other < mine
 }
 export function laneBlows(s: GameState, i: number): boolean {
   const c = s.boardP[i], h = s.boardH[i]
@@ -6379,7 +6502,7 @@ export function previewLane(s0: GameState, i: number): LanePreview {
   const { s, noRestLane } = afterMove(s0)
   const hold = s.boardH[i], card = s.boardP[i]
   const blank: LanePreview = { hold: false, clears: false, gripLeft: 0,
-    card: false, blows: false, contactLeft: 0, biteToPump: 0 }
+    card: false, blows: false, contactLeft: 0, biteToPump: 0, hang: false }
   /* ENG-18: resolve reads the board as it stands, so a lane that comes off
      before this one is no longer opposing it. Whether a lane blows depends on
      Contact against Bite and never on opposition, so this can be worked out
@@ -6413,8 +6536,9 @@ export function previewLane(s0: GameState, i: number): LanePreview {
   /* HOLD-2: the same order array the loop above already built, through the same predicate
      `resolve` uses — so what the player is shown before committing is what happens. */
   const laneAtP = new Map(order.map((l, k) => [l, k]))
+  const gave = chainGive(hold, i, laneAtP, s.boardP)
   const target = Math.max(0, gripFor(s, g0 === hold.grip ? hold : { ...hold, grip: g0 })
-    - (chainGive(hold, i, laneAtP) ? CHAIN_GIVE : 0))
+    - (gave ? CHAIN_GIVE : 0))
   const snapped = card.fx === 'snap' && target <= 3
   const isDyno = card.fx === 'commit'
   const gripLeft = snapped ? 0 : target - power
@@ -6425,7 +6549,7 @@ export function previewLane(s0: GameState, i: number): LanePreview {
   return { hold: true, clears: isDyno ? false : gripLeft <= 0,
     stick: isDyno ? stickChance(s) : undefined,
     gripLeft: isDyno ? 0 : Math.max(0, gripLeft),
-    card: true, blows, contactLeft: Math.max(0, contactLeft), biteToPump: 0 }
+    card: true, blows, contactLeft: Math.max(0, contactLeft), biteToPump: 0, hang: gave && laneBlows(s, 1 - i) }
 }
 /** Predicted pump after COMMIT — rests, unanswered lanes, and the clock.
     Takes precomputed lanes so a render does not recompute them per call. */
@@ -6448,6 +6572,11 @@ export function previewPump(s0: GameState, lanes?: LanePreview[]): number {
   for (let i = 0; i < 3; i++) {
     const p = L[i]
     pump += p.biteToPump
+    /* HOLD-3: the hang the chain charges. INSIDE this loop and not above it, because that is
+       where `resolve` charges it — the sheds above both loops clamp at zero and anything that
+       ADDS pump has to sit on the same side of them in both functions or the two disagree by
+       however far the shed went negative. LANE-1 measured that gap at 34 of 1750 turns. */
+    if (p.hang) pump += CHAIN_HANG
     if (p.clears) {
       cleared++
       /* working a jug sheds a pump — Rest fires on the clear, not on contact.
@@ -7415,9 +7544,10 @@ export const KEYWORDS: { name: string; text: string }[] = [
     + 'hold that comes up in that lane arrives 1 Grip easier. The lane remembers it, not the '
     + 'card — so you collect it by climbing back into the same lane.' },
   { name: 'Chained', text: 'A flake gives ground to whoever lets the other hand go first: '
-    + 'resolve it second and it is 2 Grip easier. The catch is the rule that already exists — '
-    + 'a hand that comes off stops holding for the other one, so the lane you send first may '
-    + 'not be there when the second one goes.' },
+    + 'resolve it second and it is 2 Grip easier. What it costs is on the board before you '
+    + 'commit — if the hand you send first is coming off, you are left hanging there alone and '
+    + 'it is a pump. So read the other lane: a hand that holds makes the chain free, and a hand '
+    + 'that burns out makes it a trade.' },
   { name: 'Matching', text: 'Both hands on the same kind of hold, with a card on each. You have '
     + 'worked the move once, so you get a breath — shed 1 pump. But you are square to the wall, '
     + 'and opposition needs something to pull against: while you are matched, a sideways move is '

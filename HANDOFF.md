@@ -3,7 +3,7 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.81.** `npm run check` is 205/205 core + 119/119 kept;
+**State at the time of writing: v10.82.** `npm run check` is 206/206 core + 119/119 kept;
 `npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
@@ -108,7 +108,20 @@ re-pinned rather than paid back because the same ticket left the roster **health
 8.3 → 10.8, spread 1.60x → 1.35x — so buying the points back would have meant weakening the five
 moves that produced the tightest roster this project has measured.
 
-Margins now: band 0.1 of 2.0, ending 0.4 of 5.0.
+Margins after that re-pin were band 0.1 of 2.0 and ending 0.4 of 5.0. **HOLD-3 (v10.82) spent
+1.0 of the band's headroom in the downward direction** — 61.0 against 62 — by putting a price on
+an ability that had been free. Margins now: band **1.0 of 2.0**, ending **0.3 of 5.0**.
+
+## And read this before the next roster-wide change
+
+**HOLD-3 widened the spread and ARCH-1 had just narrowed it.** Floor 10.5 → 9.2, spread 1.36x →
+1.50x, both inside their guards (`ARCH_FLOOR` is 5) and the floor's move is 1.7 SE, which is
+under two and therefore not a measurement. But the direction is the one v10.79 was praised for
+reversing, and it was paid knowingly: seven arms at n=3000 said the policy is not the lever
+(three windows and a headroom gate inside 0.2 of each other) and that raising the give to pay
+for the price is worse still (floor 8.8). **If a later ticket tightens the roster, re-measure
+the flake first** — it is the newest thing pulling the other way, and `CHAIN_HANG` is one
+constant.
 
 ## What is open
 
