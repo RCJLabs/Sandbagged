@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.83 — ENG-9: 412 more lines of content out of the engine, nothing else
+// SANDBAGGED v10.84 — GUARD-11: the suite no longer rides an undeclared dependency
 //   with Evan on 2026-08-22 and moved together because they share a lever. ARCH-1 is the whole
 //   move: five signature moves lifted the game +3.0 while TIGHTENING the roster (floor 8.3 to
 //   10.8, spread 1.60x to 1.35x), so it is a game that got better, not a leak. No rule changed.
@@ -1572,7 +1572,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.83 · RCJ Labs</div>
+          <div className="sfoot">v10.84 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1801,7 +1801,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.83 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.84 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )

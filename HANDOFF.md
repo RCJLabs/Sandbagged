@@ -3,7 +3,7 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.83.** `npm run check` is 206/206 core + 119/119 kept;
+**State at the time of writing: v10.84.** `npm run check` is 207/207 core + 119/119 kept;
 `npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
@@ -122,6 +122,17 @@ reversing, and it was paid knowingly: seven arms at n=3000 said the policy is no
 for the price is worse still (floor 8.8). **If a later ticket tightens the roster, re-measure
 the flake first** — it is the newest thing pulling the other way, and `CHAIN_HANG` is one
 constant.
+
+## The measurements are reproducible now, and they were not
+
+Until v10.84 **`esbuild` was in neither dependency list** and it is imported by `sim/run.mjs`,
+`sim/test-core.mjs` and `sim/test.mjs` — so `npm run check` and every number in `band.mjs` rode
+a copy that resolved only because Vite happens to depend on it. `playwright-core` was undeclared
+too, which is why `npm run perf` could not be run at all. Both are declared, and **GUARD-11
+checks every bare specifier this repo imports** against the manifest, so it cannot come back.
+
+If you add a tool to a script, add it to `package.json` in the same commit. The guard will tell
+you, but it tells you at `npm run check`, not at the moment you write the import.
 
 ## If you pick up ENG-9
 

@@ -9,7 +9,8 @@
  *   node sim/test-core.mjs
  */
 import { build } from 'esbuild'
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
+import { builtinModules } from 'node:module'
 import { gzipSync } from 'node:zlib'
 import { unlinkSync } from 'node:fs'
 
@@ -8212,6 +8213,66 @@ test('BAL-18: the climber ladder cannot move a version at a time either', () => 
     `the reproduction tolerance is ${ARCH_TOL} and the ledger's own widest single step is `
     + `${widest.toFixed(1)} (${widestWho}) — a window that wide cannot tell a stale ladder from a `
     + 'fresh one')
+})
+test('GUARD-11: nothing this repo runs rides an undeclared dependency', () => {
+  /* MEASURED BEFORE THIS WAS WRITTEN, and it was worse than the row that asked for it said.
+     `esbuild` was in neither dependency list, and it is imported by `sim/run.mjs`,
+     `sim/test-core.mjs` and `sim/test.mjs` — so it is not only the band measurement that
+     rides it, it is `npm run check` itself, the gate every release goes through. It resolved
+     only because Vite happens to depend on it: `npm ls esbuild` showed exactly one copy, a
+     child of vite@6.4.3, with no direct edge. `playwright-core` was undeclared the same way
+     and did not resolve at all, which is why `npm run perf` could not be run — PERF-2 pins
+     the build size and tells you to re-measure with a command that threw ERR_MODULE_NOT_FOUND.
+
+     THE FAILURE MODE IS NOT SUBTLE AND THAT IS THE POINT: the day Vite drops esbuild, or a
+     clean checkout resolves a different tree, every number in `band.mjs` becomes unreproducible
+     and the suite stops running — and the first symptom is a module-not-found in a file nobody
+     was editing. This is the stale-instrument class NARR-22 and BAL-18 both had to clean up,
+     one level further down: not a number that went stale, the apparatus that produces them.
+
+     WHAT IS CHECKED is every bare specifier imported anywhere this repo owns, against
+     dependencies + devDependencies + node's own builtin list. Not a curated list of files or
+     of packages — either would be a guard that passes because of what it was pointed away
+     from. `sim/_*.mjs` is excluded and only that: those are gitignored scratch probes, they
+     are not part of a checkout, and a guard that failed on somebody's throwaway file would be
+     turned off within a week. */
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
+  const declared = new Set([...Object.keys(pkg.dependencies ?? {}),
+    ...Object.keys(pkg.devDependencies ?? {}), ...Object.keys(pkg.optionalDependencies ?? {})])
+  const builtin = new Set(builtinModules)
+  const files = []
+  const walk = (dir) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (['node_modules', '.git', 'dist', 'docs', 'ship'].includes(e.name)) continue
+      const p = `${dir}/${e.name}`
+      if (e.isDirectory()) walk(p)
+      // sim/_*.mjs are gitignored scratch probes and are not part of a checkout
+      else if (/\.(mjs|js|ts|tsx)$/.test(e.name) && !e.name.startsWith('_')) files.push(p)
+    }
+  }
+  walk('.')
+  ok(files.length > 8, `only ${files.length} source files found, so this guard is checking almost nothing`)
+  /* The package a specifier belongs to, which is NOT the specifier: `react-dom/client` is
+     `react-dom`, and a scope keeps two segments. Getting this wrong makes the guard fail on
+     every deep import, which is how it would end up loosened into uselessness. */
+  const pkgOf = (spec) => spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0]
+  const missing = []
+  for (const f of files) {
+    const src = stripComments(readFileSync(f, 'utf8'))
+    for (const m of src.matchAll(/(?:^|\n)\s*(?:import[^'"\n]*?from\s*|import\s*)['"]([^'"]+)['"]/g)) {
+      const spec = m[1]
+      if (spec.startsWith('.') || spec.startsWith('/')) continue
+      const bare = spec.startsWith('node:') ? spec.slice(5) : spec
+      if (builtin.has(bare) || builtin.has(spec)) continue
+      if (!declared.has(pkgOf(spec))) missing.push(`${pkgOf(spec)} (imported by ${f})`)
+    }
+  }
+  eq(missing.length, 0,
+    `imported but not in package.json, so a clean checkout resolves it by luck or not at all: ${[...new Set(missing)].join(', ')}`)
+  /* AND THE TWO THAT STARTED THIS ARE NAMED, because the check above passes on an empty repo
+     and this project has shipped a guard that passed for the wrong reason before. */
+  for (const n of ['esbuild', 'playwright-core'])
+    ok(declared.has(n), `${n} is undeclared again — it is imported by ${n === 'esbuild' ? 'the suite you are reading' : 'scripts/perf.mjs'}`)
 })
 test('GUARD-8: no guard reads a window it cannot prove is the right one', () => {
   /* This is the ticket. GUARD-3 found and fixed unchecked-anchor windows; GUARD-8 found
