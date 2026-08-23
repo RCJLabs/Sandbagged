@@ -239,7 +239,9 @@ export const BOONS: Boon[] = [
    list. Same verdict, same reason, for `CONTENT: DIALOGUE`, whose 602 lines are `TALKS`
    wrapped in `talkOpen`, `availableTalk`, `postTalk`, `metCount` and `loreFor` — all of
    which need `GameState`. */
-import type { RouteSpec, GameEvent } from './engine'
+import type { RouteSpec, GameEvent, Signature, Partner, Gear, Consumable, Tweak, Line,
+  HoldDef, CurseCause } from './engine'
+import type { StyleKey } from './types'
 
 export const ROUTES: RouteSpec[] = [
   { name: 'Warm-Up Rail', grade: 0, style: 'jug haul', clear: 5, crux: 0, feet: 'easy',
@@ -716,4 +718,447 @@ export const EVENTS: GameEvent[] = [
       { label: 'Work it free', outcome: { text: 'Rope, a rack of nuts, and a folded page.', journal: 0, card: 'Wired Nut' } },
       { label: 'Leave it where it is', outcome: { text: 'Whoever put it there had reasons.', psyche: 1, xp: 6 } },
     ] },
+]
+
+
+/* ============================ ENG-9, THIRD SECTION ============================
+   The same rule as the two above and no new one: TYPE PLUS LITERAL, nothing else. Eighteen
+   blocks, 412 lines, and every function that reads any of them stayed in engine.ts —
+   `abilityOf`, `sigById`, `gearById`, `consumableById`, `partnerFor`, `tweakGrip`,
+   `claimCurse`. Re-exported by engine.ts, so no caller changed.
+
+   MEASURED BEFORE STARTING, the way the first pass was: across these lines there are
+   fourteen injection anchors and one guard window keyed to engine.ts by path — under three
+   references per 100 lines, the same density the first pass found and paid. Every one fails
+   loudly rather than silently: `region()` throws instead of returning a bad window (GUARD-8)
+   and GUARD-9 refuses an injection whose anchor matches nothing, so the suite names each one.
+
+   TWO BLOCKS WERE CUT AND PUT BACK, and they are the point of this section rather than a
+   footnote. ARCHETYPES (98 lines) and ACT1_MAP (11) are literal arrays that read as pure
+   content and are built by FACTORIES — `L(...)` for a loadout, and `C`/`CAMP`/`EVT`/`FA`/
+   `PROJ`/`SHOP` for map nodes. They passed a screen that looked for lowercase function calls
+   because a bare capital identifier is not one. Moving them moves the factories, which is
+   precisely what killed v6.6, and the compiler said so within a minute of the cut.
+
+   WHAT ELSE DID NOT COME:
+     · CARDS — 389 lines, a `Record` filled by `mv(...)`. The original canary, still valid.
+     · TALKS — the CONST is pure literal and would move cleanly, and it stayed anyway. The
+       ENG-9 guard names it as a canary beside CARDS, and quietly re-pointing a canary to make
+       a move pass is how a guard stops meaning anything. Worth 141 lines; needs an argument
+       with Evan, not a commit.
+     · FONT, PRICE, MAP_SWAP_IN, DEEDS, CLIP_STOCK, MOVE_GIFTS, ACTS, CREEP, DAILY_GOALS —
+       literals with arrow functions or GameState reads inside them.
+   ============================================================================= */
+
+export const HOLD_STATS: Record<string, HoldDef> = {
+  'jug':         { bite: 2, grip: 3, ability: 'Rest',       text: 'Answer it and shed 1 pump.' },
+  'crimp':       { bite: 3, grip: 5, ability: 'Sharp',      text: 'Blows a card → +1 pump.' },
+  'sharp crimp': { bite: 4, grip: 5, ability: 'Razor',      text: 'Blows a card → burn 1 from hand.' },
+  'sloper':      { bite: 2, grip: 6, ability: 'Greasy',     text: '−1 Power without feet. Sweats up if you leave it.' },
+  'pinch':       { bite: 3, grip: 5, ability: 'Squeeze',    text: '+1 Bite while both hands are busy.' },
+  'pocket':      { bite: 4, grip: 4, ability: 'Two-finger', text: 'Ignores Support.' },
+  'flake':       { bite: 3, grip: 6, ability: 'Chained',    text: 'Let the other hand go first: 2 Grip. If it comes off, +1 pump.' },
+  'crux':        { bite: 4, grip: 8, ability: 'Committing', text: 'Needs Power 2+. +1 hang tax.' },
+}
+export const FEET_STATS: Record<string, HoldDef> = {
+  /* FEET-1: this row was `ability: '', text: ''` — the ONLY thing on the board that said
+     nothing at all, in a table where every hold and every other foothold has an ability and
+     a sentence. It is 22.6% of the footholds a campaign meets.
+
+     And it is the answer to the lane's real problem. The choice of foot is genuinely a trade
+     already: 38 foot cards, 25 distinct power/contact/support profiles and not one pair where
+     either card dominates the other on all three. But SUPPORT ONLY EVER TAKES THE VALUES 1
+     AND 2 — every powerful foot is Support 1 and every Support 2 foot is weak — so it is the
+     same binary trade every turn. And the wall can only ever push that axis DOWN: `Featureless`
+     zeroes it on 28.9% of turns, one weather and two route windows subtract from it, and the
+     single positive `dSupport` in the game is a pair of shoes you can buy. Nothing the route
+     does ever makes your feet matter MORE, so the trade never inverts — it only gets cancelled.
+     `Solid` is the first upward pressure, so some routes are footwork routes and the choice
+     changes with the rock instead of being a constant. */
+  'foothold':   { bite: 2, grip: 2, ability: 'Solid',      text: 'A settled foot pays +1 Support.' },
+  'smear edge': { bite: 2, grip: 3, ability: 'Slick',      text: '−1 Power against it.' },
+  'chip':       { bite: 3, grip: 3, ability: 'Sharp',      text: 'Blows a card → +1 pump.' },
+  'blank':      { bite: 2, grip: 4, ability: 'Featureless', text: 'This lane grants no Support.' },
+}
+export const CRUX_CHAR: Record<StyleKey, { label: string; dBite: number }> = {
+  'crimp ladder': { label: 'the razor', dBite: 0 },
+  'slab':         { label: 'the blank', dBite: 0 },
+  'compression':  { label: 'the squeeze', dBite: 0 },
+  'power':        { label: 'the throw', dBite: 0 },
+  'mixed':        { label: 'the crux', dBite: 0 },
+  'jug haul':     { label: 'the crux', dBite: 0 },
+}
+export const SIGNATURES: Signature[] = [
+  /* ROUTE-15: the first four lines in the book had no named feature, which is the sameness
+     ROUTE-5 set out to kill — you meet them before you meet anything else. STAT-LESS on
+     purpose: they are TAGGED onto a hold that is already there rather than replacing one
+     (see the tagger in buildRoute), so a dGrip here would move a number on the four routes
+     a new player meets first, and nothing reads a signature's dGrip outside `placeSig`
+     anyway. What they DO is ROUTE-12's answer to what a signature is for: `read`. It is
+     information, which is free — the resolution never consults readAhead — and on the four
+     earliest lines in the book it is the mechanic teaching itself, at the point where you
+     have the fewest cards that can do it. The notes deliberately do not name a hold type,
+     because the tag lands on whatever the line actually rolled — and for the same reason
+     they do not name a POSITION either. The holds are shuffled, so a note that says "you
+     start from the floor" reads wrong four moves up; that was the first draft of The
+     Sit-Down and the render is what caught it. The line is called The Sit Start; the
+     feature only has to be a hold on it. */
+  { id: 'therail', local: true, name: 'The Rail', base: 'jug', read: 1,
+    note: 'Polished pale. Forty years of people warming up on the same hold.' },
+  { id: 'thesitdown', local: true, name: 'The Sit-Down', base: 'jug', read: 1,
+    note: 'Big enough for two hands and a breather. Everybody uses it. Nobody rushes it.' },
+  { id: 'thegreen', local: true, name: 'The Green Patch', base: 'sloper', read: 1,
+    note: 'Damp nine months of the year. Brush it and it is back by spring.' },
+  { id: 'theflake', local: true, name: 'The Flake', base: 'crimp', read: 1,
+    note: 'It was bigger last season. Nobody has written that down.' },
+  { id: 'rattler', name: 'The Rattler', base: 'crimp', dBite: 2, ability: 'Sharp', read: 1,
+    note: 'A flake the size of a dinner plate. It moves when you pull on it.' },
+  { id: 'twofinger', name: 'The Two-Finger Pocket', base: 'pocket', dGrip: 1, read: 2,
+    note: 'Two fingers fit. A third would have made this a different climb.' },
+  { id: 'wetjug', name: 'The Wet Jug', base: 'jug', dGrip: 2, ability: 'Greasy', read: 1,
+    note: 'It seeps. It has always seeped. Everyone knows and nobody mentions it.' },
+  { id: 'thankgod', name: 'The Thank God Hold', base: 'jug', dGrip: -2, read: 3,
+    note: 'You do not know it is there until your hand is already on it. A place to breathe and look up.' },
+  { id: 'guillotine', name: 'The Guillotine', base: 'sharp crimp', dBite: 1, read: 1,
+    note: 'A horizontal edge with an edge. People tape up for this one move.' },
+  { id: 'organpipe', name: 'The Organ Pipe', base: 'pinch', dGrip: 2, ability: 'Squeeze', read: 2,
+    note: 'A fin you can get both hands round and no way to weight your feet.' },
+  { id: 'deathblock', name: 'The Death Block', base: 'sloper', dGrip: 3, read: 2,
+    note: 'Enormous, rounded, and entirely without features. It goes on for a while — long enough to see what is next.' },
+  { id: 'letterbox', name: 'The Letterbox', base: 'pocket', dBite: -1, ability: 'Two-finger', read: 2,
+    note: 'A slot you post a hand into and hope to get back.' },
+  { id: 'sidewinder', name: 'The Sidewinder', base: 'crimp', dGrip: 2, read: 1,
+    note: 'Good, if you are standing somewhere you cannot stand.' },
+  { id: 'lastjug', name: 'The Last Jug', base: 'jug', dGrip: -1, ability: 'Rest', read: 2,
+    note: 'The last thing on the route that is kind to you.' },
+  { id: 'bellows', name: 'The Bellows', base: 'pinch', dBite: 1, dGrip: -1, read: 1,
+    note: 'A slot the wind comes up through. Cold hands, and you can hear it coming.' },
+  /* ROUTE-13: the rest of the guidebook's named features, so a route reads as a
+     place rather than a stat block. A signature REPLACES an ordinary hold, so a
+     mild one makes a route EASIER — which is why the first pass measured +3 and
+     these are pitched hard (dGrip 2–3, inside the range `deathblock` already
+     demonstrated). Every one pays a read, which is band-free (ROUTE-12).
+     This could only ship once BAL-15 opened the CARD-9 headroom: a distinctive
+     hold is exactly what a bought extra burn beats on the retry, so at the old
+     +6 Second-Wind lift the whole set pushed the kit run to 62% against a 58%
+     ceiling. See the balance guard. */
+  { id: 'thetick', name: 'The Tick', base: 'sharp crimp', dGrip: 2, ability: 'Sharp', read: 1,
+    note: 'A crimp the size of a tick, and it bites about as clean as one.' },
+  { id: 'thenave', name: 'The Nave', base: 'crimp', dGrip: 3, read: 2,
+    note: 'Forty feet sideways, and the good hold is always one move further on.' },
+  { id: 'softtouch', name: 'The Soft Touch', base: 'crimp', dGrip: 3, read: 2,
+    note: 'It reads like a jug in the book. It has never once been a jug.' },
+  { id: 'thesecond', name: 'The Second Guess', base: 'crimp', dGrip: 3, read: 1,
+    note: 'You commit, then you do not, and by then the crimp has decided for you.' },
+  { id: 'gooseneck', name: 'The Gooseneck', base: 'pinch', dGrip: 3, read: 1,
+    note: 'A neck of sandstone you pinch and hope it keeps its head on.' },
+  { id: 'blackglass', name: 'The Black Glass', base: 'crimp', dGrip: 2, ability: 'Greasy', read: 1,
+    note: 'Desert varnish, black and bright. It holds like glass, right up until it does not.' },
+  { id: 'therattle', name: 'The Rattle', base: 'sloper', dGrip: 3, read: 1,
+    note: 'You hear it before the move. Knowing does not make the move any easier.' },
+  { id: 'thekiln', name: 'The Kiln Pocket', base: 'pocket', dGrip: 3, read: 1,
+    note: 'A hundred and ten in the shade, no shade, and the pocket hotter than either.' },
+  { id: 'furnace', name: 'The Furnace', base: 'jug', dGrip: 2, ability: 'Greasy', read: 1,
+    note: 'South-facing and warm past midnight; the one good hold sweats you off it.' },
+  { id: 'squeezechim', name: 'The Squeeze', base: 'pinch', dGrip: 2, ability: 'Squeeze', read: 2,
+    note: 'You do not climb it so much as refuse, for a while, to fall out of it.' },
+  /* INFO-3: the two named blanks. Both were already lines about not being able to SEE — the
+     sun in your eyes, and nothing to see at all — and both sat on a `read: 1` that told you
+     what was coming next while the hold under your hand stayed a mystery only in the prose.
+     `Blank` makes the prose true: this one hold never reads exact, whatever beta you carry. */
+  { id: 'themirage', name: 'The Mirage', base: 'sloper', dGrip: 3, read: 1, ability: 'Blank',
+    note: 'Nothing to hold, and the sun straight in your eyes for the one hard move.' },
+  { id: 'thespit', name: 'The Spit', base: 'pocket', dGrip: 2, dBite: 1, read: 1,
+    note: 'It turns you slowly over the drop while you work out where the pocket went.' },
+  { id: 'thenotch', name: 'The Notch', base: 'pinch', dGrip: 3, read: 1,
+    note: 'A slot in the arete, and the weather turning over while you read it.' },
+  { id: 'numbcrimp', name: 'The Numb Crimp', base: 'crimp', dGrip: 2, ability: 'Sharp', read: 1,
+    note: 'Your fingers stop reporting back somewhere around this one.' },
+  { id: 'thewhiteout', name: 'The Whiteout', base: 'sloper', dGrip: 3, read: 1, ability: 'Blank',
+    note: 'Nothing to see and nothing to hold. Stand up on it anyway.' },
+  { id: 'thenose', name: 'The Nose', base: 'crimp', dGrip: 3, read: 2,
+    note: 'The pitch people come for, and the hard move exactly where you are most tired.' },
+  { id: 'thecoffin', name: 'The Coffin', base: 'pinch', dGrip: 2, ability: 'Squeeze', read: 2,
+    note: 'Off-width the whole way. Bring the big gear and bring your dignity.' },
+  { id: 'theboard', name: 'The Board', base: 'sloper', dGrip: 3, read: 2,
+    note: 'A flat plank of rock over the cirque. The mantel, then the rumour of a landing.' },
+  { id: 'thecornice', name: 'The Cornice', base: 'sloper', dGrip: 3, read: 1,
+    note: 'Nobody has decided if it is still attached. You find out by weighting it.' },
+  { id: 'thehang', name: 'The Hanging Foot', base: 'sloper', dGrip: 3, read: 1,
+    note: 'Slab, on a rope, over nothing. The feet are the whole climb here.' },
+]
+export const LINES: Line[] = [
+  { id: 'guide', name: 'As it goes', text: 'The line in the book. No arguments.' },
+  /* SIM-8: dCrux 3 -> 2, and the prose with it. This comment says cruxes are "almost free"
+     and that the direct "lands ~2 under the guide" — both were true of the deck the band
+     used to be measured on, which carried twice the raw Power and could simply pull through
+     them. Against the deck the game actually builds (SIM-8), three extra cruxes cost 7.0
+     against a floor of 8, and this paragraph's own sentence explains why: "a cruxy line
+     that a powerful deck eats and a weak one walls on". Two cruxes restores the INTENDED
+     relationship rather than inventing a new one — measured at n=1500, guide 45.1 vs
+     direct 43.1, so −2.0, five points clear of either bound.
+     NOT via `dClear`: CARD-15 removed the direct's one-fewer-hold for exactly the drift
+     this ticket is fixing, and putting it back read +1.2 here. Read the note above. */
+  { id: 'direct', name: 'The direct', dClear: 0, dCrux: 2,
+    text: 'Straight up it. Same height, but two more cruxes on the way.' },
+  { id: 'traverse', name: 'The traverse', dCrux: -3, dClear: 1,
+    text: 'Out left and back in, past the worst of it. Three fewer cruxes, but the long way — more holds to work before the top.' },
+]
+export const FA_NAMES_A = ['Quiet', 'Long', 'Broken', 'Second', 'Hidden', 'Slow', 'North',
+  'Last', 'Thin', 'Cold', 'Old', 'Blind']
+export const FA_NAMES_B = ['Line', 'Arete', 'Wall', 'Prow', 'Corner', 'Slab', 'Groove',
+  'Crack', 'Face', 'Rib', 'Buttress', 'Nose']
+export const ACT_NAMES = ['Act 1 · the forest', 'Act 2 · desert towers', 'Act 3 · the alpine wall']
+export const DECKS: { label: string; list: [string, number][] }[] = [
+  { label: 'Starter', list: [['Crimp Grip', 3], ['Open Hand', 3], ['Lock Off', 2], ['Smear', 3],
+    ['Shake Out', 2], ['Kneebar', 1], ['Chalk Up', 1]] },
+  { label: 'Mid', list: [['Crimp Grip', 3], ['Open Hand', 3], ['Lock Off', 2], ['Smear', 3],
+    ['Shake Out', 2], ['Kneebar', 1], ['Chalk Up', 1], ['Gaston', 1], ['Heel Hook', 1],
+    ['Undercling', 1], ['Drop Knee', 1], ['Breathe', 1], ['Pinch Grip', 1]] },
+  { label: 'Late', list: [['Crimp Grip', 3], ['Open Hand', 3], ['Lock Off', 2], ['Smear', 3],
+    ['Shake Out', 2], ['Kneebar', 1], ['Chalk Up', 1], ['Gaston', 1], ['Heel Hook', 1],
+    ['Undercling', 1], ['Drop Knee', 1], ['Breathe', 1], ['Pinch Grip', 1], ['Mantle', 1],
+    ['Flag', 1], ['Brush', 1], ['Cross-Through', 1], ['Toe Hook', 1], ['Visualize', 1],
+    ['Deadpoint', 1], ['Iron Fingers', 1], ['Perfect Beta', 1]] },
+]
+/** One idea per hold, in the order the rock introduces them. */
+export const TUTORIAL_STEPS: string[] = [
+  // one per hold, in order — jug jug jug sloper crimp crimp pinch pinch
+  // sharp-crimp crux jug jug
+  'Tap a card, then tap a lane underneath a hold. Then COMMIT — all three go at once, in the order you placed them.',
+  'Your Power — the diamond — chips its Grip. Its Bite chips your Contact. Both at once, so you can work a hold and still come off it.',
+  'The hold reads a range rather than a number. You have not been on it yet. Work it once and it reads true for the rest of the trip.',
+  'That sloper is Greasy: you lose 1 Power on it unless your feet are on something. Put a card in the FEET lane — leaving it empty is campusing, and costs you Bite on both hands.',
+  'Every turn costs pump, plus one for each hold you have not answered — and a Greasy hold does worse than that. It sweats up while you are elsewhere, harder every turn, and the hold says so. Clearing holds is how you outrun all of it. Max pump and you are off.',
+  'Watch the top of the screen. Every few turns the route does something — greases up, dries out, a gust — and it always says so a turn beforehand.',
+  'A card that survives a turn settles in, gaining Power for every turn it stays. Leaving a good card where it is usually beats moving it.',
+  'A gaston pulls sideways, and sideways needs something pulling back. On its own it is weak. Put the undercling in the other hand and both get stronger.',
+  'Sharp holds burn your card out for the rest of the burn when they blow it. Careful what you put on them.',
+  'That is a crux. It needs Power 2 or more or the move does nothing at all. Line something real up for it.',
+  'You are near the top, which the game calls EXPOSED. Backing off from here costs an extra psyche. Finishing does not.',
+  'Last one. Everything you have just learned is the whole game — the rest is more of it, harder, and further from the car.',
+]
+export const GEAR: Gear[] = [
+  // NOTE: deck-wide Power is the single most explosive modifier in the game —
+  // the weather sweep proved ±1 Power swings a battle ~40 points. Gear that
+  // touches Power either pays for it in Contact, or only touches the feet
+  // lane (4-5 cards, not 15). Nothing here grants an extra burn.
+  { id: 'downturn', name: 'Downturned Shoes', slot: 'shoes', dPowerHand: 1, dContact: -2,
+    text: '+1 Power to hand moves. −2 Contact to everything.' },
+  { id: 'flat', name: 'Flat-Lasted Shoes', slot: 'shoes', dContact: 1,
+    text: '+1 Contact to every move. All-day comfort.' },
+  { id: 'sticky', name: 'Fresh Rubber', slot: 'shoes', dPowerFeet: 1,
+    text: '+1 Power to foot moves.' },
+  { id: 'slipper', name: 'Soft Slippers', slot: 'shoes', dSupport: 1,
+    text: '+1 Support from the feet lane.' },
+  { id: 'liquid', name: 'Liquid Chalk', slot: 'chalk', shedPerTurn: 1,
+    text: 'Shed 1 pump at the end of every turn.' },
+  { id: 'ball', name: 'Chalk Ball', slot: 'chalk', drawFirst: 2,
+    text: 'Draw 2 extra on the first turn of a burn.' },
+  { id: 'anti', name: 'Antihydral', slot: 'chalk', dContact: 1,
+    text: '+1 Contact to every move. Skin holds up.' },
+  { id: 'loose', name: 'Loose Chalk', slot: 'chalk', handSize: 1,
+    text: '+1 card in hand, every turn.' },
+  { id: 'brush', name: 'Wire Brush', slot: 'kit', brushFirst: true,
+    text: 'The first hold of every burn comes brushed clean.' },
+  { id: 'pads', name: 'Crash Pads', slot: 'kit', skinSave: 1,
+    text: 'The first fall on each boulder costs no skin.' },
+  { id: 'tape', name: 'Tape Gloves', slot: 'kit', dContact: 1,
+    text: '+1 Contact to every move.' },
+  { id: 'nuttool', name: 'Nut Tool', slot: 'kit', dPowerHand: 1, dContact: -1,
+    text: '+1 Power to hand moves. −1 Contact to everything.' },
+]
+export const CONSUMABLES: Consumable[] = [
+  { id: 'chalkshot', name: 'Chalk Shot', shed: 5,
+    text: 'A big scoop when you need it. Shed 5 pump.' },
+  { id: 'betanapkin', name: 'Beta Napkin', draw: 2,
+    text: 'Somebody sketched the moves for you. Draw 2.' },
+  { id: 'cruxpad', name: 'Crux Pad', powerAll: 2,
+    text: 'Slid under the crux. +2 Power to every lane you have out, this turn.' },
+  { id: 'secondwind', name: 'Second Wind', burn: 1,
+    text: 'Chalk up, shake out, tie back in. One more burn on this line.' },
+  // CARD-14
+  { id: 'tickstick', name: 'Tick Stick', gripCut: 2,
+    text: 'Chalk the holds you can reach. −2 Grip to every hold on the wall.' },
+  { id: 'skinsalve', name: 'Skin Salve', skin: 3,
+    text: 'Tape and time. Patch your tips — +3 skin.' },
+  { id: 'peptalk', name: 'Pep Talk', psyche: 1,
+    text: 'Somebody talks you back onto it. +1 psyche.' },
+]
+export const PARTNERS: Partner[] = [
+  { id: 'wren', name: 'Wren', who: 'Belays like she is being timed. Has opinions about your feet.', line: 1,
+    enough: 10,
+    says: {
+      again: 'She is already pulling the rope through. "One more. You are climbing well and it will not last."',
+      enough: '"That is the good one to stop on." She starts coiling before you answer.',
+      tie: 'She flakes the rope without being asked. "Straight up it, if you have any sense."',
+      agree: '"Good. I hate traversing." She sits down and watches your feet, not your hands.',
+      differ: '"Fine. I will be here." She does not look up from her book until you are off the ground.',
+      send: '"There you go." She says it like she never doubted it, which is a kindness and a lie.',
+      fall: '"Feet." One word, and she is right, and you both know it.',
+      camp: 'She eats standing up and goes to bed early. "Tomorrow you go first."',
+      top: '"Well." She shakes your hand, formally, like a stranger. Then she laughs at herself.',
+      died: 'She carries the pads down without saying anything. At the car: "Next time you go first."',
+      walked: '"Good. Stop while it is still the good one." She is coiling before she has finished the sentence.',
+      claim: '"Do not be modest, it is a waste of everybody\u2019s time." A beat. "Do not be the other thing either."',
+      curse: '"Two for one and you carry the difference." She has watched people do this before.',
+      phase: 'Wren, from below: "It changes here. You knew that."',
+      spent: 'She turns your hand over and looks at it. "Right. Done." She does not make it a defeat.',
+    } },
+  { id: 'ade', name: 'Ade', who: 'Been coming here thirty years. Knows where the water is.', line: 0,
+    enough: 6,
+    says: {
+      again: '"Go on then, while it is cool." He does not get up.',
+      enough: '"You have had the best of the day." He is looking at the light, not at you.',
+      tie: '"The book has it right, you know. People forget the book was written by somebody who was here."',
+      agree: '"Sensible." He settles in with the flask and does not offer you any.',
+      differ: '"Hm." He watches you go the other way and says nothing at all, which is worse.',
+      send: '"That is the line." He is pleased about the LINE, which is somehow better than being pleased for you.',
+      fall: '"It goes. Not like that, but it goes." He is already thinking about the sequence.',
+      camp: 'He tells you about a winter here in the nineties. Half of it cannot be true.',
+      top: '"I will put it in the book." From him this is an enormous thing to say.',
+      died: '"Thirty years I have been failing on things here." He means it to be comforting, and it is.',
+      walked: '"That will do." He has the flask out already. The light is going off the top of the crag.',
+      claim: '"Whatever you put, somebody will repeat it and disagree. That is the grade working." He is not warning you.',
+      curse: '"You will be carrying that in November." He says it mildly, which is how he says everything.',
+      phase: 'Ade, not looking up: "This is the bit people forget about."',
+      spent: '"Skin is the only thing out here you cannot buy." He has said this before and will say it again.',
+    } },
+  { id: 'moss', name: 'Moss', who: 'Would rather be looking at the rock than climbing it.', line: 2,
+    enough: 3,
+    says: {
+      again: '"If you must." He has found something in the scree and is not really listening.',
+      enough: '"Right — come and see this instead." He has been waiting an hour to show you.',
+      tie: '"There is a way round the side, you know. It is nicer over there."',
+      agree: '"Oh good." He points out three things on the way that have nothing to do with climbing.',
+      differ: '"Suit yourself." He wanders off left anyway and describes it to you while you are pumped.',
+      send: '"Did you see the quartz band? No. You would not have." He is not disappointed in you.',
+      fall: '"That hold is a fossil, you know. Whole animal." You are lying on the ground.',
+      camp: 'He has collected four rocks and wants to talk about all of them.',
+      top: '"Good. Now can we go and look at the other side." He has wanted to all week.',
+      died: '"Shame." He is already photographing something in the moss.',
+      walked: '"Finally." He has been standing by something he wants you to look at for about an hour.',
+      claim: '"Call it what the rock is." He means it literally, and it is not bad advice.',
+      curse: '"Is that the one that hurts?" He has not been following. He is not going to start now.',
+      phase: 'Moss, delighted: "That is a different bed of rock, that is."',
+      spent: '"You have gone through to the pink." He sounds interested rather than sympathetic.',
+    } },
+  { id: 'kit', name: 'Kit', who: 'Nineteen, terrifyingly strong, no idea how lucky that is.', line: 1,
+    enough: 14,
+    says: {
+      again: '"Go again go again go again." It is not a question and she is not tired.',
+      enough: '"Wait, we are stopping? Oh." She gets over it in about four seconds.',
+      tie: '"Just go up it? Why would you not just go up it." Genuine question.',
+      agree: '"Obviously." She is already thinking about the next one.',
+      differ: '"Weird flex but okay." She spots you properly, though, which she does not have to.',
+      send: '"Was that hard? That looked hard." She is not being cruel. That is the problem.',
+      fall: '"Ohhh. Yeah. Go again?" It has not occurred to her that you might not.',
+      camp: 'She is asleep before the water boils and up before you.',
+      top: 'She screams. Genuinely screams, at a wall, in the dark. It is the best moment of the trip.',
+      died: '"Same time next year?" She has already forgotten which one beat you.',
+      walked: '"That was ages." It was not ages. She is already looking at what is next to it.',
+      claim: '"That is soft for the grade." She has climbed it zero times and is completely certain.',
+      curse: '"Free card!" She does not appear to have read the other half of the sentence.',
+      phase: 'Kit, brightly: "Oh, it does a thing here."',
+      spent: '"Tape?" She has tape. She always has tape. It is not going to be enough.',
+    } },
+]
+export const BETA_CARDS: Record<number, string> = {
+  1: 'Beta · The Approach', 2: 'Beta · The Grade', 3: 'Beta · Conditions',
+  4: 'Beta · Going Alone', 5: 'Beta · The Crux', 6: 'Beta · Last Entry',
+  // NARR-11: the eight new pages. Page 7 is what you find at the top, so it
+  // has never been a beta card and still is not — you read it after.
+  8: 'Beta · The Photograph', 9: 'Beta · The Rock', 10: 'Beta · The Walk In',
+  11: 'Beta · What He Told Her', 12: 'Beta · Being Frightened',
+  13: 'Beta · The Traverse', 14: 'Beta · Waiting It Out',
+  15: 'Beta · The Name',
+}
+export const REWARDS = {
+  common: ['Gaston', 'Sloper Slap', 'Undercling', 'Mantle', 'Pinch Grip', 'Deadpoint',
+    'Heel Hook', 'Drop Knee', 'Flag', 'High Step', 'Breathe', 'Brush',
+    'Hand Jam', 'Palm Press', 'Static Reach'],
+  uncommon: ['Cross-Through', 'Lock & Bump', 'Dyno', 'Toe Hook', 'Visualize', 'Try-Hard Scream',
+    'Crimp Specialist', 'Pocket Poacher'],
+  rare: ['Iron Fingers', 'Static Lock', 'Perfect Beta', 'Send Train'],
+}
+export const TWEAKS: Omit<Tweak, 'runs'>[] = [
+  { kind: 'pulley', hold: 'crimp',
+    text: 'A pulley in the ring finger. Crimps are going to let you know about it.' },
+  { kind: 'elbow', hold: 'sloper',
+    text: 'Something in the elbow. Anything you have to press down on aches.' },
+  { kind: 'shoulder', hold: 'sharp crimp',
+    text: 'The shoulder again. It is fine until it is above your head.' },
+  { kind: 'tips', hold: 'pinch',
+    text: 'The tips have not come back properly. Anything you have to squeeze is raw.' },
+]
+export const EARNED_CURSES: Record<CurseCause, { card: string; why: string }> = {
+  rawskin: { card: 'Flapper', why: 'You went again on tips that were already gone.' },
+  exposed: { card: 'Doubt', why: 'You came off with the top in reach. That stays with you.' },
+  sprayed: { card: 'Ego', why: 'You told everyone the grade before anybody repeated it.' },
+  // CARD-8: the odd one out, kept here for the full picture but NOT earned from
+  // how a burn ended. rawskin/exposed come from curseEarned reading the fall,
+  // sprayed from claimCurse reading your grades; bargain is a choice you make in
+  // an event, applied through the `curse` outcome (spawn by name), so
+  // curseEarned deliberately never returns it — a test pins that so nobody
+  // wires it into the fall and double-applies Sandbagged Beta with the events.
+  bargain: { card: 'Sandbagged Beta', why: 'Cheap topo, cheap for a reason.' },
+}
+export const KEYWORDS: { name: string; text: string }[] = [
+  { name: 'What a hold reads', text: 'A hold you have not worked shows a range, not a number — you have not been on it yet. Beta makes it exact. That is what projecting buys.' },
+  { name: 'Opposition', text: 'A move that pulls sideways needs the other hand pulling back. Alone it is weaker; opposed by another sideways move it is stronger. Which hand you use is a decision.' },
+  { name: 'Resolve order', text: 'Lanes resolve in the order you placed them, and a hand that has already come off stops holding for the other one.' },
+  { name: 'The route acts', text: 'Every few turns the route does something, and always says so a turn beforehand. Greasing up, drying out, a gust, a flake coming off.' },
+  { name: 'Exposed', text: 'Past about two thirds of the way up, backing off costs an extra psyche. Walking away from something you had nearly done is not free.' },
+  { name: 'Clipping', text: 'On a rope, placing a piece resets your runout and, for one turn, lets you climb like somebody who is not going to hit the ground.' },
+  { name: 'Sequence', text: 'A plan held across turns. Meet its condition every turn and it pays out; miss once and it is gone.' },
+  { name: 'Boons', text: 'Found where gear is found. Gear gives you numbers; a boon changes a rule. The wild ones change how a turn feels.' },
+  { name: 'Power / Contact', text: 'Your Power chips a hold\'s Grip. Its Bite chips your Contact. Both happen at once.' },
+  { name: 'Bite / Grip', text: 'A hold\'s attack and its health. Grip to 0 works the hold; Contact to 0 burns your card.' },
+  { name: 'Pump', text: 'Your health and your mana in one bar. Bonus cards spend it. Fill it and you fall.' },
+  { name: 'The clock', text: '+1 pump every turn, plus 1 for every hold you have not answered. Clearing slows it.' },
+  { name: 'Support / campusing', text: 'A card in the feet lane adds Power to both hands. An empty feet lane adds Bite instead.' },
+  { name: 'Settle', text: 'A move that survives a turn gains +1 Power, up to +2. Durability turns into offence.' },
+  /* CARD-20: Settle's cross-lane sibling, and the combination the two Bump cards had promised
+     by name since they existed. */
+  { name: 'Launch', text: 'Fires off the other hand: +2 Power while the card in your other hand lane has held a turn. A neighbour you can trust is worth pulling off — durability turned into offence one lane over.' },
+  { name: 'Beta', text: 'Hold types you have worked come back at −1 Grip on later burns. Falling is learning.' },
+  /* CARD-18: both of these were mechanics the game had and never named. A card can
+     spend skin and a card can read the wall, and until this ticket exactly one card
+     did each — so neither was worth explaining. Now they are. */
+  { name: 'Reading ahead', text: 'The next holds off the route deck, before you are on them. Some cards read them, some holds read themselves, and being dialed in reads them for free. It changes what you plan and never what the hold does.' },
+  { name: 'Skin', text: 'How much more your hands will take on this trip. Falls cost it, a camp gives some back, and running out ends the trip wherever you happen to be standing. A few cards spend it outright.' },
+  { name: 'Anchor', text: 'Does not burn out when it blows — it returns to the discard pile.' },
+  { name: 'Latch', text: 'Survives its first blow at 1 Contact instead of being destroyed.' },
+  { name: 'Precise', text: '+2 Power against crimps and sharp crimps.' },
+  { name: 'Friction', text: 'Ignores a sloper\'s Greasy penalty.' },
+  { name: 'Static', text: 'Takes 1 less Bite. A move made slowly and deliberately costs you less when it goes wrong.' },
+  { name: 'Tough', text: 'Ignores Sharp and Razor when it blows.' },
+  { name: 'Balance', text: 'Prevents a pinch\'s Squeeze.' },
+  { name: 'Hooked', text: 'Cancels the extra hang tax a crux adds.' },
+  { name: 'Snap', text: 'Outright clears any hold at Grip 3 or less.' },
+  { name: 'Commit', text: 'A dyno. Roll to stick it — better fresh, worse pumped, better with feet on. Stick it and you skip the next hold as well. Miss and you are off it.' },
+  { name: 'Guard', text: 'While it survives, the other hand lane takes 1 less Bite.' },
+  { name: 'Blank', text: 'Some things cannot be read. A blank feature never shows you an exact '
+    + 'number however much beta you carry, and neither does any hold on a line nobody has '
+    + 'climbed — there is no beta on a first ascent, which is what makes it one. You commit on '
+    + 'a range, and the range is the climb.' },
+  { name: 'Setup', text: 'Work a hold with a Setup move and you are established there: the next '
+    + 'hold that comes up in that lane arrives 1 Grip easier. The lane remembers it, not the '
+    + 'card — so you collect it by climbing back into the same lane.' },
+  { name: 'Chained', text: 'A flake gives ground to whoever lets the other hand go first: '
+    + 'resolve it second and it is 2 Grip easier. What it costs is on the board before you '
+    + 'commit — if the hand you send first is coming off, you are left hanging there alone and '
+    + 'it is a pump. So read the other lane: a hand that holds makes the chain free, and a hand '
+    + 'that burns out makes it a trade.' },
+  { name: 'Matching', text: 'Both hands on the same kind of hold, with a card on each. You have '
+    + 'worked the move once, so you get a breath — shed 1 pump. But you are square to the wall, '
+    + 'and opposition needs something to pull against: while you are matched, a sideways move is '
+    + 'alone even with a partner beside it.' },
+  { name: 'Momentum', text: '+1 Power for each point of flow.' },
+  { name: 'Weight', text: '+1 Power for every other card you have on the board.' },
+  { name: 'Echo', text: 'Returns to your hand when it clears a hold.' },
+  { name: 'Peel', text: 'Draw a card when it blows.' },
+  { name: 'Cycle', text: 'Draws a card each turn it holds on, as the turn resolves.' },
+  { name: 'Chip', text: 'Also damages the Grip of every other hold on the board.' },
+  { name: 'Greedy', text: 'Stronger the closer you are to coming off: +1 Power for every 2 pump you are carrying.' },
 ]

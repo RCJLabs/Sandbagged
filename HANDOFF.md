@@ -3,7 +3,7 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.82.** `npm run check` is 206/206 core + 119/119 kept;
+**State at the time of writing: v10.83.** `npm run check` is 206/206 core + 119/119 kept;
 `npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
@@ -122,6 +122,19 @@ reversing, and it was paid knowingly: seven arms at n=3000 said the policy is no
 for the price is worse still (floor 8.8). **If a later ticket tightens the roster, re-measure
 the flake first** — it is the newest thing pulling the other way, and `CHAIN_HANG` is one
 constant.
+
+## If you pick up ENG-9
+
+`engine.ts` is 7,279 lines and 1,057 have moved to `content.ts` across two passes. **Data out,
+rules stay** — and the trap is that a literal array built by a factory whose name is a bare
+capital reads exactly like content. `ARCHETYPES` and `ACT1_MAP` were cut in v10.83 and put
+back within a minute because the compiler refused them. Screen for bare capitals, not just
+lowercase calls, and cut before you commit to anything.
+
+**`TALKS` is the one worth asking about.** Its const is 141 lines of pure literal and would
+move cleanly; the five functions around it need `GameState` and would stay. The ENG-9 guard
+names it a canary beside `CARDS` and it was left alone on purpose — re-pointing a canary to
+make your own move pass is how a guard stops meaning anything. It needs a decision from Evan.
 
 ## What is open
 

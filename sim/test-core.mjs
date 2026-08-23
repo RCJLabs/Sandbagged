@@ -3075,8 +3075,11 @@ test('somebody is out there with you, and they wanted something else (NARR-14)',
   // and they disagree about when to stop, or the threshold is decoration
   ok(new Set(E.PARTNERS.map(p => p.enough)).size >= 3,
     'the partners all stop at the same point, so who you are out with does not matter')
-  const eng = readFileSync('src/engine.ts', 'utf8')
-  const table = region(eng, 'export const PARTNERS', ['export function partnerFor'],
+  /* ENG-9: the partner TABLE is literal content and lives in ./content now; `partnerFor` and
+     the rest of the rules that read it stayed in the engine, which is why the closer moved
+     with the window rather than the window following the function. */
+  const partnerFile = readFileSync('src/content.ts', 'utf8')
+  const table = region(partnerFile, 'export const PARTNERS', ['\nexport const ', '\n/* ='],
     { min: 800, what: 'the partner table' })
   ok(!/\b(power|contact|grip|bite|support|skin|psyche|pump|dTax|shed)\s*:/i.test(table),
     'the partner table grew a mechanical field — a partner is text')
@@ -3086,7 +3089,7 @@ test('somebody is out there with you, and they wanted something else (NARR-14)',
     // GUARD-8: bounded at the next declaration, not at 4000 characters. With a fixed
     // window a function that outgrows it puts its tail outside, and the negative
     // assertion below then passes on the part that was cut off.
-    const body = declBody(eng, fn, fn)
+    const body = declBody(readFileSync('src/engine.ts', 'utf8'), fn, fn)
     /* match the API, not the English word: autoPlay's opposition comments call the other
        hand lane a "partner", which is a different thing entirely. */
     ok(!/\b(partnerFor|partnerSays|partnerAgrees|partnerPush|PARTNERS)\b/.test(body),
@@ -5600,12 +5603,30 @@ test('ENG-9: content is content, and every caller still sees one engine', () => 
   }
   /* And the re-export is real: a name that moved must still be reachable through E, which
      is the only thing the callers actually rely on. */
-  for (const n of ['ROUTES', 'EVENTS', 'JOURNAL', 'BOONS', 'MUTATORS', 'WEATHER', 'ROCK', 'ASCENT', 'SEQUENCES'])
+  for (const n of ['ROUTES', 'EVENTS', 'JOURNAL', 'BOONS', 'MUTATORS', 'WEATHER', 'ROCK', 'ASCENT', 'SEQUENCES',
+    // ENG-9 third section
+    'HOLD_STATS', 'FEET_STATS', 'CRUX_CHAR', 'SIGNATURES', 'LINES', 'TUTORIAL_STEPS', 'GEAR',
+    'CONSUMABLES', 'PARTNERS', 'BETA_CARDS', 'REWARDS', 'TWEAKS', 'EARNED_CURSES', 'KEYWORDS',
+    'ACT_NAMES'])
     ok(E[n] !== undefined, `${n} moved out and is no longer re-exported, so every caller of it breaks`)
+  /* DECKS, FA_NAMES_A and FA_NAMES_B are not on the sim barrel — only the screens read them —
+     so `E[n]` cannot see them and asserting through it would be asserting nothing. Their
+     re-export is checked on the source instead, which is the actual claim: a name that moved
+     out is still reachable through engine.ts. Widening the barrel to make the check uniform
+     would be adding surface to satisfy a guard, which is backwards. */
+  for (const n of ['DECKS', 'FA_NAMES_A', 'FA_NAMES_B'])
+    ok(new RegExp(`export \\{[^}]*\\b${n}\\b[^}]*\\} from '\\./content'`, 's').test(eng),
+      `${n} moved out and engine.ts does not re-export it, so the screens that read it break`)
 
   // TWO: nothing in the content file is a rule
   ok(!/\bexport function\b/.test(content),
     'a function has moved into the content file, which is how a content file becomes a second engine')
+  /* ENG-9 third section: and no function of ANY shape. The line above only ever caught
+     `export function`, which the factories that killed v6.6 are not — `L` is
+     `export const L = (...pairs) => ...`, and it would have walked straight past. There is not
+     one arrow in this file and there is no reason for there ever to be one. */
+  ok(!/=>/.test(content),
+    'the content file has grown an arrow function, which is how the factories follow the data out')
   ok(!/=>\s*\{[\s\S]{0,400}\bs\.\w+/.test(content) || !/GameState/.test(content),
     'the content file has started reading GameState, so it is no longer content')
   /* Written as `!A || B` first, and the injection walked straight through it: with a value
@@ -5620,6 +5641,20 @@ test('ENG-9: content is content, and every caller still sees one engine', () => 
     'CARDS moved to the content file — it is built by factories, so the factories went with it')
   ok(/export const TALKS/.test(eng),
     'TALKS moved to the content file, and its section is five functions that need GameState')
+  /* ENG-9 third section found two more of exactly CARDS' kind, and it found them by CUTTING
+     them and watching the compiler refuse. Both read as pure literal arrays and both are
+     built by factories that are bare capital identifiers rather than lowercase calls, which
+     is why a screen looking for `name(` let them through. */
+  ok(/export const ARCHETYPES/.test(eng) && /\bL\(\[/.test(eng),
+    'ARCHETYPES moved to the content file — its loadouts are built by the L(...) factory, so the factory went with it')
+  ok(/export const ACT1_MAP/.test(eng),
+    'ACT1_MAP moved to the content file, and its nodes are built by the C / CAMP / EVT / PROJ factories')
+  /* Stated from the OTHER side as well, and this is the half an injection can reach: a
+     98-line move is not a one-line patch, so the four assertions above have no negative test
+     of their own. This one does, and it fails on the same event. */
+  for (const n of ['CARDS', 'TALKS', 'ARCHETYPES', 'ACT1_MAP'])
+    ok(!new RegExp(`^export const ${n}\\b`, 'm').test(content),
+      `${n} is declared in the content file, and it is built by factories — moving it moves them, which is what v6.6 died on`)
   // types.ts stays leaf: no values, no imports at all
   ok(!/export (const|function)/.test(types), 'a value has moved into the leaf types file')
   ok(!/^import/m.test(types), 'the leaf types file has grown an import, so it is no longer a leaf')
