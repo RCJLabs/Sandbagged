@@ -3,7 +3,7 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.86.** `npm run check` is 209/209 core + 119/119 kept;
+**State at the time of writing: v10.87.** `npm run check` is 210/210 core + 119/119 kept;
 `npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
@@ -122,6 +122,18 @@ reversing, and it was paid knowingly: seven arms at n=3000 said the policy is no
 for the price is worse still (floor 8.8). **If a later ticket tightens the roster, re-measure
 the flake first** — it is the newest thing pulling the other way, and `CHAIN_HANG` is one
 constant.
+
+## A firing rate is a property of a deck
+
+There are two populations and they disagree violently. `node sim/run.mjs campaign N` uses
+`buildBest()` — a player who owns everything and had the game build the best fifteen — and that
+is what **every band number rides**. `campaign N default` uses the archetype's own loadout: a
+new player. Measured over drafted campaigns, `weight` is **0.09%** of turns for a new player and
+**17.46%** for the band's player; `friction` is **17.22%** and **0.07%**. One card in fifteen
+does it.
+
+LANE-1 recorded 0.12% for `weight` as a property of the game and argued a design decision from
+it. **Say which deck, or the number means nothing.**
 
 ## Before you trust a per-card number
 

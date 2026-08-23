@@ -1185,6 +1185,22 @@ export const MUTANTS = [
     catches: 'becomes a second engine',
     patch: [['src/content.ts', 'export const JOURNAL',
       'export function journalCount() { return JOURNAL.length }\nexport const JOURNAL']] },
+  // ---- CARD-23: a firing rate belongs to a deck, not to the game ----
+  { id: 'CARD-23/builder-drops-the-weight-card', suite: 'core',
+    why: 'the builder stops taking a weight card, so the 17.46% recorded against the deck every band number rides goes quietly stale — which is exactly how LANE-1 came to record 0.12% as a property of the game',
+    catches: 'so the 17.46% recorded against it is stale',
+    patch: [['src/engine.ts', "  if (c.fx === 'weight') v += WEIGHT_BOARD * 2", "  if (c.fx === 'weight') v += 0"]] },
+  { id: 'CARD-23/populations-stop-diverging', suite: 'core',
+    why: 'the default loadout gains a weight card, so a new player and the band’s player stop disagreeing and the correction describes nothing — the guard has to fail when the thing it documents goes away, not only when it worsens',
+    catches: 'no longer diverge and the correction describes nothing',
+    patch: [['src/engine.ts', 'export const DEFAULT_LOADOUT: string[] = (() => {',
+      "export const DEFAULT_LOADOUT: string[] = (() => { if (true) return ['Cut Loose', ...Array(DECK_SIZE - 1).fill('Crimp Grip')]"]] },
+  { id: 'CARD-23/note-loses-its-population', suite: 'core',
+    why: 'LANE-1 goes back to recording 0.12% for weight with no deck attached, which is the shipped claim this ticket found to be 145x wrong for the population the project measures through',
+    catches: 'records 0.12% for weight with no population attached',
+    patch: [['src/engine.ts', '       fx: \'weight\'        0.09% of turns              17.46% of turns, 100% of runs',
+      '       fx: \'weight\'        0.09% of turns              (not recorded)']] },
+
   // ---- CARD-22: the per-card probe prices a deck a player could hold ----
   { id: 'CARD-22/probe-goes-back-to-three-copies', suite: 'core',
     why: 'the probe stops asking copyLimit and prices three copies of everything again, which for a rare is three times the legal count — SIM-8’s illegal-deck failure on the per-card instrument, and it is what fabricated three of the six outliers an audit reported',

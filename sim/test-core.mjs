@@ -3662,6 +3662,58 @@ test('the tuning policy can see the feet lane (SIM-6)', () => {
   const simCode = sim.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
   ok(!/support/i.test(simCode), 'the harness grew its own opinion about the feet')
 })
+test('CARD-23: a firing rate belongs to a deck, not to the game', () => {
+  /* CARD-23 ASKED WHETHER ELEVEN CARD EFFECTS EVER REACH THE BOARD AND THE ANSWER IS THAT THE
+     QUESTION WAS UNDER-SPECIFIED. Measured over drafted campaigns instead of starting decks —
+     81,854 turns on the archetype loadouts, 87,672 on the built one — only `settle2` and `peel`
+     sit at zero, and each is non-zero in the other population. Eight effects are under 1% of
+     turns in BOTH and those are the real dead list: settle2, peel, cycle, echo, momentum,
+     guard, greedy, snap.
+
+     THE FINDING IS THE PAIR THAT INVERT, and it lands on a shipped claim. LANE-1 records
+     `fx: 'weight'` firing on 0.12% of turns and uses it to argue the effect had to be granted
+     by the board instead of by a card. Re-measured:
+
+                     default loadout + draft     BUILT loadout + draft
+       weight            0.09% of turns            17.46% of turns, 100% of runs
+       friction         17.22%, 100% of runs        0.07%
+
+     `buildLoadout` takes exactly one weight card in fifteen and no friction; no archetype
+     loadout carries a weight card and three carry friction. THE BUILT DECK IS THE ONE EVERY
+     BAND NUMBER RIDES (SIM-8), so the rate that justified a design decision was 145x wrong for
+     the population the project actually measures through.
+
+     WHAT IS GUARDED IS THE DIVERGENCE ITSELF, behaviourally, because prose cannot be. If the
+     builder stops taking a weight card the 17.46% quietly becomes wrong, and this fails. */
+  const owned = Object.keys(E.CARDS)
+    .filter(n => ['common', 'uncommon', 'rare'].includes(E.CARDS[n].rarity ?? 'common'))
+  const built = E.buildLoadout({ ...E.freshRun(0, 0, 1), owned, gear: [], boons: [],
+    mutators: [], arch: 0 }, [], owned)
+  const fxOf = n => E.CARDS[n].fx || ''
+  const count = (deck, fx) => deck.filter(n => fxOf(n) === fx).length
+
+  ok(count(built, 'weight') > 0,
+    'the built deck no longer carries a weight card, so the 17.46% recorded against it is stale and LANE-1\'s corrected note is wrong again')
+  eq(count(E.DEFAULT_LOADOUT, 'weight'), 0,
+    'the default deck now carries a weight card, so the two populations no longer diverge and the correction describes nothing')
+  for (const a of E.ARCHETYPES)
+    eq(count(a.loadout, 'weight'), 0,
+      `${a.name} starts with a weight card, so a new player meets the effect and the 0.09% is stale`)
+
+  /* `guard` is the one LANE-1 was right about, in both populations, and it is asserted so the
+     dead list CARD-24 inherits cannot quietly gain or lose a member. */
+  eq(count(built, 'guard'), 0, 'the built deck carries a guard card, so `guard` is no longer the dead one')
+  eq(count(E.DEFAULT_LOADOUT, 'guard'), 0, 'the default deck carries a guard card')
+
+  /* And the note itself has to carry the correction, or the next ticket reads 0.12% and prices
+     a mechanic that is on the board a sixth of the time. Read off STRIPPED source would defeat
+     the point — this IS the comment — so it is read raw and anchored on the numbers. */
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  const note = region(eng, 'LANE-1: MATCHING', ['export const MATCH_SHED'],
+    { min: 600, what: "LANE-1's matching note" })
+  ok(/17\.46%/.test(note) && /CARD-23/.test(note),
+    'LANE-1 records 0.12% for weight with no population attached again — the number that justified granting the effect through the board')
+})
 test('CARD-22: the per-card probe prices a deck a player could hold', () => {
   /* SIM-8's SIBLING, and the same bug one instrument along. SIM-8 found the BAND pinned on an
      illegal deck — six of fifteen slots were beta cards `buildable()` refuses, worth +10.5.

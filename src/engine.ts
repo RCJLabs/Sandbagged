@@ -4622,6 +4622,26 @@ export const WEIGHT_BOARD = 1.86
    eight cards at all. So the effect a card could not deliver is granted by the wall instead:
    this IS the Guard rule, handed to you by the shape of the board.
 
+   CARD-23 CORRECTION (v10.87): THE 0.12% FOR `weight` IS A PROPERTY OF ONE DECK, NOT OF THE
+   GAME, AND THE ARGUMENT ABOVE RESTS ON IT. Re-measured over drafted campaigns rather than
+   starting decks, 81,854 turns on the archetype loadouts and 87,672 on the built one:
+
+                        default loadout + draft     BUILT loadout + draft
+       fx: 'weight'        0.09% of turns              17.46% of turns, 100% of runs
+       fx: 'guard'         0.07%                        0.03%
+
+   `buildLoadout` puts exactly ONE weight card in fifteen and no archetype loadout carries one
+   at all, which is the whole difference — and the BUILT deck is the one every band number in
+   this project is measured through (SIM-8). So `weight` is not dead, it is dead for a new
+   player and on a sixth of the turns for the deck the balance rides on. `guard` IS dead in
+   both, at 0.03% and 0.07%, and the reasoning above holds for it unchanged.
+
+   Nothing is reverted: Matching earned its place on its own measurement (28.35% of climb
+   turns, +4.8 against the pin) and does not depend on the weight number being small. What is
+   corrected is the CLAIM, because a later ticket reading "0.12%" would price a mechanic that
+   is on the board a sixth of the time. CARD-24 inherits this: the dead card list is `guard`,
+   not `guard` and `weight`.
+
    Measured before writing it: the same hold type lands in both hands on 28.35% of climb turns and
    nothing in the game read it. Requiring a card in the other hand too is what makes it a decision
    rather than weather — you have to commit both hands to be matched. */
