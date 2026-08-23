@@ -3550,9 +3550,15 @@ test('BAL-16: a floor nobody can measure is not a floor', () => {
      is — and NARR-22 is what two copies of one quantity cost: the band pin sat two versions stale
      in test.mjs while a guard happily confirmed its two copies agreed with each other. The floor
      lives in band.mjs and both sides read it. */
-  ok(ARCH_FLOOR === 5,
+  /* ARCH-2 (v10.89): 5 -> 9, agreed with Evan on 2026-08-23 and dated in band.mjs. Asserted as
+     a FLOOR ON THE FLOOR rather than as an equality, because the two directions are not the
+     same thing: RAISING this is a decision somebody made, and LOWERING it is a drift with an
+     excuse, which is the v9.32 move BAL-9 exists to forbid. An equality here would also fail
+     the next honest raise, and a guard that fires on its own improvement gets deleted. */
+  ok(ARCH_FLOOR >= 9,
     `the floor is ${ARCH_FLOOR} — it was lowered to 4 once at v9.32 to accommodate a drift instead `
-    + 'of fixing it, and BAL-9 exists to forbid exactly that')
+    + 'of fixing it, and BAL-9 exists to forbid exactly that. It was raised to 9 with Evan on '
+    + '2026-08-23 after three releases took the worst climber 10.5 -> 9.2 -> 8.0 without one guard firing')
   ok(/ok\(lo > ARCH_FLOOR,/.test(spread),
     'the guard no longer compares the lowest climber against the ledger floor')
   /* match the COMMAND, not the word: the prose in that guard explains why `ARCH_ONLY`
@@ -8298,8 +8304,13 @@ test('LANE-5: the feet push lives where a deck is assembled, and the climbers sa
   const trad = E.ARCHETYPES.find(a => a.id === 'trad')
   eq(comp.dPower, 3, `the Comp Kid carries ${comp.dPower} Power — LANE-5 bought it to 3 and without `
     + 'that it reads 5.0% against a floor of 5')
-  eq(trad.dContact, 2, `the Trad Dad carries ${trad.dContact} Contact — LANE-5 bought it to 2 and `
-    + 'without that it reads 5.5%, which clears the floor by 0.98 SE')
+  /* ARCH-2 (v10.89) took this one to 3, so it is a FLOOR rather than an equality — and the two
+     directions are different in exactly the way ARCH_FLOOR's own assertion is. LANE-5 exists to
+     stop the buy-back being TAKEN AWAY: below 2 this climber reads 5.5% and clears the floor by
+     0.98 SE, which is the drift that guard was written after. Above it is a later decision with
+     a date on it, and an equality here would fire on the roster getting healthier. */
+  ok(trad.dContact >= 2, `the Trad Dad carries ${trad.dContact} Contact — LANE-5 bought it to 2 and `
+    + 'without that it reads 5.5%, which clears the floor by 0.98 SE. ARCH-2 raised it to 3')
   ok(comp.sigText.includes(`+${comp.dPower} Power`),
     `the Comp Kid grants +${comp.dPower} Power and its signature does not say so: ${comp.sigText}`)
   ok(trad.sigText.includes(`+${trad.dContact} Contact`),

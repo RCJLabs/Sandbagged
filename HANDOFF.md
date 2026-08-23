@@ -3,7 +3,7 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.88.** `npm run check` is 211/211 core + 119/119 kept;
+**State at the time of writing: v10.89.** `npm run check` is 211/211 core + 119/119 kept;
 `npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
@@ -123,18 +123,24 @@ for the price is worse still (floor 8.8). **If a later ticket tightens the roste
 the flake first** — it is the newest thing pulling the other way, and `CHAIN_HANG` is one
 constant.
 
-## The roster floor has fallen three releases running — read this first
+## The floor is policed now, and it costs ~10.4 to hold
 
-**10.5 → 9.2 → 8.0.** HOLD-3 (v10.85) took 1.3 of it and HOLD-4 (v10.88) took 1.2 more, both
-knowingly, both inside `ARCH_FLOOR` (which is 5 and has not moved since the roster spanned 3.3
-to 29.8). Neither was a pin move and neither failed a guard, which is precisely the problem:
-**the band is policed release by release and the floor is not.** ARCH-2 is the open row and it
-is P0 now.
+`ARCH_FLOOR` is **9**, raised from 5 with Evan on 2026-08-23 after the worst climber drifted
+10.5 → 9.2 → 8.0 across three releases without one guard firing. The band was policed release by
+release and the ladder was not; it is now.
 
-HOLD-4's share of it is worth understanding before the next balance change: raising a Grip cut
-to pay for a removed ability is **regressive**. It pays a strong deck that converts the extra
-cut and does not cover a weak one that needed the ability gone. The band's player (`buildBest`)
-came out flat; every climber on the ladder fell.
+**The number that matters is not 9.** The guard wants the margin in standard errors, so the
+weakest climber has to sit above about **10.4%** at `ARCH_N` for a floor of 9 to be a
+measurement rather than a coin flip. Today the floor is the Onsighter at 10.7 with 2.5 SE of
+margin and the spread is 1.10x. **There is roughly one point of room.** A ticket that costs the
+weakest climber more than that fails BAL-18 and has to buy it back or come to Evan.
+
+Two lessons from paying for it are worth keeping. **Raising a cost to pay for a removed ability
+is regressive** — HOLD-4's bigger Grip cut paid the strong deck that converts it and did not
+cover the weak one that needed the ability gone, so the band came out flat and every climber
+fell. And when a climber has **no fine dial** — the Alpinist's move nothing, nothing, or +9.5 —
+stop looking for one and check whether something is already broken: Dig In was capped at 2 while
+its own card promised 4.
 
 ## A firing rate is a property of a deck
 

@@ -1886,8 +1886,23 @@ export const ARCHETYPES: Archetype[] = [
   { id: 'trad', name: 'The Trad Dad', unlock: 8, gear: 'tape',
     move: { name: 'Bomber', text: 'Nothing you have placed comes off this turn. It holds, whatever it costs.' },
     text: 'Slow, bomber, and will tell you about the rack.',
-    sig: 'Bomber', sigText: '+2 Contact on every move, and nothing you place ever settles.',
-    dContact: 2, settleMax: 0, deed: 'fa',       // META-6: earned by putting up a line
+    sig: 'Bomber', sigText: '+3 Contact on every move, and nothing you place ever settles.',
+    /* ARCH-2: dContact 2 -> 3, and it is a BUY-BACK rather than a buff. This climber read 8.0%
+       against a floor Evan set at 9 on 2026-08-23, so the debt was explicit and dated before
+       the dial was chosen. FOUR DIALS AT n=2000, recorded the way BAL-16 recorded the
+       Alpinist's ten, because what they say about this climber outlasts the one that shipped:
+         dSkin +1            6.9%  — WORSE. Skin is not a lever here either, which is the same
+                                     nothing BAL-16 measured on the Alpinist.
+         firstTurnPower 2    9.9%  — clears the floor and was passed over on FICTION: the
+                                     Onsighter's own signature is committing hard off the first
+                                     move, and buying one climber back with another's identity
+                                     is a worse answer than a smaller number.
+         dContact 2 -> 3    11.4%  — SHIPPED. His one stated upside, made to pay.
+         dAttempts +1       12.7%  — a cliff, and it would have topped the roster.
+       The +2 was the whole statline: one upside, one downside, against four and five dials on
+       everybody else. This does not make him a different climber, it makes the one thing he
+       has worth having. */
+    dContact: 3, settleMax: 0, deed: 'fa',       // META-6: earned by putting up a line
     loadout: L(['Hand Jam', 2], ['Arm Bar', 2], ['Undercling', 2], ['Slow Pull', 1],
       ['Heel Hook', 2], ['Smear', 1], ['Kneebar', 1], ['Breathe', 2], ['Brush', 2]) },
   { id: 'alpine', name: 'The Alpinist', unlock: 12, gear: 'liquid',
@@ -5837,7 +5852,14 @@ export const ARCH_READ = 3
    against the Comp Kid's 93), so a shed that scales with turns survived scales with its own
    signature — measured, it took the Alpinist 10.7% to 15.9% at n=2000 and the roster spread
    1.60x to 2.04x against a 2.2x ceiling. Two keeps the verb and halves the compounding. */
-export const ARCH_DIG_MAX = 2
+/* ARCH-2: 2 -> 4, AND IT IS A CORRECTION, NOT A BUFF. The move's own text has always read
+   "shed a pump for every turn you have been on this thing, UP TO 4" and the code capped it at
+   2 — the game promising the player something the resolution does not do, which is UX-4's
+   pillar and the reason this was found while looking for a dial rather than a bug.
+   THE LEVER IS THE GATE, NOT THE GIVE, measured at n=2000: raising only the give reads 9.7%
+   against a baseline of 9.9% — nothing. Raising both reads 11.8%. The move has to be HELD
+   until the burn is long enough to be worth spending on, and the constant does both jobs. */
+export const ARCH_DIG_MAX = 4
 
 /** Headless policy — used by the sim so it exercises the shipping engine. */
 /* SIM-6. What a worked FOOTHOLD is worth to the policy, against a point of Support.
