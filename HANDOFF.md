@@ -3,7 +3,7 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.84.** `npm run check` is 207/207 core + 119/119 kept;
+**State at the time of writing: v10.85.** `npm run check` is 208/208 core + 119/119 kept;
 `npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
@@ -122,6 +122,14 @@ reversing, and it was paid knowingly: seven arms at n=3000 said the policy is no
 for the price is worse still (floor 8.8). **If a later ticket tightens the roster, re-measure
 the flake first** — it is the newest thing pulling the other way, and `CHAIN_HANG` is one
 constant.
+
+## If you add a climber
+
+`ARCHETYPES` is read by the save loader. Until v10.85 growing the roster silently deleted every
+deck every player had built, because `loadouts` was kept only on an exact length match. It is
+padded per climber now and SAVE-8 guards it — but the lesson generalises: **anything sized by a
+content table is a migration.** `archWins` and `owned` are membership lists and safe; `loadouts`
+was the one indexed by position.
 
 ## The measurements are reproducible now, and they were not
 

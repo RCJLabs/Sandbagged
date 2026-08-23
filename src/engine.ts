@@ -790,6 +790,34 @@ const cap = <T,>(v: T[] | undefined, n: number): T[] =>
    and values are bounded too, because one 10MB string is the same attack as a million
    short ones. The count is DERIVED from the cast plus the lines you can have put up,
    which is every id that can ever be a key. */
+/* SAVE-8. THE ROSTER GROWS AND THE PLAYER'S DECKS DO NOT HAVE TO DIE FOR IT.
+   `loadouts` was kept only when `d.loadouts.length === ARCHETYPES.length` — an equality gate,
+   so a save carrying FOUR customised decks against a five-climber build lost all four, not the
+   missing one. Measured against the shipped loader before this was written: 4 -> nothing,
+   6 -> nothing, and only an exact 5 survived.
+
+   THE GATE WAS NOT AN OVERSIGHT, WHICH IS WHY IT IS REPLACED RATHER THAN DELETED. `loadouts`
+   is indexed positionally — `st.loadouts[st.arch]` in five places in App.tsx — so a short array
+   at a new archetype index is `loadoutDeck(undefined)` and a TypeError, and dropping to the
+   defaults was a real defence against that. It is just the bluntest possible one: it pays the
+   player's whole collection of decks to avoid an undefined at ONE index.
+
+   AND IT WAS DEFENDING SOMETHING THE CONSUMER ALREADY DEFENDS. `loadoutDeck` opens with
+   `loadout.length === DECK_SIZE ? loadout : DEFAULT_LOADOUT` and then filters names it does not
+   know, so a deck of the wrong size or carrying a retired card is already handled one layer
+   down. The only thing that genuinely cannot be handled there is a MISSING SLOT, because that
+   is not a bad deck, it is no deck at all.
+
+   So: one entry per archetype, always, in archetype order. What the save has is kept, bounded
+   by DECK_SIZE for SAVE-6's reason; what it lacks is that climber's own default, not the first
+   climber's. Nothing is discarded for the sin of being the wrong length. */
+const fitLoadouts = (v: unknown): string[][] =>
+  ARCHETYPES.map((a, i) => {
+    const got = Array.isArray(v) ? (v as unknown[])[i] : undefined
+    const deck = Array.isArray(got) ? got as unknown[] : null
+    const dflt = a.loadout.slice()
+    return deck ? deck.filter(n => typeof n === 'string').slice(0, DECK_SIZE) as string[] : dflt
+  })
 const capSaid = (v: unknown, n: number): Record<string, string> =>
   v && typeof v === 'object' && !Array.isArray(v)
     ? Object.fromEntries(Object.entries(v as Record<string, unknown>)
@@ -818,14 +846,17 @@ export function loadGame(slot = 0): Partial<GameState> | null {
       xp: typeof d.xp === 'number' && isFinite(d.xp) ? d.xp : 0,
       owned: cap(d.owned, Object.keys(CARDS).length), sends: d.sends ?? 0, wins: d.wins ?? 0,
       journal: cap(d.journal, JOURNAL.length),
-      ...(d.loadout && d.loadout.length === DECK_SIZE ? { loadout: d.loadout } : {}),
+      /* SAVE-8: bounded rather than gated on an exact length. Nothing reads this field in
+         play — `loadouts[arch]` superseded it and it now only round-trips through the save —
+         so an equality gate on it was discarding a list for a shape no code objects to. */
+      loadout: cap(d.loadout, DECK_SIZE),
       style: d.style ?? 0, styleMax: d.styleMax ?? 0, seen: cap(d.seen, EVENTS.length),
       said: capSaid(d.said, TALKS.length + ESTABLISHED_MAX * 2),
       coaching: d.coaching ?? true, sound: d.sound ?? true, ambience: d.ambience ?? true, haptics: d.haptics ?? true, assist: d.assist ?? false, cbSafe: d.cbSafe ?? false,
       tutorialDone: d.tutorialDone ?? false,
       motion: d.motion ?? true, textScale: d.textScale ?? 0, reach: d.reach ?? 'off',
       arch: d.arch ?? 0,
-      ...(d.loadouts && d.loadouts.length === ARCHETYPES.length ? { loadouts: d.loadouts } : {}),
+      loadouts: fitLoadouts(d.loadouts),   // SAVE-8: adapted per climber, never discarded
       book: d.book ?? {}, bestCircuit: d.bestCircuit ?? 0, mutators: cap(d.mutators, MUTATORS.length),
       ticked: cap(d.ticked, ACTS.length), established: cap(d.established, ESTABLISHED_MAX), hints: d.hints ?? true,
       grades: d.grades ?? 'v', tweak: d.tweak ?? null,

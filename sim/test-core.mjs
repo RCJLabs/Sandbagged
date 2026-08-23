@@ -3249,6 +3249,92 @@ test('the Circuit is not the mode nobody bothered with (SKIRM-7)', () => {
     'export function bankDaily', 'bankDaily')),
     'the Circuit feeds the season score now — that is farmable, and it wants a decision first')
 })
+test('SAVE-8: the roster can grow without deleting everyone\'s decks', () => {
+  /* MEASURED AGAINST THE SHIPPED LOADER BEFORE THIS WAS WRITTEN. `loadouts` was kept only when
+     `d.loadouts.length === ARCHETYPES.length`, so a save carrying FOUR customised decks against
+     a five-climber build lost all four — not the missing one, all of them. 6 lost all six. Only
+     an exact 5 survived. The same equality gate on the singular `loadout` threw away a 14-card
+     list for being 14.
+
+     THE GATE WAS NOT AN OVERSIGHT. `loadouts` is indexed positionally (`st.loadouts[st.arch]`,
+     five places in App.tsx), so a short array at a new archetype index is `loadoutDeck(undefined)`
+     and a TypeError. Dropping to defaults really did prevent that. It is the price that is
+     wrong: the player's whole collection of decks, to avoid an undefined at one index.
+
+     What it was defending is also handled one layer down — `loadoutDeck` opens with
+     `loadout.length === DECK_SIZE ? loadout : DEFAULT_LOADOUT` and filters names it does not
+     know — so a bad DECK is already survivable and only a MISSING SLOT is not. */
+  /* A REAL DECK, because the interesting assertion below is that `loadoutDeck` can still build
+     what comes back — and a fixture of invented names filters to nothing and would have made
+     that assertion a test of the fixture. One real card swapped in as the marker, so "the
+     player's deck" is distinguishable from any default. */
+  const marker = Object.keys(E.CARDS).find(n => n !== E.DEFAULT_LOADOUT[0]
+    && E.CARDS[n].rarity === 'starter')
+  ok(marker, 'no starter card to build a fixture deck from')
+  const mine = [marker, ...E.DEFAULT_LOADOUT.slice(1)]
+  eq(mine.length, E.DECK_SIZE, 'the fixture deck is not a legal size, so it tests the wrong thing')
+  const put = (slot, d) => localStorage.setItem(`sandbagged.save.${slot}`,
+    JSON.stringify({ v: E.SAVE_FILE_VERSION, level: 3, ...d }))
+  const N = E.ARCHETYPES.length
+
+  // a save from a build with one fewer climber — exactly what adding a climber produces
+  put(41, { loadouts: Array.from({ length: N - 1 }, () => mine.slice()) })
+  const grown = E.loadGame(41)
+  /* Checked as a SHAPE first, and the message says what the player lost rather than what the
+     array measured — the old gate returned no `loadouts` key at all, so a length assertion
+     here reads `undefined.length` and reports a TypeError instead of the defect. */
+  ok(Array.isArray(grown.loadouts),
+    'a save from a smaller roster comes back with no loadouts at all — every deck the player built is gone')
+  eq(grown.loadouts.length, N, 'a save from a smaller roster does not come back with one deck per climber')
+  /* Shape before content, and before the identity check below, so a repair that lets a
+     non-deck through reports THAT rather than failing the pad assertion for a reason the
+     message does not describe. */
+  for (let i = 0; i < N; i++)
+    ok(Array.isArray(grown.loadouts[i]),
+      `loadouts[${i}] is not an array, so loadoutDeck(undefined) throws for ${E.ARCHETYPES[i].name}`)
+  for (let i = 0; i < N - 1; i++)
+    eq(grown.loadouts[i][0], marker,
+      `the deck the player built for ${E.ARCHETYPES[i].name} was thrown away because the roster grew`)
+  /* AND THE NEW SLOT IS THAT CLIMBER'S OWN DEFAULT. Padding with the first climber's list, or
+     with an empty array, would satisfy every length assertion above and hand the newest climber
+     somebody else's deck — which is the shape of pad that looks right and reads wrong. */
+  eq(JSON.stringify(grown.loadouts[N - 1]), JSON.stringify(E.ARCHETYPES[N - 1].loadout),
+    `the climber the save never knew about got somebody else's deck instead of its own`)
+
+  // a save from a build with one MORE climber
+  put(42, { loadouts: Array.from({ length: N + 1 }, () => mine.slice()) })
+  eq(E.loadGame(42).loadouts.length, N, 'a save from a bigger roster is not trimmed to this one')
+
+  /* THE PROPERTY THAT ACTUALLY PREVENTS THE CRASH, stated as the consumer sees it rather than
+     as a length: every archetype index yields a deck `loadoutDeck` can build. */
+  for (const slot of [41, 42]) {
+    const l = E.loadGame(slot).loadouts
+    for (let i = 0; i < N; i++) {
+      ok(Array.isArray(l[i]), `loadouts[${i}] is not an array, so loadoutDeck(undefined) throws for ${E.ARCHETYPES[i].name}`)
+      ok(E.loadoutDeck(l[i]).length > 0, `${E.ARCHETYPES[i].name} loads an empty deck`)
+    }
+  }
+
+  // an entry that is not a deck at all falls back per climber rather than propagating
+  put(43, { loadouts: [mine, 'not an array', null, 42, mine] })
+  const junk = E.loadGame(43)
+  ok(junk.loadouts.every(Array.isArray), 'a junk entry survives as a junk entry')
+  eq(JSON.stringify(junk.loadouts[1]), JSON.stringify(E.ARCHETYPES[1].loadout),
+    'a junk entry does not fall back to that climber\'s own default')
+
+  // SAVE-6's bound applies inside the decks too, or the repair is a new way in
+  put(44, { loadouts: [Array.from({ length: 5000 }, () => 'x'), ...Array.from({ length: N - 1 }, () => mine.slice())],
+    loadout: Array.from({ length: 5000 }, () => 'x') })
+  const big = E.loadGame(44)
+  eq(big.loadouts[0].length, E.DECK_SIZE, 'a 5,000-card deck is accepted whole, which is SAVE-6 reopened inside the fix for SAVE-8')
+  eq(big.loadout.length, E.DECK_SIZE, 'the singular loadout is unbounded')
+
+  // and the control: an exact save is untouched
+  put(45, { loadouts: Array.from({ length: N }, () => mine.slice()), loadout: mine })
+  const same = E.loadGame(45)
+  eq(JSON.stringify(same.loadouts), JSON.stringify(Array.from({ length: N }, () => mine)),
+    'a save that already matched is no longer round-tripping unchanged')
+})
 test('SAVE-6: a save cannot claim an array longer than the game can make', () => {
   /* SAVE-6. SAVE-5 was ONE unvalidated number — `xp: undefined` beat freshRun's 0, `gainXp`
      returned NaN, `while (NaN >= xpToNext(level))` was never true and levelling froze for
