@@ -1185,6 +1185,20 @@ export const MUTANTS = [
     catches: 'becomes a second engine',
     patch: [['src/content.ts', 'export const JOURNAL',
       'export function journalCount() { return JOURNAL.length }\nexport const JOURNAL']] },
+  // ---- SHIP-5: the README describes the game that is actually in the repo ----
+  { id: 'SHIP-5/readme-card-count-rots', suite: 'core',
+    why: 'the README goes back to a card count the game does not have — it said 227 against 250 for as long as nobody counted, which is SHIP-4’s drift on the one page a stranger reads',
+    catches: 'states a card count the game does not have',
+    patch: [['README.md', '250 cards, 37 named routes', '227 cards, 37 named routes']] },
+  { id: 'SHIP-5/readme-climber-count-rots', suite: 'core',
+    why: 'the README goes back to four climbers against five — the count is written as a WORD, which is exactly why it survived four releases of nobody noticing',
+    catches: 'states a climber count the game does not have',
+    patch: [['README.md', 'five climbers, seven ascent styles', 'four climbers, seven ascent styles']] },
+  { id: 'SHIP-5/readme-sends-people-elsewhere', suite: 'core',
+    why: 'the README links somewhere other than the homepage the PWA scope and the TWA package are derived from, so the page a stranger lands on is not the one the service worker controls — and the path is case-sensitive, which SHIP-3 found the hard way after forty-two releases',
+    catches: 'the README sends people somewhere other than',
+    patch: [['README.md', '**Play it: https://rcjlabs.github.io/Sandbagged/**', '**Play it: https://rcjlabs.github.io/sandbagged/**']] },
+
   // ---- ARCH-2: the floor is a real number now, and the roster clears it ----
   { id: 'ARCH-2/floor-lowered-to-pass', suite: 'core',
     why: 'the floor goes back under 9, which is the v9.32 move BAL-9 exists to forbid — lowering the bar to accommodate a drift instead of paying for it. Raising it was a dated decision; lowering it is a drift with an excuse',

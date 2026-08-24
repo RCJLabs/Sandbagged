@@ -8138,7 +8138,13 @@ test('GUARD-9: the kept injections still injure something', () => {
          byte-compares them at exit, so anything outside the tree would be restored from
          nothing. `scripts/build-html.mjs` is source by every measure that matters here:
          DEV-2's guard already reads it as the source of truth for the service worker. */
-      ok(/^(src|sim|scripts|ship|docs|\.gitignore|package\.json)/.test(file),
+      /* SHIP-5 added `README.md`. Same test as the others and it passes it: the runner
+         snapshots the files the table touches and byte-compares them at exit, so the only
+         requirement is that the path is a real file in this repo. It is one now in the sense
+         that matters — SHIP-5 asserts its counts against the tables, so the README is a
+         checked claim rather than prose, and a claim with no injection behind it is the thing
+         GUARD-9 exists to complain about. */
+      ok(/^(src|sim|scripts|ship|docs|README\.md|\.gitignore|package\.json)/.test(file),
         `${m.id} patches ${JSON.stringify(file)}, which is not a source path`)
       ok(from !== to, `${m.id} patches ${file} to exactly what it already says`)
       ok(from.length > 12, `${m.id} has an anchor too short to be unique on purpose`)
@@ -8380,6 +8386,49 @@ test('QA-1: one scroller, and nothing hides under the fixed bar', () => {
     { min: 20, what: 'what follows the bar spacer', eof: true })
   for (const m of tailAfter.matchAll(/className="(spot|log)"/g))
     ok(false, `a ${m[1]} box renders after the bar spacer, so it can hide under the bar`)
+})
+test('SHIP-5: the README describes the game that is actually in the repo', () => {
+  /* THE FRONT DOOR IS THE ONE PIECE OF DOCUMENTATION A STRANGER READS, and it was wrong in
+     four countable places at v10.88: 227 cards against 250, 30 routes against 37, four
+     climbers against five, 83 tests against 330. Every one of them was true when it was
+     written, which is the whole point — SHIP-4 exists because the version string drifted the
+     same way twice, and a count in prose rots faster than a version does because nothing
+     bumps it.
+
+     COUNTED, NOT SPELLED. The assertion reads the number out of the README and compares it to
+     the table, so it fails when the game grows rather than when somebody rewords a sentence.
+     Deliberately NOT a full-text match: prose has to stay editable or the guard gets deleted
+     the first time somebody improves a paragraph. */
+  const readme = readFileSync('README.md', 'utf8')
+  const num = (label, re) => {
+    const m = re.exec(readme)
+    ok(m, `the README no longer states the ${label} at all`)
+    return m ? Number(m[1]) : NaN
+  }
+  eq(num('card count', /(\d+) cards\b/), Object.keys(E.CARDS).length,
+    `the README states a card count the game does not have (it has ${Object.keys(E.CARDS).length})`)
+  eq(num('route count', /(\d+) named routes/), E.ROUTES.length,
+    `the README states a route count the game does not have (it has ${E.ROUTES.length})`)
+  /* The climbers and the styles are written as WORDS, so they are matched as words — a
+     number here would have read as a typo to whoever wrote the sentence. */
+  const WORDS = { three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 }
+  const word = (label, re) => {
+    const m = re.exec(readme)
+    ok(m, `the README no longer states the ${label}`)
+    return m ? WORDS[m[1]] : NaN
+  }
+  eq(word('climber count', /(\w+) climbers/), E.ARCHETYPES.length,
+    `the README states a climber count the game does not have (it has ${E.ARCHETYPES.length})`)
+  eq(word('ascent styles', /(\w+) ascent styles/), E.ASCENT.length,
+    `the README states an ascent-style count the game does not have (it has ${E.ASCENT.length})`)
+  /* AND THE LINK A STRANGER CLICKS. `homepage` is what `build:html` derives the PWA scope and
+     the TWA package from (SHIP-3), so if these two disagree the README sends people somewhere
+     the service worker does not control. Case matters: the path was lower-case for
+     forty-two releases against a case-sensitive host. */
+  const home = JSON.parse(readFileSync('package.json', 'utf8')).homepage
+  ok(home, 'package.json has no homepage, which is what the PWA scope is derived from')
+  ok(readme.includes(home),
+    `the README sends people somewhere other than ${home}, which is the URL the PWA scope is built for`)
 })
 test('SHIP-4: the version the player is shown is the version that shipped', () => {
   /* THIS FAILED TWICE BEFORE IT WAS WRITTEN. v10.65 and v10.66 both went out with `v10.64 · RCJ
