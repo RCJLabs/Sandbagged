@@ -25,7 +25,8 @@ function test(name, fn) {
    shared with test.mjs, because two copies of one rule drift (ENG-19). Read the header
    there for what each of them refuses to do. `guardScan` is asserted at the bottom of
    this file, over this file. */
-import { ok, eq, region, declBody, appFn, cssRule, tail, guardScan, stripComments } from './guard.mjs'
+import { ok, eq, region, declBody, appFn, cssRule, tail, guardScan, stripComments,
+  contrast, lum, palette } from './guard.mjs'
 import { BAND_PIN, BAND_TOL, BAND_N, ENDING_N, ARCH_N, ARCH_FLOOR, ARCH_TOL, BAND_LOG } from './band.mjs'
 /* GUARD-9: the kept injections. The table is data; the guard below checks it has not
    rotted. `node sim/mutants.mjs` is what actually runs them. */
@@ -198,6 +199,105 @@ test('the conditions are on the paper, and still readable', () => {
   // and colour-blind mode must keep the cue while dropping the hue
   ok(/\.cb\[class\*="wx-"\]::before\{filter:saturate/.test(app),
     'colour-blind mode gets the same hues as everybody else')
+})
+
+test('ART-5: the wall is legible, and the palette is measured rather than eyeballed', () => {
+  /* VIS-3 wrote "69 points of the gap between ink and paper" into a comment, measured by
+     hand at mock time. Nothing ever re-ran it, so for forty releases it was prose sitting
+     next to code that could move under it. This is that measurement as an instrument, and
+     the FIRST thing it did was fail against the palette that was shipping:
+       --tan on --paper 2.45:1, and --tan IS body text (the cash figure, the xp gain, HIS
+       PAGES, six .sub lines) — under the 3:1 large-text bar, never mind 4.5:1;
+       --fade on --stone 4.08:1, carrying .tx, which is 8px, on every hold on the board.
+     Seven pairs were under 4.5 and the worst was 1.85. So this guard is not decoration on
+     a reskin — the reskin is what happens when you point a real instrument at a palette
+     nobody had measured.
+     BOTH DIRECTIONS, because that is the hole the flip opened: --ink stopped being only a
+     foreground and became a GROUND on three surfaces (.btn.go, .teach, .tile.hero), where
+     every quiet token tuned against rock lands at 1.6-2.3:1. --onink is the missing half,
+     and .tile.hero was shipping a cream literal that went invisible on it. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const ROCK = ['--paper', '--card', '--stone', '--well', '--bonus', '--void']
+  const ON_ROCK = ['--ink', '--fade', '--red', '--green', '--tan', '--blue']
+  const ON_CHALK = ['--paper', '--onink']
+  const BAR = 4.5                                     // WCAG AA for body text
+
+  for (const mode of [null, '.cb']) {                 // colour-blind mode is measured too
+    const p = palette(app, mode)
+    for (const t of [...ROCK, ...ON_ROCK, ...ON_CHALK])
+      ok(p[t], `${mode ?? ':root'} has no ${t}`)
+    /* THE DIRECTION FIRST, and the ordering is deliberate. Rock is the ground and chalk
+       is what you write on it — asserted as a property, never as a hex, so a re-tuned
+       palette is free and an inverted one is not. It goes ABOVE the ratios because it is
+       the more fundamental claim: a palette flipped back to paper fails half the pairs
+       below on its way past, and the failure a reader gets should name what is actually
+       wrong (this is not the game's palette) rather than the first ratio to trip over it.
+       Injecting that flip is what found the ordering. */
+    ok(lum(p['--paper']) < lum(p['--ink']), `${mode ?? ':root'}: the ground is lighter than the ink`)
+    ok(lum(p['--stone']) < 0.1, `${mode ?? ':root'}: the route ground is not rock`)
+
+    for (const g of ROCK) for (const f of ON_ROCK) {
+      const r = contrast(p[f], p[g])
+      ok(r >= BAR, `${mode ?? ':root'}: ${f} on ${g} is ${r.toFixed(2)}:1, under ${BAR}`)
+    }
+    for (const f of ON_CHALK) {
+      const r = contrast(p[f], p['--ink'])
+      ok(r >= BAR, `${mode ?? ':root'}: ${f} on the chalk ground is ${r.toFixed(2)}:1`)
+    }
+  }
+  /* EVERY ground the stylesheet actually uses has to be one the loop above measured, or
+     the next one added is unmeasured and this guard passes by not looking. The three
+     exceptions are named rather than pattern-matched, because "does this fill carry text"
+     cannot be read off the CSS — naming them means adding a fourth is a deliberate act
+     with a reason, instead of a silent hole. */
+  const DECOR = {                      // fills with nothing written on them
+    '--green': '.tick.done, a cleared mark on the topo',
+    '--red': '.seg.danger, a pump segment',
+    '--tan': '.seg.on and .wkboard i, a pump segment and a week bar',
+  }   /* --void is NOT here: body sets color:var(--ink) as the document default, so it is
+         cheaper to measure the pair than to special-case the one rule that declares both */
+  const css = stripComments(region(app, 'const CSS = `', ['\n`\n'], { what: 'the stylesheet' }))
+  const grounds = new Set([...css.matchAll(/background(?:-color)?:\s*(?:color-mix\(in srgb,\s*)?var\((--[\w-]+)/g)]
+    .map(m => m[1]))
+  for (const g of grounds)
+    ok([...ROCK, '--ink'].includes(g) || DECOR[g],
+      `${g} is painted as a ground and nothing measures text on it`)
+  /* and the named exceptions have to still BE exceptions — a decorative fill that grows
+     a colour rule is text on an unmeasured ground. */
+  for (const g of Object.keys(DECOR))
+    ok(!new RegExp(`background:var\\(${g}\\)[^}]*;color:`).test(css), `${g} (${DECOR[g]}) now carries text`)
+
+  /* ONE palette. Every colour in this file lives in :root or .cb — the share canvas used
+     to carry six literals as "fallbacks", under a comment citing ENG-19 for not making a
+     second copy, and they went stale the instant the palette inverted. */
+  const bare = css.replace(/:root\{[^}]*\}/, '').replace(/\.cb\{[^}]*\}/, '')
+  const strays = [...bare.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map(m => m[0])
+  eq(strays.length, 0, `the stylesheet carries colour literals outside the palette: ${strays.join(' ')}`)
+  ok(/TOKENS\[n\]/.test(stripComments(app)), 'the share canvas has gone back to hard-coded fallbacks')
+
+  /* the chalk itself: one filter for the document, and the board referencing it. A chalk
+     line is broken and displaced, which is what separates it from an ink line — drop the
+     filter and every frame goes back to being a rectangle drawn in a pale colour. */
+  const shell = readFileSync('index.html', 'utf8')
+  ok(/<filter id="chalkline"/.test(shell), 'the chalk filter is not defined in the document')
+  ok(/feDisplacementMap/.test(shell), 'the chalk filter no longer displaces anything')
+  const ink = declBody(app, 'function Ink(', 'the frame primitive')
+  ok(/url\(#chalkline\)/.test(ink), 'a frame on the wall is no longer drawn in chalk')
+  ok(/strokeDasharray/.test(ink), 'the chalk line is continuous, which is an ink line')
+  ok(/url\(#chalkline\)/.test(declBody(app, 'function ChalkRing(', 'the ring')), 'the ring is not chalk')
+
+  /* VIS-7: the crux must be a SHAPE, not a colour — in colour-blind mode --red and --ink
+     are two greys a shade apart, and the 1.5px/2.2px stroke difference is not one you see
+     without the other stroke beside it. */
+  ok(/h\.crux && <ChalkRing/.test(stripComments(app)), 'the crux is marked by colour alone again')
+
+  /* the chrome the player sees before React runs: the status bar, the splash and the
+     no-JS page all have to be the rock, or the app opens cream and then flips. */
+  const paper = palette(app)['--paper']
+  ok(shell.includes(`content="${paper}"`), `index.html theme-color is not ${paper}`)
+  const build = readFileSync('scripts/build-html.mjs', 'utf8')
+  ok(build.includes(`theme_color: '${paper}'`), `the manifest theme colour is not ${paper}`)
+  ok(build.includes(`background_color: '${paper}'`), `the manifest background is not ${paper}`)
 })
 
 test('every condition does what it says it does', () => {
@@ -8144,7 +8244,12 @@ test('GUARD-9: the kept injections still injure something', () => {
          that matters — SHIP-5 asserts its counts against the tables, so the README is a
          checked claim rather than prose, and a claim with no injection behind it is the thing
          GUARD-9 exists to complain about. */
-      ok(/^(src|sim|scripts|ship|docs|README\.md|\.gitignore|package\.json)/.test(file),
+      /* ART-5 added `index.html`. It is the one file carrying palette the player sees BEFORE
+         any of src/ runs — the status-bar colour and the chalk filter the whole board draws
+         through — so a mutant that cannot reach it cannot injure the half of this ticket that
+         happens before React boots. Same test as README.md: a real file in this repo, with a
+         guard asserting its contents against the shipped palette rather than against prose. */
+      ok(/^(src|sim|scripts|ship|docs|README\.md|index\.html|\.gitignore|package\.json)/.test(file),
         `${m.id} patches ${JSON.stringify(file)}, which is not a source path`)
       ok(from !== to, `${m.id} patches ${file} to exactly what it already says`)
       ok(from.length > 12, `${m.id} has an anchor too short to be unique on purpose`)

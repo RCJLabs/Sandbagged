@@ -3,7 +3,7 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.89.** `npm run check` is 211/211 core + 119/119 kept;
+**State at the time of writing: v10.91.** `npm run check` is 213/213 core + 119/119 kept;
 `npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
@@ -175,6 +175,45 @@ deck every player had built, because `loadouts` was kept only on an exact length
 padded per climber now and SAVE-8 guards it — but the lesson generalises: **anything sized by a
 content table is a migration.** `archWins` and `owned` are membership lists and safe; `loadouts`
 was the one indexed by position.
+
+## The palette is measured now, and it had never been
+
+`contrast(a, b)` and `lum(hex)` in `sim/guard.mjs` are WCAG relative luminance and contrast
+ratio over the shipped tokens; `palette(css, extra)` resolves `:root` with an override block
+layered on it, so colour-blind mode is measured with the same call. ART-5's guard runs them.
+
+**This exists because VIS-3's number was prose.** It recorded *"69 points of the gap between ink
+and paper"*, measured by hand at mock time, and nothing ever re-ran it — so for forty releases a
+comment asserted a legibility bar that no code checked. Pointed at the palette that was actually
+shipping, it failed on two pairs that had been live the whole time: `--tan` at **2.45:1** on
+paper while carrying body text, and `--fade` at **4.08:1** on stone while carrying `.tx` at 8px.
+
+Three things to know before you touch a colour:
+
+- **Both directions.** `--ink` is a ground as well as a foreground (`.btn.go`, `.teach`,
+  `.tile.hero`). Every quiet token is tuned against rock and lands at 1.6–2.3:1 on chalk, which
+  is what `--onink` is for. A guard measuring only foreground-on-background does not see it.
+- **Every ground has to be classified.** The guard collects each `background:var(--x)` out of the
+  stylesheet and refuses one it does not measure text on. The four decorative fills are named in
+  a `DECOR` map with a reason each, so adding a fifth is deliberate rather than a silent hole.
+- **One palette.** Zero colour literals live outside `:root` and `.cb`, asserted. The share canvas
+  used to carry six as "fallbacks" *under a comment citing ENG-19 for not making a second copy*,
+  and they went stale the instant the palette inverted.
+
+**The instrument does not replace looking.** `.tile.hero` was shipping a cream literal that went
+invisible on the flipped ground, and no ratio caught it — it was found by screenshotting the menu
+in a real browser. `scripts/perf.mjs` shows the pattern: serve `docs/`, drive Chromium with
+`PW_EXE=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`, screenshot. Do that before shipping
+anything visual.
+
+## The mutant sweep has 8 standing misses, and none of them is new
+
+`node sim/mutants.mjs` reads **454/462** as of v10.91. All eight patch `src/engine.ts` or
+`sim/band.mjs`; ART-5 touched neither, and the misses predate it. Seven report *"something else
+failed instead"* — the mutant IS caught, by a different assertion than its `catches` string names,
+which is a labelling problem rather than a hole. **One is a real hole:** `INFO-1/policy-spends-a-read`
+reports *"the suite passed"*, so the policy can be made to spend a pump on information it cannot
+use and nothing complains. That one is worth a row.
 
 ## The measurements are reproducible now, and they were not
 

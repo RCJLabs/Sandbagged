@@ -78,7 +78,7 @@ const manifest = {
   lang: 'en-GB', dir: 'ltr',
   categories: ['games', 'entertainment'],
   start_url: './', scope: './', display: 'standalone', orientation: 'portrait',
-  background_color: '#e8e1d0', theme_color: '#e8e1d0',
+  background_color: '#221d18', theme_color: '#221d18',
   icons: [
     { src: './icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
     { src: './icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
@@ -199,7 +199,7 @@ for (const f of ICONS) copyFileSync(join('public', f), join('docs', f))
 const privacy = `<!doctype html><html lang="en-GB"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sandbagged — Privacy</title>
-<style>body{max-width:38rem;margin:2.5rem auto;padding:0 1.2rem;background:#e8e1d0;color:#26221e;
+<style>body{max-width:38rem;margin:2.5rem auto;padding:0 1.2rem;background:#221d18;color:#f2ece1;
 font:16px/1.65 Georgia,'Times New Roman',serif}h1{font-size:1.6rem}h2{font-size:1.05rem;margin-top:1.8rem}
 code{background:#f3ede1;padding:.1em .3em}a{color:#8c3124}</style></head><body>
 <h1>Sandbagged — privacy</h1>

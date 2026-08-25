@@ -2471,6 +2471,44 @@ export const MUTANTS = [
     patch: [['src/engine.ts',
       'export const CLIMB_POOLS: Record<number, number[]>[] = ACTS.map(map => {\n  const pools: Record<number, number[]> = {}\n  map.forEach(tier => tier.forEach(n => {',
       'export const CLIMB_POOLS: Record<number, number[]>[] = ACTS.map(map => {\n  const pools: Record<number, number[]> = {}\n  ACTS.flat().forEach(tier => tier.forEach(n => {']] },
+
+  // ---- ART-5: the wall is a photograph, and the palette is measured ----
+  { id: 'ART-5/quiet-text-goes-dim-on-rock', suite: 'core',
+    why: 'the quiet foreground drifts down until it fails on the darkest ground it is used on — which is EXACTLY the defect the instrument found in the palette that was shipping, where --fade measured 4.08:1 on --stone while carrying .tx at 8px on every hold. A colour nudged one shade at a time is how it got there the first time',
+    catches: 'under 4.5',
+    patch: [['src/App.tsx', '--fade:#aca396;', '--fade:#6e675d;']] },
+
+  { id: 'ART-5/chalk-ground-quiet-token-reverts', suite: 'core',
+    why: 'the ink-ground token goes back to being the rock-ground one, which is the half of the flip the palette could not carry: --tan on --ink is 1.73:1, and .tile.hero shipped a cream literal that went invisible the same way. A guard measuring only foreground-on-background never sees it',
+    catches: 'on the chalk ground',
+    patch: [['src/App.tsx', '--onink:#5f564b;', '--onink:#dcae68;']] },
+
+  { id: 'ART-5/palette-drifts-back-to-paper', suite: 'core',
+    why: 'the ground goes back to cream while every ratio above stays legal — a palette can pass every contrast pair in this guard and still not be this game, so the DIRECTION has to be asserted as a property rather than left to the ratios',
+    catches: 'the ground is lighter than the ink',
+    patch: [['src/App.tsx', ':root{--paper:#221d18;--ink:#f2ece1;', ':root{--paper:#e8e1d0;--ink:#26221e;']] },
+
+  { id: 'ART-5/second-palette-comes-back', suite: 'core',
+    why: 'a colour literal reappears in the stylesheet outside :root — the share canvas carried six of them as fallbacks under a comment citing ENG-19 for not making a second copy, and they went stale the instant the palette inverted. One palette or none',
+    catches: 'colour literals outside the palette',
+    patch: [['src/App.tsx', '.card.bonus{background:var(--bonus)}', '.card.bonus{background:#3b3128}']] },
+
+  { id: 'ART-5/chalk-goes-back-to-ink', suite: 'core',
+    why: 'the frame drops its dash pattern, so the line is continuous again — a continuous line IS an ink line, and the whole difference between chalk on rock and ink on paper is that chalk skips. The colour would still be right, which is why this cannot be guarded by colour',
+    catches: 'the chalk line is continuous',
+    patch: [['src/App.tsx',
+      "    ? { filter: 'url(#chalkline)', strokeLinecap: 'round' as const, strokeDasharray: '9 2.5 17 2 5 3' }",
+      "    ? { filter: 'url(#chalkline)', strokeLinecap: 'round' as const }"]] },
+
+  { id: 'ART-5/crux-marked-by-colour-alone', suite: 'core',
+    why: 'the ring comes off the crux and it is red-and-slightly-thicker again — VIS-7 is the rule: in colour-blind mode --red and --ink are two greys a shade apart, and 1.5px against 2.2px is not a difference you can see without the other stroke beside it',
+    catches: 'marked by colour alone',
+    patch: [['src/App.tsx', '              {h.crux && <ChalkRing seed={h.uid} color="var(--red)" />}', '']] },
+
+  { id: 'ART-5/app-opens-cream-then-flips', suite: 'core',
+    why: 'the status bar and the splash keep the old cream, so the app paints cream for as long as it takes React to boot and then snaps to rock — the one part of the palette a player sees BEFORE any of this code runs, and the one nothing in src/ would ever catch',
+    catches: 'theme-color is not',
+    patch: [['index.html', '<meta name="theme-color" content="#221d18" />', '<meta name="theme-color" content="#e8e1d0" />']] },
 ]
 
 

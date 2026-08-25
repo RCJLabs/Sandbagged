@@ -2,7 +2,7 @@
 //
 // Everything the player sees. The rules live in ./engine and are imported;
 // this file holds the CSS, the ink and sound layers, and the screens.
-// SANDBAGGED v10.90 — SHIP-5: the front door describes the game that is actually here
+// SANDBAGGED v10.91 — ART-5: the wall is a photograph, and the beta is chalked onto it
 //   with Evan on 2026-08-22 and moved together because they share a lever. ARCH-1 is the whole
 //   move: five signature moves lifted the game +3.0 while TIGHTENING the roster (floor 8.3 to
 //   10.8, spread 1.60x to 1.35x), so it is a game that got better, not a leak. No rule changed.
@@ -229,7 +229,21 @@ export const buzz = (ms: number | number[], on: boolean) => {
 
 
 const CSS = `
-:root{--paper:#e8e1d0;--ink:#26221e;--red:#8c3124;--green:#3f5438;--tan:#b8873f;--fade:#5f584a;--blue:#355b72;--card:#f3ede1;--stone:#c8c5bb}
+/* ART-5: the wall is a photograph and the beta is chalked onto it. The palette
+   inverts — rock is the ground, chalk is the ink — and it is the FIRST one in this
+   project measured rather than eyeballed. VIS-3 wrote "69 points of the gap between
+   ink and paper" into a comment at mock time; nothing re-ran it, so it had been prose
+   for forty releases. contrast() in sim/guard.mjs is that measurement as an
+   instrument, and pointing it at the palette that was shipping found two real defects
+   this one had to fix rather than inherit:
+     --tan on paper measured 2.45:1 and --tan IS body text (the cash figure, the xp
+     gain, HIS PAGES, six .sub lines) — under the 3:1 large-text bar, never mind 4.5:1.
+     --fade on stone measured 4.08:1 and carries .tx, which is 8px, on every hold.
+   Every foreground here clears 4.5:1 on all three grounds in both colour modes.
+   Worst pair 5.34:1 against the old palette's 1.85:1; under-4.5 pairs 0 against 7.
+   Re-measurable: node sim/test-core.mjs runs it, so moving a token is now caught.
+   (No backticks in here: this comment lives inside a template literal.) */
+:root{--paper:#221d18;--ink:#f2ece1;--red:#e78d73;--green:#7fcb9c;--tan:#dcae68;--fade:#aca396;--blue:#8fbdd6;--card:#2e2721;--stone:#191c1f;--well:#181410;--onink:#5f564b;--bonus:#3b3128;--void:#141210}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 /* DEV-3: overscroll-behavior existed on exactly one element (the hand scroller,
    x-axis only). Nothing stopped the VERTICAL chain, so Android pull-to-refresh
@@ -253,7 +267,7 @@ const CSS = `
    only, because that is where overscroll-behavior reaches the viewport from.
    (No backticks in here: this comment lives inside a template literal.) */
 html{overflow-x:clip;overscroll-behavior-y:contain}
-body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',serif;color:var(--ink)}
+body{margin:0;background:var(--void);font-family:ui-serif,Georgia,'Times New Roman',serif;color:var(--ink)}
 /* DEV-1: index.html sets viewport-fit=cover, which is an explicit opt-OUT of the
    browser insetting content for the notch and the home indicator — and nothing
    padded it back in, so the bottom of every screen sat under the gesture bar. The
@@ -263,12 +277,21 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
 .wrap{max-width:390px;margin:0 auto;min-height:100dvh;overflow-x:hidden;
  padding:calc(9px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
  background-color:var(--paper);
+ /* ART-5: the ruled line went with the paper — rock has no rule on it. What is left
+    is what a photograph of a face at 390px actually carries: ONE light source high
+    and slightly left, two shadowed strata running across the fall line, and grain.
+    The grain is the SAME feTurbulence the paper used, kept rather than re-authored
+    (it was already the right instrument, and a second copy is the ENG-19 failure) —
+    turned up 0.30 -> 0.44 and blended overlay instead of multiply, so it now
+    lifts as well as darkens and reads as stone rather than as dirt on glass.
+    (No backticks in here: this comment lives inside a template literal.) */
  background-image:
-  repeating-linear-gradient(to bottom,transparent 0 27px,rgba(96,84,60,.05) 27px 28px),
-  radial-gradient(ellipse at 50% 40%,rgba(255,255,255,.34) 0%,rgba(120,104,74,.075) 100%),
-  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' seed='11'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23p)' opacity='0.30'/%3E%3C/svg%3E");
- background-size:auto,100% 100%,120px 120px;
- background-blend-mode:multiply,multiply,multiply}
+  radial-gradient(ellipse 96% 44% at 40% 16%,rgba(255,240,214,.30) 0%,rgba(255,236,206,.09) 38%,transparent 66%),
+  linear-gradient(99deg,rgba(0,0,0,.46) 0 4%,rgba(0,0,0,.10) 11%,transparent 24% 37%,rgba(0,0,0,.36) 46% 55%,rgba(0,0,0,.06) 63%,transparent 74%,rgba(0,0,0,.42) 94% 100%),
+  linear-gradient(186deg,transparent 0 52%,rgba(0,0,0,.34) 78%,rgba(0,0,0,.52) 100%),
+  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' seed='11'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23p)' opacity='0.44'/%3E%3C/svg%3E");
+ background-size:100% 100%,100% 100%,100% 100%,140px 140px;
+ background-blend-mode:screen,multiply,multiply,overlay}
 .row{display:flex;justify-content:space-between;align-items:baseline}
 .h1{font-size:calc(19px * var(--fs));font-weight:700}
 .sub{font-size:calc(11px * var(--fs));color:var(--fade)}
@@ -302,8 +325,17 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
    both a warm tan wash a shade apart, so "the wall" and "my hand" read as one
    surface. The route now takes a cooler grey ground with a little carved depth;
    your row keeps warm paper and a tan margin stripe — the line you're drawing. */
-.slot.foe{background:var(--stone);box-shadow:inset 0 3px 6px -4px rgba(38,34,30,.55)}
-.slot.you{background:var(--card);box-shadow:inset 3px 0 0 rgba(184,135,63,.6)}
+/* ART-5: TRANSLUCENT, and this is the whole direction rather than a finish. On paper a
+   slot was a card laid on the page and opacity would have been a bug; on a photograph a
+   solid slot hides the thing the screen is of, and three of them hide most of it. At .62
+   and .55 the strata and the light still run behind the board, so the route reads as
+   marks made ON the wall — which is what a chalk frame is — instead of as three windows
+   cut into it. The colour under them is unchanged; only the coverage is.
+   (No backticks in here: this comment lives inside a template literal.) */
+.slot.foe{background:color-mix(in srgb,var(--stone) 62%,transparent);
+ box-shadow:inset 0 3px 10px -5px rgba(0,0,0,.9)}
+.slot.you{background:color-mix(in srgb,var(--card) 55%,transparent);
+ box-shadow:inset 3px 0 0 rgba(220,174,104,.42)}
 .slot.empty{opacity:.5;justify-content:center;align-items:center}
 .slot.tgt{box-shadow:0 0 0 2px rgba(158,58,44,.22)}
 .nm{font-size:calc(11.5px * var(--fs));font-weight:700;line-height:1.08;
@@ -321,11 +353,18 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
 .pip.o span{display:block;transform:rotate(-45deg)}
 .pip.d{color:var(--green);border-color:var(--green);border-radius:10px;padding:0 4px}
 /* colour-safe: green is already a teal-blue here, so the weather channel takes
-   a violet to stay distinct from it (VIS-5) */
-.cb{--red:#a8442c;--green:#26557a;--tan:#7a6a4a;--blue:#6a4fa3}
+   a violet to stay distinct from it (VIS-5). ART-5 lifted all four off the dark
+   rock — the old values were chosen against cream and land at 3.0-3.7:1 on it. */
+.cb{--red:#f0a07e;--green:#7fc2e0;--tan:#c9b48a;--blue:#b9a0ee}
 .lanes{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:4px 0 3px;text-align:center}
-.bar{height:22px;border:1.5px solid var(--ink);border-radius:3px;display:flex;overflow:hidden;
- background:rgba(38,34,30,.05)}
+/* ART-5: the one HARD-EDGED element left on the climb screen, and deliberately.
+   Everything else here is chalk on rock — broken lines, jittered letters, translucency —
+   and a pump gauge is the one thing you read as a quantity rather than as a mark. So it
+   keeps a crisp square border and an opaque well: the exception is what makes the rest
+   read as handwriting instead of as a style applied evenly to everything.
+   (No backticks in here: this comment lives inside a template literal.) */
+.bar{height:22px;border:1.5px solid var(--ink);border-radius:2px;display:flex;overflow:hidden;
+ background:rgba(0,0,0,.42);box-shadow:inset 0 1px 4px rgba(0,0,0,.6)}
 /* VIS-3: what the conditions do to the page. Deliberately under the text
    rather than over it — ENG-20 made these worth 46 points of send rate and they
    still have to be readable at the largest text size on a phone in the sun. */
@@ -374,7 +413,7 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
  touch-action:pan-x}
 .hand::-webkit-scrollbar{display:none}
 .card{position:relative;width:calc(112px + (var(--fs) - 1) * 40px);min-width:calc(112px + (var(--fs) - 1) * 40px);height:calc(124px + (var(--fs) - 1) * 95px);border-radius:2px;
- background:var(--card);padding:6px 12px 6px 7px;display:flex;flex-direction:column;justify-content:space-between;
+ background:color-mix(in srgb,var(--card) 88%,transparent);padding:6px 12px 6px 7px;display:flex;flex-direction:column;justify-content:space-between;
  margin-left:-8px;transition:transform .12s;box-shadow:2px 0 4px rgba(0,0,0,.10);
  scroll-snap-align:center;flex:0 0 auto}
 .card:last-child{padding-right:7px}
@@ -393,7 +432,10 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
 .fx-blow{animation:tear .34s ease-in forwards}
 .slot.you,.slot.foe{animation:land .18s ease-out}
 .bar.hot{animation:pulse .3s ease-out}
-.card.bonus{background:#eae2cf}
+/* ART-5: a bonus card is still a card, so it lifts off the rock the way the others
+   do rather than staying the cream it was — on the inverted palette that one literal
+   was the single brightest thing on the climb screen and it read as a rendering bug. */
+.card.bonus{background:var(--bonus)}
 .btn{border:1.5px solid var(--ink);background:var(--paper);border-radius:2px;padding:8px 12px;
  font-family:inherit;font-size:calc(12px * var(--fs));font-weight:700;color:var(--ink)}
 .btn.go{background:var(--ink);color:var(--paper)}
@@ -432,7 +474,13 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
    ink-filled banner against a page of paper boxes. */
 .teach{margin:0 0 8px;padding:9px 11px;border:2px solid var(--ink);border-radius:6px;
  background:var(--ink);color:var(--paper);font-size:calc(12px * var(--fs));line-height:1.5}
-.teach b{display:block;font-size:calc(9px * var(--fs));letter-spacing:1px;margin-bottom:3px;color:var(--tan)}
+/* ART-5: --tan on an --ink ground measures 1.73:1. It was a warm brown label on a
+   near-black banner and it inverted into a mid-tan label on a near-white one, which is
+   the one direction this palette flip could not carry: --ink stopped being a foreground
+   and became a GROUND on three surfaces (this, .btn.go, .tile.hero) and every quiet
+   token above is tuned against rock. --onink is that missing half, and it is why the
+   guard measures both directions rather than only fg-on-bg. */
+.teach b{display:block;font-size:calc(9px * var(--fs));letter-spacing:1px;margin-bottom:3px;color:var(--onink);font-weight:800}
 .pv{position:absolute;left:5px;right:5px;bottom:30px;font-size:calc(8.5px * var(--fs));font-weight:700;
  letter-spacing:.3px;text-align:center;pointer-events:none;line-height:1.1}
 .pv.good{color:var(--green)}.pv.bad{color:var(--red)}.pv.mid{color:var(--fade)}
@@ -462,7 +510,10 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
 .tile .tarrow{margin-left:auto;font-weight:700;opacity:.75}
 .tile.hero{background:var(--ink);color:var(--paper);padding:14px 14px 15px}
 .tile.hero .tname{font-size:calc(16.5px * var(--fs))}
-.tile.hero .tsub{color:rgba(232,225,208,.8)}
+/* ART-5: a CREAM literal at 80% — invisible cream-on-chalk after the flip, and the
+   thing the menu screenshot caught. It is the same defect as .teach b and takes the
+   same token. */
+.tile.hero .tsub{color:var(--onink)}
 .tile:disabled{opacity:.55}
 .tile.quiet{padding:9px 12px}
 .tile.quiet .tname{font-size:calc(12px * var(--fs))}
@@ -534,19 +585,61 @@ body{margin:0;background:#d8d0bd;font-family:ui-serif,Georgia,'Times New Roman',
 .reach .commit-bar .btn.go{padding:14px 18px;font-size:calc(15px * var(--fs))}
 `
 
+/* ART-5: the one palette in this file, parsed from the stylesheet above rather than
+   retyped. Anything that needs a colour in JS (the share canvas) reads the live
+   computed value first and falls back to this — so a fallback can never disagree
+   with what actually ships, which is the drift ENG-19 is named for. */
+const TOKENS: Record<string, string> = Object.fromEntries(
+  [...(CSS.match(/:root\{([^}]*)\}/)?.[1] ?? '').matchAll(/(--[\w-]+):([^;]+)/g)]
+    .map(m => [m[1], m[2].trim()]))
+
 /* ============================ INK ==================================
    Everything is drawn in code. Jitter is derived from a seed, never
    Math.random, so a card's border is the same stroke every render
    instead of crawling under StrictMode.                              */
 /** A hand-drawn box: the same edge inked twice, slightly off. */
-function Ink({ w, h, seed, color = 'var(--ink)', sw = 1.5, deckle = 1 }:
-  { w: number; h: number; seed: number; color?: string; sw?: number; deckle?: number }) {
+/* ART-5: the same two passes, drawn in chalk instead of ink when they are on rock.
+   Chalk is not a colour change — an ink line is continuous and sits ON the paper, a
+   chalk line is broken and sits IN the texture. Three things do that and all three
+   are cheap: a dash pattern with uneven gaps so the line skips, round caps so each
+   surviving segment is a deposit rather than a cut, and one displacement filter
+   (defined once, at the root) so the whole stroke wanders at the pixel level.
+   The filter is the SAME feTurbulence primitive as the ground and the paper grain
+   before it — a third generator would be the ENG-19 failure, and this one was
+   already the right instrument. */
+function Ink({ w, h, seed, color = 'var(--ink)', sw = 1.5, deckle = 1, chalk = false }:
+  { w: number; h: number; seed: number; color?: string; sw?: number; deckle?: number; chalk?: boolean }) {
+  const c = chalk
+    ? { filter: 'url(#chalkline)', strokeLinecap: 'round' as const, strokeDasharray: '9 2.5 17 2 5 3' }
+    : {}
   return (
     <svg className="rb" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden="true">
       <path d={roughPath(w, h, seed, 1.25, deckle)} fill="none" stroke={color} strokeWidth={sw}
-        strokeLinejoin="round" opacity="0.9" />
+        strokeLinejoin="round" opacity={chalk ? 0.82 : 0.9} {...c} />
       <path d={roughPath(w, h, seed + 977, 1.6, deckle)} fill="none" stroke={color}
-        strokeWidth={sw * 0.6} strokeLinejoin="round" opacity="0.45" />
+        strokeWidth={sw * 0.6} strokeLinejoin="round" opacity={chalk ? 0.34 : 0.45} {...c} />
+    </svg>
+  )
+}
+
+/* ART-5: a hold you are circling, the way beta gets drawn on a photograph — round
+   the hold, twice, because nobody draws one clean circle in chalk. Used where the
+   game already had a colour-only cue: the crux, and a lane a selected card can
+   reach. VIS-7's rule is why it is a SHAPE and not just a brighter red — the mark
+   has to survive colour-blind mode, and a ring does. */
+function ChalkRing({ seed = 0, color = 'var(--ink)' }: { seed?: number; color?: string }) {
+  const ell = (k: number) => {
+    const rx = 47 + jit(seed * 31 + k) * 3, ry = 49 + jit(seed * 17 + k) * 3
+    const cx = 50 + jit(seed * 7 + k) * 2.2, cy = 50 + jit(seed * 53 + k) * 2.2
+    const rot = jit(seed * 11 + k) * 14
+    return `M${(cx - rx).toFixed(1)},${cy.toFixed(1)} a${rx.toFixed(1)},${ry.toFixed(1)} ${rot.toFixed(1)} 1,1 ${(rx * 2).toFixed(1)},0 a${rx.toFixed(1)},${ry.toFixed(1)} ${rot.toFixed(1)} 1,1 ${(-rx * 2).toFixed(1)},0`
+  }
+  return (
+    <svg className="rb" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <path d={ell(0)} fill="none" stroke={color} strokeWidth="2.1" strokeLinecap="round"
+        strokeDasharray="26 3 47 4" filter="url(#chalkline)" opacity="0.72" />
+      <path d={ell(1)} fill="none" stroke={color} strokeWidth="1.4" strokeLinecap="round"
+        strokeDasharray="17 6 31 9" filter="url(#chalkline)" opacity="0.4" />
     </svg>
   )
 }
@@ -713,15 +806,27 @@ function Ridge({ seed = 21 }: { seed?: number }) {
 }
 
 /* ---------- hand-lettered wordmark: jittered type, not a webfont ---------- */
+/* ART-5 put this on hold and card names, where it has to survive WRAPPING, and that
+   exposed a real limit: every character was its own inline-block, so a line break
+   could land inside a word — invisible on the wordmark, which never wraps, and ugly
+   the moment "Beta · What He Told Her" (23 chars, the longest card name in the game)
+   met a 100px card. Words are now nowrap groups of jittered letters, so a break can
+   only happen where a break belongs. The jitter index still runs over the whole
+   string, so the lettering is unchanged anywhere it already fit. */
 function Lettered({ t, seed = 5 }: { t: string; seed?: number }) {
+  let n = -1
   return (
     <span className="lett">
-      {Array.from(t).map((ch, i) => ch === ' '
-        ? <span key={i} style={{ display: 'inline-block', width: '0.32em' }} />
-        : <span key={i} style={{
-          display: 'inline-block',
-          transform: `rotate(${(jit(seed * 13 + i) * 2.4).toFixed(2)}deg) translateY(${(jit(seed * 29 + i) * 1.2).toFixed(2)}px)`,
-        }}>{ch}</span>)}
+      {t.split(' ').map((word, w) => <span key={w}>
+        {w > 0 && <span style={{ display: 'inline-block', width: '0.32em' }} />}
+        <span style={{ whiteSpace: 'nowrap' }}>
+          {Array.from(word).map((ch, i) => { n++
+            return <span key={i} style={{
+              display: 'inline-block',
+              transform: `rotate(${(jit(seed * 13 + n) * 2.4).toFixed(2)}deg) translateY(${(jit(seed * 29 + n) * 1.2).toFixed(2)}px)`,
+            }}>{ch}</span> })}
+        </span>
+      </span>)}
     </span>
   )
 }
@@ -1042,10 +1147,14 @@ export default function App() {
        live stylesheet rather than copied — a second palette would drift from the first
        the next time somebody changes a colour (ENG-19). */
     const cs = getComputedStyle(document.body)
-    const v = (n: string, f: string) => cs.getPropertyValue(n).trim() || f
-    const paper = v('--paper', '#e8e1d0'), ink = v('--ink', '#26221e')
-    const red = v('--red', '#8c3124'), fade = v('--fade', '#5f584a')
-    const green = v('--green', '#3f5438'), tan = v('--tan', '#b8873f')
+    /* ART-5: these fallbacks used to be six colour literals — a SECOND copy of the
+       palette, under a comment citing ENG-19 for not making one. They went stale the
+       instant the palette inverted, so a share drawn before the stylesheet resolved
+       would have come out cream-on-cream. Read from the CSS this file already owns. */
+    const v = (n: string) => cs.getPropertyValue(n).trim() || TOKENS[n]
+    const paper = v('--paper'), ink = v('--ink')
+    const red = v('--red'), fade = v('--fade')
+    const green = v('--green'), tan = v('--tan')
     const font = cs.fontFamily || 'Georgia, serif'
     /* The height FOLLOWS THE CONTENT. Fixed at 1350 it left a slab of dead paper under a
        two-objective day, which reads as an unfinished layout rather than as space. The
@@ -1572,7 +1681,7 @@ export default function App() {
           <div className="stag">A climbing card battler.<br />The route is the opponent.</div>
           <Ridge seed={21} />
           <div className="sbegin">TAP TO BEGIN</div>
-          <div className="sfoot">v10.90 · RCJ Labs</div>
+          <div className="sfoot">v10.91 · RCJ Labs</div>
         </button>
         <style>{CSS}</style>
       </div>
@@ -1801,7 +1910,7 @@ export default function App() {
             sub="The guidebook, his journal, your deeds, the record — and the dials."
             onClick={() => setSt(x => ({ ...x, phase: 'more' }))} />
         </div>
-        <div className="center sub" style={{ marginTop: 14 }}>v10.90 · RCJ Labs</div>
+        <div className="center sub" style={{ marginTop: 14 }}>v10.91 · RCJ Labs</div>
         <style>{CSS}</style>
       </div>
     )
@@ -1901,7 +2010,7 @@ export default function App() {
         <input value={seedIn} spellCheck={false} onChange={e => setSeedIn(e.target.value)}
           placeholder="blank for a fresh line, or paste a seed"
           style={{ width: '100%', marginTop: 4, fontSize: 11, fontFamily: 'inherit',
-            background: '#f0eade', border: '1.5px solid var(--ink)', borderRadius: 2,
+            background: 'var(--well)', border: '1.5px solid var(--ink)', borderRadius: 2,
             padding: '7px 8px', color: 'var(--ink)' }} />
 
         <button className="btn go" style={{ width: '100%', marginTop: 14 }} onClick={goBack}>DONE</button>
@@ -2928,7 +3037,7 @@ export default function App() {
           onChange={e => setIo({ code: e.target.value, msg: '' })}
           placeholder="Paste a save code here, or hit EXPORT to make one."
           style={{ width: '100%', height: 84, marginTop: 6, fontSize: 10, fontFamily: 'monospace',
-            background: '#f0eade', border: '1.5px solid var(--ink)', borderRadius: 2, padding: 6,
+            background: 'var(--well)', border: '1.5px solid var(--ink)', borderRadius: 2, padding: 6,
             color: 'var(--ink)', resize: 'none' }} />
         {io.msg ? <div className="sub" style={{ marginTop: 4 }}>{io.msg}</div> : null}
         <button className="btn go" style={{ width: '100%', marginTop: 8 }}
@@ -3409,7 +3518,7 @@ export default function App() {
           onChange={e => setClaim({ ...c, name: e.target.value })}
           placeholder={suggest()}
           style={{ width: '100%', marginTop: 4, fontSize: 14, fontFamily: 'inherit',
-            background: '#f0eade', border: '1.5px solid var(--ink)', borderRadius: 2,
+            background: 'var(--well)', border: '1.5px solid var(--ink)', borderRadius: 2,
             padding: '9px 9px', color: 'var(--ink)' }} />
         <div className="row" style={{ marginTop: 12 }}>
           <span className="lbl">WHAT DO YOU GRADE IT</span>
@@ -3915,7 +4024,7 @@ export default function App() {
           const h = st.boardH[i]
           if (!h) return <div key={`${i}-${st.motion ? st.fxTick : 0}`} className="slot foe empty"
             aria-label={`${LANE_NAMES[i]}: nothing on it`}>
-            <Ink w={117} h={120} seed={900 + i} color="var(--fade)" sw={1.1} />
+            <Ink w={117} h={120} seed={900 + i} color="var(--fade)" sw={1.1} chalk />
             <span className="tx">clean</span></div>
           const ab = abilityOf(h)
           return (
@@ -3932,7 +4041,14 @@ export default function App() {
                       + (h.worn ? `, ${h.worn} so far` : '')) : '')
                 + (lanes ? `. ${lanes[i].clears ? 'This works it' : `${lanes[i].gripLeft} grip would remain`}` : ''))}>
               <Ink w={117} h={120} seed={h.uid} color={h.crux ? 'var(--red)' : 'var(--ink)'}
-                sw={h.crux ? 2.2 : 1.5} />
+                sw={h.crux ? 2.2 : 1.5} chalk />
+              {/* ART-5: the crux was red and 2.2px wide, which is a colour cue with a
+                  weight cue leaning on it — at 1.5 against 2.2 the width is not a
+                  difference you see without the other one beside it. Circling it is
+                  what somebody with a photograph and a piece of chalk would do, and
+                  it is the SHAPE VIS-7 asks for: it survives colour-blind mode, where
+                  red and ink are two greys a shade apart. */}
+              {h.crux && <ChalkRing seed={h.uid} color="var(--red)" />}
               {/* the shape, big and behind the words, plus a small one in the
                   corner so it is still legible where the wash is faint */}
               {/* VIS-2: 22px to 26px and darker. Four placements were tried and
@@ -3943,8 +4059,17 @@ export default function App() {
               <div className="gl"><Glyph name={h.name} size={26}
                 color={h.crux ? 'var(--red)' : 'var(--ink)'} /></div>
               <div>
+                {/* ART-5: hand-lettered, because on a photograph the thing naming a hold
+                    is somebody's handwriting. Lettered is the existing primitive and the
+                    reason there is no webfont here: this file ships as ONE self-contained
+                    HTML and a cursive stack degrades to the base serif on most Android,
+                    which would put the whole look on a font that may not arrive.
+                    SAFE BECAUSE IT WAS MEASURED, not because it looks short: every hold
+                    name in the game is at most 11 characters (`sharp crimp`), so the
+                    per-character jitter never has a long string to shake apart. The same
+                    is NOT true of the lines below it — see the .tx note. */}
                 <div className="nm" style={h.crux || h.sig ? { color: 'var(--red)' } : undefined}>
-                  {h.crux ? '★ ' : ''}{holdLabel(h).toUpperCase()}</div>
+                  {h.crux ? '★ ' : ''}<Lettered t={holdLabel(h).toUpperCase()} seed={h.uid} /></div>
                 {ab && <div className="ab">{ab.toUpperCase()}</div>}
                 <div className="tx" style={{ marginTop: 2 }}>
                   {h.clean ? 'brushed clean' : (HOLD_STATS[h.name] ?? FEET_STATS[h.name])?.text}
@@ -4012,7 +4137,7 @@ export default function App() {
                 <div style={{ position: 'absolute', top: 4, right: 5, fontSize: 10,
                   fontWeight: 700, color: 'var(--fade)' }}>
                   {st.order.indexOf(i) + 1}</div>) : null}
-              <div><div className="nm">{c.name.toUpperCase()}</div>
+              <div><div className="nm"><Lettered t={c.name.toUpperCase()} seed={c.uid} /></div>
                 {c.opposes && i < 2 ? (
                   <div className="ab" style={{
                     color: st.boardP[1 - i]?.opposes ? 'var(--green)'
@@ -4137,7 +4262,7 @@ export default function App() {
               color={st.selected === c.uid ? 'var(--red)' : 'var(--ink)'}
               sw={st.selected === c.uid ? 2.2 : 1.4} />
             <Fam c={c} />
-            <div><div className="nm">{c.name.toUpperCase()}</div>
+            <div><div className="nm"><Lettered t={c.name.toUpperCase()} seed={c.uid} /></div>
               <div className="tx" style={{ marginTop: 2 }}>
                 {writeOff(c) ? `write off · ${c.cost + CURSE_TAX} pump`
                   : c.kind === 'bonus' ? `${c.cost} pump`
