@@ -145,3 +145,33 @@ export function guardScan(files) {
   }
   return bad
 }
+
+/* ART-5: VIS-3 measured "69 points of the gap between ink and paper" by hand, at
+   mock time, and wrote the number into a comment. That is a measurement that
+   cannot fail — nothing re-runs it, so the day a token moves it is prose. This
+   turns it into an instrument the suite can point at any palette.
+   WCAG relative luminance and contrast ratio, on sRGB hex. Ratio, not "points":
+   a ratio is the thing with a published threshold (4.5:1 body, 3:1 large), and
+   a palette that is inverted wholesale keeps its ratios while every "point" of
+   a subtraction changes sign. */
+const srgb = c => (c /= 255) <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+export function lum(hex) {
+  const h = hex.trim().replace('#', '')
+  const f = h.length === 3 ? h.split('').map(x => x + x) : h.match(/../g)
+  const [r, g, b] = f.map(x => parseInt(x, 16))
+  return 0.2126 * srgb(r) + 0.7152 * srgb(g) + 0.0722 * srgb(b)
+}
+export function contrast(a, b) {
+  const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p)
+  return (x + 0.05) / (y + 0.05)
+}
+/* the palette as the browser would resolve it: :root first, then any override
+   block (.cb) layered on top, so a colour-blind reader is measured too */
+export function palette(css, extra) {
+  const read = sel => {
+    const m = css.match(new RegExp(`${sel.replace('.', '\\.')}\\{([^}]*)\\}`))
+    return m ? Object.fromEntries([...m[1].matchAll(/(--[\w-]+):\s*([^;]+)/g)]
+      .map(([, k, v]) => [k, v.trim()])) : {}
+  }
+  return { ...read(':root'), ...(extra ? read(extra) : {}) }
+}

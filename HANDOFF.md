@@ -3,8 +3,8 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.70.** `npm run check` is 197/197 core + 119/119 kept;
-`npm run check:slow` adds 12 balance guardrails for 131/131. Everything below is measured, and
+**State at the time of writing: v10.93.** `npm run check` is 215/215 core + 119/119 kept;
+`npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
 ---
@@ -50,14 +50,15 @@ where a number appears it is reproducible with the command next to it.
 
 ## The numbers, and how to buy them
 
-| what | command | at v10.70 |
+| what | command | at v10.75 |
 |---|---|---|
-| campaign band (the pin) | `PAGES=14 SHARP_AT=99 node sim/run.mjs campaign 3000` | **60.0%** |
-| known-ending rate | `TRIPS=8 node sim/run.mjs career 240 reads` | **82.5%** |
-| climber ladder | `PROJECTS=0 node sim/run.mjs arch 2000` | 9.8 / 8.0 / 9.7 / 11.3 / 8.6 |
+| campaign band (the pin) | `PAGES=14 SHARP_AT=99 node sim/run.mjs campaign 3000` | **61.9%** |
+| known-ending rate | `TRIPS=8 node sim/run.mjs career 720 reads` | **81.4%** |
+| climber ladder | `PROJECTS=0 node sim/run.mjs arch 2000` | 14.6 / 13.6 / 10.7 / 12.8 / 13.3 |
 
 All three go into `sim/band.mjs` for the version you ship; a release without them fails
-`npm run check`. The band takes ~20 minutes, the ending ~75 seconds, the ladder ~5 minutes.
+`npm run check`. The band takes ~20 minutes, the ending ~4 minutes (CARD-20 bought its resolution — the old
+240-career slice diverges ±6 between nearly-identical engines), the ladder ~5 minutes.
 The harness is seed-fixed, so an honest entry reproduces exactly.
 
 **Sample sizes are not decoration.** Campaign completion has an SE of ~2.9 at n=300 and ~1.3 at
@@ -93,24 +94,241 @@ slow suite. Then: bump `package.json`, update the three version strings in `src/
 (SHIP-4 enforces this — two releases shipped showing the wrong version before it existed), add
 the ledger row, update the ROADMAP row, commit, push to `main`.
 
+## The pins were re-set on 2026-08-22
+
+**Band 60 → 62 and the known ending 76.7 → 81**, agreed with Evan and moved together because
+they share a lever — anything that makes the campaign easier lands more expeditions, and more
+expeditions carry more pages. Moving one and not the other is the stale copy NARR-22, BAL-18 and
+SIM-8 each had to repair, and LANE-4 and LANE-5 each moved this pair together.
+
+**ARCH-1 is the whole move.** Of the four gameplay tickets that session, HOLD-2 and CARD-21
+measured band-neutral at n=3000 and INFO-3 read +0.1; ARCH-1's five signature moves are the
++3.0, because an ability handed to *every* climber lifts the game rather than tilting it. It was
+re-pinned rather than paid back because the same ticket left the roster **healthier** — floor
+8.3 → 10.8, spread 1.60x → 1.35x — so buying the points back would have meant weakening the five
+moves that produced the tightest roster this project has measured.
+
+Margins after that re-pin were band 0.1 of 2.0 and ending 0.4 of 5.0. **HOLD-3 (v10.82) spent
+1.0 of the band's headroom in the downward direction** — 61.0 against 62 — by putting a price on
+an ability that had been free. Margins now: band **1.0 of 2.0**, ending **0.3 of 5.0**.
+
+## And read this before the next roster-wide change
+
+**HOLD-3 widened the spread and ARCH-1 had just narrowed it.** Floor 10.5 → 9.2, spread 1.36x →
+1.50x, both inside their guards (`ARCH_FLOOR` is 5) and the floor's move is 1.7 SE, which is
+under two and therefore not a measurement. But the direction is the one v10.79 was praised for
+reversing, and it was paid knowingly: seven arms at n=3000 said the policy is not the lever
+(three windows and a headroom gate inside 0.2 of each other) and that raising the give to pay
+for the price is worse still (floor 8.8). **If a later ticket tightens the roster, re-measure
+the flake first** — it is the newest thing pulling the other way, and `CHAIN_HANG` is one
+constant.
+
+## The floor is policed now, and it costs ~10.4 to hold
+
+`ARCH_FLOOR` is **9**, raised from 5 with Evan on 2026-08-23 after the worst climber drifted
+10.5 → 9.2 → 8.0 across three releases without one guard firing. The band was policed release by
+release and the ladder was not; it is now.
+
+**The number that matters is not 9.** The guard wants the margin in standard errors, so the
+weakest climber has to sit above about **10.4%** at `ARCH_N` for a floor of 9 to be a
+measurement rather than a coin flip. Today the floor is the Onsighter at 10.7 with 2.5 SE of
+margin and the spread is 1.10x. **There is roughly one point of room.** A ticket that costs the
+weakest climber more than that fails BAL-18 and has to buy it back or come to Evan.
+
+Two lessons from paying for it are worth keeping. **Raising a cost to pay for a removed ability
+is regressive** — HOLD-4's bigger Grip cut paid the strong deck that converts it and did not
+cover the weak one that needed the ability gone, so the band came out flat and every climber
+fell. And when a climber has **no fine dial** — the Alpinist's move nothing, nothing, or +9.5 —
+stop looking for one and check whether something is already broken: Dig In was capped at 2 while
+its own card promised 4.
+
+## A firing rate is a property of a deck
+
+There are two populations and they disagree violently. `node sim/run.mjs campaign N` uses
+`buildBest()` — a player who owns everything and had the game build the best fifteen — and that
+is what **every band number rides**. `campaign N default` uses the archetype's own loadout: a
+new player. Measured over drafted campaigns, `weight` is **0.09%** of turns for a new player and
+**17.46%** for the band's player; `friction` is **17.22%** and **0.07%**. One card in fifteen
+does it.
+
+LANE-1 recorded 0.12% for `weight` as a property of the game and argued a design decision from
+it. **Say which deck, or the number means nothing.**
+
+## Before you trust a per-card number
+
+`node sim/run.mjs cards` swaps in `copyLimit()` copies and holds the deck size fixed. It used
+to ADD three copies of everything, which is illegal for every rare (limit 1) and uncommon
+(limit 2) and which fabricated three of the six outliers an audit reported — CARD-22 has the
+numbers. **`CARDS_ADD=1` reproduces the old probe**, so anything measured before v10.86 can be
+re-derived rather than argued about; assume any per-card figure quoted from before then is on
+the additive scale.
+
+Two things the fixed instrument still does not tell you: the shell is built from strong commons,
+so a common swapped in is measured against a good common, and beta and curse cards are priced
+at 3 copies although `buildable()` refuses both from a loadout — for those the number is what
+carrying it would cost, not a draft choice.
+
+## If you add a climber
+
+`ARCHETYPES` is read by the save loader. Until v10.85 growing the roster silently deleted every
+deck every player had built, because `loadouts` was kept only on an exact length match. It is
+padded per climber now and SAVE-8 guards it — but the lesson generalises: **anything sized by a
+content table is a migration.** `archWins` and `owned` are membership lists and safe; `loadouts`
+was the one indexed by position.
+
+## Never run anything else while a mutant sweep is in flight
+
+`sim/mutants.mjs` edits the working tree in place and restores it at exit. So while it runs,
+**every file it patches is wrong**, and anything else reading them gets garbage:
+
+- Running `npm run check:slow` beside a sweep cost a full ten-minute run this session — the
+  slow census guard read a `run.mjs` whose fire detector the sweep had replaced with `true`,
+  reported `tough` firing on 34.76% of turns, and failed for a reason that did not exist.
+- **Editing** beside a sweep is worse: the restore writes the pre-sweep bytes back over your
+  change. That has eaten a version bump twice now, once this session.
+- **Killing** a sweep is worse again. A `SIGTERM` mid-run leaves the tree mutated with no
+  restore — `git status` looked clean because the mutated file was one this session had
+  already modified. Check the actual line, not the file list.
+
+A sweep containing a `slow` mutant takes roughly ten minutes **per mutant**, because each one
+re-runs the whole slow suite. Give it a long timeout and let it finish alone.
+
+## There is a firing-rate census now, and a rule that goes dead fails at ship time
+
+`node sim/run.mjs census 150 built` (or `arch`; `SEED=n` draws another stream) prints, per
+effect, the share of turns a card carrying it reached the board (**PLAY**) and the share on
+which it changed a number the engine computes (**FIRE**). `sim/census.mjs` holds the floor,
+the classification and the recorded history. The slow suite re-runs it at n=60 every release.
+
+**FIRE differs the engine against itself** — total power and bite across the board, then again
+with one card's `fx` blanked. Nothing about the rules is restated, deliberately: a census that
+reimplements the conditions it measures reports the rate of its own copy the first time a rule
+moves (ENG-19). The cost is that it only sees the power/bite family; `tough`, `setup`,
+`hooked`, `commit` and four others act inside `resolve` and read **0.00 FIRE by construction**.
+The slow guard asserts exactly that, because an injection walked past an earlier version by
+making every play count as a fire.
+
+**Why there is no bar on the rare effects.** Measured over three seeds, anything above 2.6%
+moves by at most 1.3×; anything below 0.3% moves by 2× to ∞ (momentum 0.01 → 0.11). That is
+not the game changing — 0.05% of 21,500 turns is about ten events. **No sample fixes it**:
+±20% on 0.05% needs ~10,000 occurrences, or twenty million turns. So the floor sits on the
+nine effects that carry the game and the near-zero eight are history, not a gate — BAL-18's
+shape. A bar on momentum would fire on a seed and get deleted, and read as coverage until it
+did.
+
+**What the core guard actually buys**: every `fx` any card carries must be declared live or
+dead. A new mechanic cannot arrive unclassified, and the dead list cannot grow without someone
+writing down why. That is the decision nine ENG-25s were made by not making — and `CARD-24` is
+the open row about the eight already on it.
+
+## `npm run perf` runs now, and the guard proves it rather than reading it
+
+Until v10.92 the perf guard asserted that `scripts/perf.mjs` **exists**, throttles at both
+sites and sweeps both rates. All shape. `npm run check` was green against a script that could
+not launch a browser, and PERF-2's own note ends *"if it fires, re-run `npm run perf`"* — an
+instruction nobody could follow. **PERF-3's row blamed the undeclared `playwright-core`;
+GUARD-11 declared it at v10.84 and the script still did not run.** `playwright-core` ships no
+browsers by design, so the version it wants (build 1234) and the one on disk (1194) never met.
+
+- `scripts/browser.mjs` is the only place that finds a chromium. `PW_EXE` first, then whatever
+  build is actually under `PLAYWRIGHT_BROWSERS_PATH`, then playwright's default. **Do not run
+  `npx playwright install`** — this environment documents that, and it is why the resolver
+  takes what is there instead of what playwright wants.
+- `node scripts/perf.mjs --selftest` runs the whole pipeline bar the throttled sweeps in 1.1s.
+  **0** = sound, **3** = everything but the browser. The guard executes it in the fast suite.
+- The guard tolerates a browserless box but **decides that without asking `findBrowser()`** —
+  using the resolver to decide whether to test the resolver blinds both at once. An injection
+  proved it. Keep those two lines duplicated; that is the point of them.
+
+**The numbers are softer than they read, and that is now printed.** The same build on the same
+box measures **573 / 732 / 761 ms** at 6x — 14% run to run — and a *different* chromium on that
+box read 419, outside the spread entirely. A figure from this script is comparable only to
+another figure from the same binary, so the script names the binary now. It is a tripwire for a
+dependency arriving, which is what PERF-2 always said it was; it is not a stopwatch. ART-5's
+*"no cost"* line is corrected in the ROADMAP on exactly these grounds.
+
+## The palette is measured now, and it had never been
+
+`contrast(a, b)` and `lum(hex)` in `sim/guard.mjs` are WCAG relative luminance and contrast
+ratio over the shipped tokens; `palette(css, extra)` resolves `:root` with an override block
+layered on it, so colour-blind mode is measured with the same call. ART-5's guard runs them.
+
+**This exists because VIS-3's number was prose.** It recorded *"69 points of the gap between ink
+and paper"*, measured by hand at mock time, and nothing ever re-ran it — so for forty releases a
+comment asserted a legibility bar that no code checked. Pointed at the palette that was actually
+shipping, it failed on two pairs that had been live the whole time: `--tan` at **2.45:1** on
+paper while carrying body text, and `--fade` at **4.08:1** on stone while carrying `.tx` at 8px.
+
+Three things to know before you touch a colour:
+
+- **Both directions.** `--ink` is a ground as well as a foreground (`.btn.go`, `.teach`,
+  `.tile.hero`). Every quiet token is tuned against rock and lands at 1.6–2.3:1 on chalk, which
+  is what `--onink` is for. A guard measuring only foreground-on-background does not see it.
+- **Every ground has to be classified.** The guard collects each `background:var(--x)` out of the
+  stylesheet and refuses one it does not measure text on. The four decorative fills are named in
+  a `DECOR` map with a reason each, so adding a fifth is deliberate rather than a silent hole.
+- **One palette.** Zero colour literals live outside `:root` and `.cb`, asserted. The share canvas
+  used to carry six as "fallbacks" *under a comment citing ENG-19 for not making a second copy*,
+  and they went stale the instant the palette inverted.
+
+**The instrument does not replace looking.** `.tile.hero` was shipping a cream literal that went
+invisible on the flipped ground, and no ratio caught it — it was found by screenshotting the menu
+in a real browser. `scripts/perf.mjs` shows the pattern: serve `docs/`, drive Chromium with
+`PW_EXE=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`, screenshot. Do that before shipping
+anything visual.
+
+## The mutant sweep has 8 standing misses, and none of them is new
+
+`node sim/mutants.mjs` reads **454/462** as of v10.91. All eight patch `src/engine.ts` or
+`sim/band.mjs`; ART-5 touched neither, and the misses predate it. Seven report *"something else
+failed instead"* — the mutant IS caught, by a different assertion than its `catches` string names,
+which is a labelling problem rather than a hole. **One is a real hole:** `INFO-1/policy-spends-a-read`
+reports *"the suite passed"*, so the policy can be made to spend a pump on information it cannot
+use and nothing complains. That one is worth a row.
+
+## The measurements are reproducible now, and they were not
+
+Until v10.84 **`esbuild` was in neither dependency list** and it is imported by `sim/run.mjs`,
+`sim/test-core.mjs` and `sim/test.mjs` — so `npm run check` and every number in `band.mjs` rode
+a copy that resolved only because Vite happens to depend on it. `playwright-core` was undeclared
+too, which is why `npm run perf` could not be run at all. Both are declared, and **GUARD-11
+checks every bare specifier this repo imports** against the manifest, so it cannot come back.
+
+If you add a tool to a script, add it to `package.json` in the same commit. The guard will tell
+you, but it tells you at `npm run check`, not at the moment you write the import.
+
+## If you pick up ENG-9
+
+`engine.ts` is 7,279 lines and 1,057 have moved to `content.ts` across two passes. **Data out,
+rules stay** — and the trap is that a literal array built by a factory whose name is a bare
+capital reads exactly like content. `ARCHETYPES` and `ACT1_MAP` were cut in v10.83 and put
+back within a minute because the compiler refused them. Screen for bare capitals, not just
+lowercase calls, and cut before you commit to anything.
+
+**`TALKS` is the one worth asking about.** Its const is 141 lines of pure literal and would
+move cleanly; the five functions around it need `GameState` and would stay. The ENG-9 guard
+names it a canary beside `CARDS` and it was left alone on purpose — re-pointing a canary to
+make your own move pass is how a guard stops meaning anything. It needs a decision from Evan.
+
 ## What is open
 
 Read the ROADMAP rows for the full argument; this is the shape of it.
 
-- **SIM-9** (P2, the biggest piece left) — `autoPlay` is greedy: it plays the best card for this
-  turn and cannot plan two. Every measurement in the project is taken through that policy, which
-  makes it the shared root under INFO-2 and CARD-20. Expect to re-calibrate CARD-9 afterwards;
-  ENG-21 and SIM-6 both had to.
-- **CARD-20** (P2) — a combination that creates a plan rather than a bigger number. Ground moved
-  under it when LANE-1 added matched hands; re-read before starting.
-- **RUN-15** (P2) — the climbs are the same every run. RUN-14 deliberately varied only the
-  support; varying which routes fill a stage needs a pool of interchangeable lines per act,
-  which is authoring rather than a rule.
-- **INFO-2** (P3) — foreknowledge cannot be priced while the policy does not plan. Blocked on
-  SIM-9.
-- **ROPE-2 second row**, **SHIP-3** (Play Store: account, signing key, device), **ART-3** (store
-  art) — the last two need a human with a phone and an account.
-- **BAL-13** is parked with an answer: act 1 is frictionless and no dial fixes it.
+- **SHIP-3** (Play Store: account, signing key, device) and **ART-3** (store art) — both need a
+  human with a phone and an account. Nothing else on the board is blocked on measurement.
+  **Audited at v10.76** and two things had rotted since v10.34: the packaging pointed at
+  `/sandbagged/` where the repo is `Sandbagged` (Pages is case-sensitive), and the version Play
+  shows was twenty-seven releases stale. Both fixed and guarded; the site address is stated once,
+  in `package.json`'s `homepage`, and the packaging derives from it. **Confirm the address before
+  the first upload** — it could not be checked against the live site from here.
+- **BAL-13** is parked with an answer, and v10.75 added a sixth screened lever: act-1 LENGTH does
+  not make act 1 bite, because shortening scales the cost and the slack together. It is the only
+  lever tried that does not break the roster, so it stays live as a PACE change if anybody wants
+  two minutes back — at the price of a band re-pin. What is untried is a cost charged in
+  something the roster differs on less than skin, grip and attempts.
+- **A rope-first act, if anybody wants one, is a DECK-CONSTRUCTION act** (ROPE-2's second row): a
+  rope is worth +0.1 without a rack and +8.4 with one, so it would force a rack rather than
+  change the difficulty. The provisioning to support one already follows the run.
 
 ## A prompt to start from
 

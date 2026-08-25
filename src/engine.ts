@@ -208,10 +208,6 @@ export const SUMMIT_PAGE = 7
    one. An unclimbed line has no grade, no beta anywhere in the world, and a
    season of dirt on it. */
 export const DIRT_GRIP = 2
-export const FA_NAMES_A = ['Quiet', 'Long', 'Broken', 'Second', 'Hidden', 'Slow', 'North',
-  'Last', 'Thin', 'Cold', 'Old', 'Blind']
-export const FA_NAMES_B = ['Line', 'Arete', 'Wall', 'Prow', 'Corner', 'Slab', 'Groove',
-  'Crack', 'Face', 'Rib', 'Buttress', 'Nose']
 export type Established = {
   name: string; claimed: number; real: number; act: number; burns: number
   // enough to rebuild the line exactly. Stored rather than regenerated,
@@ -317,23 +313,6 @@ export type Line = { id: string; name: string; text: string
    answer its extra cruxes — a short line skips endurance, and endurance is what
    the pool bought. Neutralised to `dClear:0` (same height, still +4 cruxes): the
    line's identity is now the cruxes alone, and it lands ~2 under the guide. */
-export const LINES: Line[] = [
-  { id: 'guide', name: 'As it goes', text: 'The line in the book. No arguments.' },
-  /* SIM-8: dCrux 3 -> 2, and the prose with it. This comment says cruxes are "almost free"
-     and that the direct "lands ~2 under the guide" — both were true of the deck the band
-     used to be measured on, which carried twice the raw Power and could simply pull through
-     them. Against the deck the game actually builds (SIM-8), three extra cruxes cost 7.0
-     against a floor of 8, and this paragraph's own sentence explains why: "a cruxy line
-     that a powerful deck eats and a weak one walls on". Two cruxes restores the INTENDED
-     relationship rather than inventing a new one — measured at n=1500, guide 45.1 vs
-     direct 43.1, so −2.0, five points clear of either bound.
-     NOT via `dClear`: CARD-15 removed the direct's one-fewer-hold for exactly the drift
-     this ticket is fixing, and putting it back read +1.2 here. Read the note above. */
-  { id: 'direct', name: 'The direct', dClear: 0, dCrux: 2,
-    text: 'Straight up it. Same height, but two more cruxes on the way.' },
-  { id: 'traverse', name: 'The traverse', dCrux: -3, dClear: 1,
-    text: 'Out left and back in, past the worst of it. Three fewer cruxes, but the long way — more holds to work before the top.' },
-]
 export type RunRecord = {
   seed: number; arch: number; style: number; rope: boolean; circuit: boolean
   act: number; tier: number; won: boolean; cause: string; sends: number; deck: number
@@ -518,6 +497,15 @@ export type GameState = {
   boons: string[]
   gearOffers: string[]
   savedBlow: boolean
+  /* ARCH-1: has this climber's signature move been spent on this burn? Per-burn like
+     `savedBlow` and `peakPump` beside it — startBurn clears it, so a retry gets it back. */
+  moveUsed?: boolean
+  /* ARCH-1: the Trad Dad's placement holds no matter what, for one turn. */
+  bomber?: boolean
+  /* ARCH-1: and the Power it buys lands on the turn it was spent — cleared with `bomber`. */
+  commitPower?: boolean
+  /* ARCH-1: the Comp Kid read the set and is holding one more for the rest of this burn. */
+  handBonus?: number
   /** How close it got. Kept per burn so the screen at the end has something
       to tell you beyond "that is a send". */
   peakPump: number
@@ -802,6 +790,34 @@ const cap = <T,>(v: T[] | undefined, n: number): T[] =>
    and values are bounded too, because one 10MB string is the same attack as a million
    short ones. The count is DERIVED from the cast plus the lines you can have put up,
    which is every id that can ever be a key. */
+/* SAVE-8. THE ROSTER GROWS AND THE PLAYER'S DECKS DO NOT HAVE TO DIE FOR IT.
+   `loadouts` was kept only when `d.loadouts.length === ARCHETYPES.length` — an equality gate,
+   so a save carrying FOUR customised decks against a five-climber build lost all four, not the
+   missing one. Measured against the shipped loader before this was written: 4 -> nothing,
+   6 -> nothing, and only an exact 5 survived.
+
+   THE GATE WAS NOT AN OVERSIGHT, WHICH IS WHY IT IS REPLACED RATHER THAN DELETED. `loadouts`
+   is indexed positionally — `st.loadouts[st.arch]` in five places in App.tsx — so a short array
+   at a new archetype index is `loadoutDeck(undefined)` and a TypeError, and dropping to the
+   defaults was a real defence against that. It is just the bluntest possible one: it pays the
+   player's whole collection of decks to avoid an undefined at ONE index.
+
+   AND IT WAS DEFENDING SOMETHING THE CONSUMER ALREADY DEFENDS. `loadoutDeck` opens with
+   `loadout.length === DECK_SIZE ? loadout : DEFAULT_LOADOUT` and then filters names it does not
+   know, so a deck of the wrong size or carrying a retired card is already handled one layer
+   down. The only thing that genuinely cannot be handled there is a MISSING SLOT, because that
+   is not a bad deck, it is no deck at all.
+
+   So: one entry per archetype, always, in archetype order. What the save has is kept, bounded
+   by DECK_SIZE for SAVE-6's reason; what it lacks is that climber's own default, not the first
+   climber's. Nothing is discarded for the sin of being the wrong length. */
+const fitLoadouts = (v: unknown): string[][] =>
+  ARCHETYPES.map((a, i) => {
+    const got = Array.isArray(v) ? (v as unknown[])[i] : undefined
+    const deck = Array.isArray(got) ? got as unknown[] : null
+    const dflt = a.loadout.slice()
+    return deck ? deck.filter(n => typeof n === 'string').slice(0, DECK_SIZE) as string[] : dflt
+  })
 const capSaid = (v: unknown, n: number): Record<string, string> =>
   v && typeof v === 'object' && !Array.isArray(v)
     ? Object.fromEntries(Object.entries(v as Record<string, unknown>)
@@ -830,14 +846,17 @@ export function loadGame(slot = 0): Partial<GameState> | null {
       xp: typeof d.xp === 'number' && isFinite(d.xp) ? d.xp : 0,
       owned: cap(d.owned, Object.keys(CARDS).length), sends: d.sends ?? 0, wins: d.wins ?? 0,
       journal: cap(d.journal, JOURNAL.length),
-      ...(d.loadout && d.loadout.length === DECK_SIZE ? { loadout: d.loadout } : {}),
+      /* SAVE-8: bounded rather than gated on an exact length. Nothing reads this field in
+         play — `loadouts[arch]` superseded it and it now only round-trips through the save —
+         so an equality gate on it was discarding a list for a shape no code objects to. */
+      loadout: cap(d.loadout, DECK_SIZE),
       style: d.style ?? 0, styleMax: d.styleMax ?? 0, seen: cap(d.seen, EVENTS.length),
       said: capSaid(d.said, TALKS.length + ESTABLISHED_MAX * 2),
       coaching: d.coaching ?? true, sound: d.sound ?? true, ambience: d.ambience ?? true, haptics: d.haptics ?? true, assist: d.assist ?? false, cbSafe: d.cbSafe ?? false,
       tutorialDone: d.tutorialDone ?? false,
       motion: d.motion ?? true, textScale: d.textScale ?? 0, reach: d.reach ?? 'off',
       arch: d.arch ?? 0,
-      ...(d.loadouts && d.loadouts.length === ARCHETYPES.length ? { loadouts: d.loadouts } : {}),
+      loadouts: fitLoadouts(d.loadouts),   // SAVE-8: adapted per climber, never discarded
       book: d.book ?? {}, bestCircuit: d.bestCircuit ?? 0, mutators: cap(d.mutators, MUTATORS.length),
       ticked: cap(d.ticked, ACTS.length), established: cap(d.established, ESTABLISHED_MAX), hints: d.hints ?? true,
       grades: d.grades ?? 'v', tweak: d.tweak ?? null,
@@ -892,17 +911,8 @@ export function loadGame(slot = 0): Partial<GameState> | null {
 /* ===================== CONTENT: HOLDS + ABILITIES ==================
    Every hold type does something. This is what makes the route an
    opponent rather than a stat block.                                */
-type HoldDef = { bite: number; grip: number; ability: string; text: string }
+export type HoldDef = { bite: number; grip: number; ability: string; text: string }
 
-export const HOLD_STATS: Record<string, HoldDef> = {
-  'jug':         { bite: 2, grip: 3, ability: 'Rest',       text: 'Answer it and shed 1 pump.' },
-  'crimp':       { bite: 3, grip: 5, ability: 'Sharp',      text: 'Blows a card → +1 pump.' },
-  'sharp crimp': { bite: 4, grip: 5, ability: 'Razor',      text: 'Blows a card → burn 1 from hand.' },
-  'sloper':      { bite: 2, grip: 6, ability: 'Greasy',     text: '−1 Power without feet. Sweats up if you leave it.' },
-  'pinch':       { bite: 3, grip: 5, ability: 'Squeeze',    text: '+1 Bite while both hands are busy.' },
-  'pocket':      { bite: 4, grip: 4, ability: 'Two-finger', text: 'Ignores Support.' },
-  'crux':        { bite: 4, grip: 8, ability: 'Committing', text: 'Needs Power 2+. +1 hang tax.' },
-}
 /* ROUTE-10: the crux's character by style. `label` is what it reads as on the
    board — the line's own defining move — so a crimp crux is "the razor", a slab
    crux "the blank", a power crux "the throw". The resolution is deliberately
@@ -913,14 +923,6 @@ export const HOLD_STATS: Record<string, HoldDef> = {
    worth +4-5 points — the sim gains far more from a softer crux than it loses
    to a sharper one), so it is held at 0. The character is in the identity, and
    the band stays where it was pinned. */
-export const CRUX_CHAR: Record<StyleKey, { label: string; dBite: number }> = {
-  'crimp ladder': { label: 'the razor', dBite: 0 },
-  'slab':         { label: 'the blank', dBite: 0 },
-  'compression':  { label: 'the squeeze', dBite: 0 },
-  'power':        { label: 'the throw', dBite: 0 },
-  'mixed':        { label: 'the crux', dBite: 0 },
-  'jug haul':     { label: 'the crux', dBite: 0 },
-}
 /* ROUTE-5. Seven hold types across thirty-one routes meant every crimp
    behaved like every other crimp, and a route was remembered as a stat line.
    A signature hold is one named feature per line — the thing you tell somebody
@@ -939,101 +941,6 @@ export type Signature = {
      enough to land anywhere, which is why they are shared. */
   local?: boolean
 }
-export const SIGNATURES: Signature[] = [
-  /* ROUTE-15: the first four lines in the book had no named feature, which is the sameness
-     ROUTE-5 set out to kill — you meet them before you meet anything else. STAT-LESS on
-     purpose: they are TAGGED onto a hold that is already there rather than replacing one
-     (see the tagger in buildRoute), so a dGrip here would move a number on the four routes
-     a new player meets first, and nothing reads a signature's dGrip outside `placeSig`
-     anyway. What they DO is ROUTE-12's answer to what a signature is for: `read`. It is
-     information, which is free — the resolution never consults readAhead — and on the four
-     earliest lines in the book it is the mechanic teaching itself, at the point where you
-     have the fewest cards that can do it. The notes deliberately do not name a hold type,
-     because the tag lands on whatever the line actually rolled — and for the same reason
-     they do not name a POSITION either. The holds are shuffled, so a note that says "you
-     start from the floor" reads wrong four moves up; that was the first draft of The
-     Sit-Down and the render is what caught it. The line is called The Sit Start; the
-     feature only has to be a hold on it. */
-  { id: 'therail', local: true, name: 'The Rail', base: 'jug', read: 1,
-    note: 'Polished pale. Forty years of people warming up on the same hold.' },
-  { id: 'thesitdown', local: true, name: 'The Sit-Down', base: 'jug', read: 1,
-    note: 'Big enough for two hands and a breather. Everybody uses it. Nobody rushes it.' },
-  { id: 'thegreen', local: true, name: 'The Green Patch', base: 'sloper', read: 1,
-    note: 'Damp nine months of the year. Brush it and it is back by spring.' },
-  { id: 'theflake', local: true, name: 'The Flake', base: 'crimp', read: 1,
-    note: 'It was bigger last season. Nobody has written that down.' },
-  { id: 'rattler', name: 'The Rattler', base: 'crimp', dBite: 2, ability: 'Sharp', read: 1,
-    note: 'A flake the size of a dinner plate. It moves when you pull on it.' },
-  { id: 'twofinger', name: 'The Two-Finger Pocket', base: 'pocket', dGrip: 1, read: 2,
-    note: 'Two fingers fit. A third would have made this a different climb.' },
-  { id: 'wetjug', name: 'The Wet Jug', base: 'jug', dGrip: 2, ability: 'Greasy', read: 1,
-    note: 'It seeps. It has always seeped. Everyone knows and nobody mentions it.' },
-  { id: 'thankgod', name: 'The Thank God Hold', base: 'jug', dGrip: -2, read: 3,
-    note: 'You do not know it is there until your hand is already on it. A place to breathe and look up.' },
-  { id: 'guillotine', name: 'The Guillotine', base: 'sharp crimp', dBite: 1, read: 1,
-    note: 'A horizontal edge with an edge. People tape up for this one move.' },
-  { id: 'organpipe', name: 'The Organ Pipe', base: 'pinch', dGrip: 2, ability: 'Squeeze', read: 2,
-    note: 'A fin you can get both hands round and no way to weight your feet.' },
-  { id: 'deathblock', name: 'The Death Block', base: 'sloper', dGrip: 3, read: 2,
-    note: 'Enormous, rounded, and entirely without features. It goes on for a while — long enough to see what is next.' },
-  { id: 'letterbox', name: 'The Letterbox', base: 'pocket', dBite: -1, ability: 'Two-finger', read: 2,
-    note: 'A slot you post a hand into and hope to get back.' },
-  { id: 'sidewinder', name: 'The Sidewinder', base: 'crimp', dGrip: 2, read: 1,
-    note: 'Good, if you are standing somewhere you cannot stand.' },
-  { id: 'lastjug', name: 'The Last Jug', base: 'jug', dGrip: -1, ability: 'Rest', read: 2,
-    note: 'The last thing on the route that is kind to you.' },
-  { id: 'bellows', name: 'The Bellows', base: 'pinch', dBite: 1, dGrip: -1, read: 1,
-    note: 'A slot the wind comes up through. Cold hands, and you can hear it coming.' },
-  /* ROUTE-13: the rest of the guidebook's named features, so a route reads as a
-     place rather than a stat block. A signature REPLACES an ordinary hold, so a
-     mild one makes a route EASIER — which is why the first pass measured +3 and
-     these are pitched hard (dGrip 2–3, inside the range `deathblock` already
-     demonstrated). Every one pays a read, which is band-free (ROUTE-12).
-     This could only ship once BAL-15 opened the CARD-9 headroom: a distinctive
-     hold is exactly what a bought extra burn beats on the retry, so at the old
-     +6 Second-Wind lift the whole set pushed the kit run to 62% against a 58%
-     ceiling. See the balance guard. */
-  { id: 'thetick', name: 'The Tick', base: 'sharp crimp', dGrip: 2, ability: 'Sharp', read: 1,
-    note: 'A crimp the size of a tick, and it bites about as clean as one.' },
-  { id: 'thenave', name: 'The Nave', base: 'crimp', dGrip: 3, read: 2,
-    note: 'Forty feet sideways, and the good hold is always one move further on.' },
-  { id: 'softtouch', name: 'The Soft Touch', base: 'crimp', dGrip: 3, read: 2,
-    note: 'It reads like a jug in the book. It has never once been a jug.' },
-  { id: 'thesecond', name: 'The Second Guess', base: 'crimp', dGrip: 3, read: 1,
-    note: 'You commit, then you do not, and by then the crimp has decided for you.' },
-  { id: 'gooseneck', name: 'The Gooseneck', base: 'pinch', dGrip: 3, read: 1,
-    note: 'A neck of sandstone you pinch and hope it keeps its head on.' },
-  { id: 'blackglass', name: 'The Black Glass', base: 'crimp', dGrip: 2, ability: 'Greasy', read: 1,
-    note: 'Desert varnish, black and bright. It holds like glass, right up until it does not.' },
-  { id: 'therattle', name: 'The Rattle', base: 'sloper', dGrip: 3, read: 1,
-    note: 'You hear it before the move. Knowing does not make the move any easier.' },
-  { id: 'thekiln', name: 'The Kiln Pocket', base: 'pocket', dGrip: 3, read: 1,
-    note: 'A hundred and ten in the shade, no shade, and the pocket hotter than either.' },
-  { id: 'furnace', name: 'The Furnace', base: 'jug', dGrip: 2, ability: 'Greasy', read: 1,
-    note: 'South-facing and warm past midnight; the one good hold sweats you off it.' },
-  { id: 'squeezechim', name: 'The Squeeze', base: 'pinch', dGrip: 2, ability: 'Squeeze', read: 2,
-    note: 'You do not climb it so much as refuse, for a while, to fall out of it.' },
-  { id: 'themirage', name: 'The Mirage', base: 'sloper', dGrip: 3, read: 1,
-    note: 'Nothing to hold, and the sun straight in your eyes for the one hard move.' },
-  { id: 'thespit', name: 'The Spit', base: 'pocket', dGrip: 2, dBite: 1, read: 1,
-    note: 'It turns you slowly over the drop while you work out where the pocket went.' },
-  { id: 'thenotch', name: 'The Notch', base: 'pinch', dGrip: 3, read: 1,
-    note: 'A slot in the arete, and the weather turning over while you read it.' },
-  { id: 'numbcrimp', name: 'The Numb Crimp', base: 'crimp', dGrip: 2, ability: 'Sharp', read: 1,
-    note: 'Your fingers stop reporting back somewhere around this one.' },
-  { id: 'thewhiteout', name: 'The Whiteout', base: 'sloper', dGrip: 3, read: 1,
-    note: 'Nothing to see and nothing to hold. Stand up on it anyway.' },
-  { id: 'thenose', name: 'The Nose', base: 'crimp', dGrip: 3, read: 2,
-    note: 'The pitch people come for, and the hard move exactly where you are most tired.' },
-  { id: 'thecoffin', name: 'The Coffin', base: 'pinch', dGrip: 2, ability: 'Squeeze', read: 2,
-    note: 'Off-width the whole way. Bring the big gear and bring your dignity.' },
-  { id: 'theboard', name: 'The Board', base: 'sloper', dGrip: 3, read: 2,
-    note: 'A flat plank of rock over the cirque. The mantel, then the rumour of a landing.' },
-  { id: 'thecornice', name: 'The Cornice', base: 'sloper', dGrip: 3, read: 1,
-    note: 'Nobody has decided if it is still attached. You find out by weighting it.' },
-  { id: 'thehang', name: 'The Hanging Foot', base: 'sloper', dGrip: 3, read: 1,
-    note: 'Slab, on a rope, over nothing. The feet are the whole climb here.' },
-]
 /* ROUTE-12: which signatures may be TAGGED onto a generated line (circuit,
    skirmish, daily, first ascents) without moving its balance. The tag is
    name + note + the read hook only — the grip/bite nudge is NOT applied and the
@@ -1043,26 +950,6 @@ export const SIGNATURES: Signature[] = [
 export const GEN_SIG_IDS = SIGNATURES.filter(s => !s.ability && !s.local).map(s => s.id)
 export const sigById = (id: string) => SIGNATURES.find(x => x.id === id)
 
-export const FEET_STATS: Record<string, HoldDef> = {
-  /* FEET-1: this row was `ability: '', text: ''` — the ONLY thing on the board that said
-     nothing at all, in a table where every hold and every other foothold has an ability and
-     a sentence. It is 22.6% of the footholds a campaign meets.
-
-     And it is the answer to the lane's real problem. The choice of foot is genuinely a trade
-     already: 38 foot cards, 25 distinct power/contact/support profiles and not one pair where
-     either card dominates the other on all three. But SUPPORT ONLY EVER TAKES THE VALUES 1
-     AND 2 — every powerful foot is Support 1 and every Support 2 foot is weak — so it is the
-     same binary trade every turn. And the wall can only ever push that axis DOWN: `Featureless`
-     zeroes it on 28.9% of turns, one weather and two route windows subtract from it, and the
-     single positive `dSupport` in the game is a pair of shoes you can buy. Nothing the route
-     does ever makes your feet matter MORE, so the trade never inverts — it only gets cancelled.
-     `Solid` is the first upward pressure, so some routes are footwork routes and the choice
-     changes with the rock instead of being a constant. */
-  'foothold':   { bite: 2, grip: 2, ability: 'Solid',      text: 'A settled foot pays +1 Support.' },
-  'smear edge': { bite: 2, grip: 3, ability: 'Slick',      text: '−1 Power against it.' },
-  'chip':       { bite: 3, grip: 3, ability: 'Sharp',      text: 'Blows a card → +1 pump.' },
-  'blank':      { bite: 2, grip: 4, ability: 'Featureless', text: 'This lane grants no Support.' },
-}
 
 /* FEET-1 reweighted `easy`, and it is an offset AND a correction to the same mistake.
    `Solid` is meant to make SOME routes footwork routes — but the plain foothold was 5 of the
@@ -1078,10 +965,15 @@ const FEET_POOLS: Record<FeetKey, Record<string, number>> = {
 }
 const STYLES: Record<StyleKey, { w: Record<string, number>; dgrip: number; dbite: number }> = {
   'jug haul': { w: { 'jug': 8, 'crimp': 1, 'sloper': 1 }, dgrip: 0, dbite: 0 },
-  'mixed': { w: { 'jug': 3, 'crimp': 3, 'sloper': 3, 'pinch': 2, 'pocket': 2 }, dgrip: 0, dbite: 0 },
-  'slab': { w: { 'sloper': 5, 'crimp': 4, 'jug': 2 }, dgrip: 0, dbite: -1 },
+  /* HOLD-2: the flake is weighted like a feature rather than a staple — FEET-1 measured what
+     happens when a characterful hold becomes the default (Solid at 5 of 10 took the band 44.3
+     to 45.9 and made half of act 1 a footwork route), so this sits at 2 against the 3s beside
+     it and appears on the three styles a flake belongs to. Absent from the crimp ladder and
+     the jug haul on purpose: both are named for the hold they are made of. */
+  'mixed': { w: { 'jug': 3, 'crimp': 3, 'sloper': 3, 'pinch': 2, 'pocket': 2, 'flake': 2 }, dgrip: 0, dbite: 0 },
+  'slab': { w: { 'sloper': 5, 'crimp': 4, 'jug': 2, 'flake': 2 }, dgrip: 0, dbite: -1 },
   'crimp ladder': { w: { 'crimp': 5, 'sharp crimp': 4, 'jug': 1 }, dgrip: 0, dbite: 1 },
-  'compression': { w: { 'sloper': 6, 'pinch': 4, 'jug': 1 }, dgrip: 1, dbite: -1 },
+  'compression': { w: { 'sloper': 6, 'pinch': 4, 'jug': 1, 'flake': 2 }, dgrip: 1, dbite: -1 },
   'power': { w: { 'pocket': 4, 'sharp crimp': 4, 'pinch': 3, 'crimp': 2 }, dgrip: 1, dbite: 1 },
 }
 
@@ -1219,6 +1111,17 @@ export const gradeLabel = (r: RouteSpec, scale: GradeScale = 'v') =>
    stay here, because engine annotates with them everywhere and a type is not content. */
 export { ROUTES, EVENTS } from './content'
 import { ROUTES, EVENTS } from './content'
+/* ENG-9, third section. Eighteen more literals, 412 lines, same rule: the DATA is in
+   ./content and every function that reads it stayed here. Re-exported so no caller changed —
+   App.tsx and sim/entry.ts were not touched by any of this, which is the thing v6.6 got wrong.
+   The four on the second line are re-exported but not imported: nothing in the engine reads
+   them, only the screens do, and importing a name this file never uses is how an unused
+   import survives a linter and stops meaning anything. */
+export { HOLD_STATS, FEET_STATS, CRUX_CHAR, SIGNATURES, LINES, DECKS, TUTORIAL_STEPS, GEAR,
+  CONSUMABLES, PARTNERS, BETA_CARDS, REWARDS, TWEAKS, EARNED_CURSES,
+  KEYWORDS, FA_NAMES_A, FA_NAMES_B, ACT_NAMES } from './content'
+import { HOLD_STATS, FEET_STATS, CRUX_CHAR, SIGNATURES, LINES, DECKS, TUTORIAL_STEPS, GEAR,
+  CONSUMABLES, PARTNERS, BETA_CARDS, REWARDS, TWEAKS, EARNED_CURSES } from './content'
 
 
 /* ========================== CONTENT: CARDS ========================= */
@@ -1253,11 +1156,18 @@ for (const c of [
   mv('Gaston', 3, 5, 'common', { opposes: true, text: 'Shoulders complain. Opposition.' }),
   mv('Sloper Slap', 2, 6, 'common', { fx: 'friction', text: 'Friction · ignores Greasy.' }),
   mv('Pinch Grip', 3, 6, 'common', { fx: 'balance', text: 'Balance · prevents Squeeze.' }),
-  mv('Mantle', 4, 4, 'common', { text: 'Press down. Commit.' }),
+  mv('Mantle', 4, 4, 'common', { fx: 'setup',
+    text: 'Setup · work it and the next hold in this lane comes 1 Grip easier. Press down, and stand up.' }),
   mv('Deadpoint', 4, 3, 'common', { fx: 'snap', text: 'Snap · clears Grip 3 or less outright.' }),
   mv('Jug Haul', 1, 8, 'common', { text: 'Nothing to it but pulling.' }),
-  mv('Match', 2, 6, 'common', { text: 'Both hands, one hold.' }),
-  mv('Bump', 3, 5, 'common', { text: 'Small hand, then the good one.' }),
+  /* CARD-21: two vanilla commons carry Setup, chosen because their names already describe
+     working a hold and moving off it — you match on it, you mantle onto it, and the next move
+     in that lane is the easier for it. Re-purposed rather than added: CARD-18 measured a new
+     card at +0.9 of band from pool reshuffle alone, before its mechanic does anything. */
+  mv('Match', 2, 6, 'common', { fx: 'setup',
+    text: 'Setup · work it and the next hold in this lane comes 1 Grip easier. Both hands, one hold.' }),
+  mv('Bump', 3, 5, 'common', { fx: 'launch',
+    text: 'Launch · +2 Power while your other hand has held a turn. Small hand, then the good one.' }),
   mv('Layback', 3, 6, 'common', { opposes: true, text: 'Lean and walk the feet. Opposition.' }),
   mv('Hand Jam', 2, 8, 'common', { fx: 'tough', text: 'Tough · ignores Sharp and Razor.' }),
   mv('Palm Press', 2, 6, 'common', { fx: 'friction', text: 'Friction · ignores Greasy.' }),
@@ -1278,7 +1188,7 @@ for (const c of [
   // ---------- COMMON · technique ----------
   bn('Breathe', 0, 'common', { shed: 2, text: 'Shed 2 pump.' }),
   bn('Deep Breath', 1, 'common', { shed: 4, text: 'Shed 4 pump.' }),
-  bn('Brush', 0, 'common', { gripCut: 2, cleans: true, targeted: true, text: '−2 Grip, strip its ability.' }),
+  bn('Brush', 0, 'common', { gripCut: 3, cleans: true, targeted: true, text: '−3 Grip. A greasy hold stops being greasy.' }),
   bn('Tick Marks', 0, 'common', { gripCut: 2, targeted: true, text: '−2 Grip to one hold.' }),
   bn('Read the Sequence', 0, 'common', { draw: 2, text: 'Draw 2.' }),
   /* INFO-1: both read cards cost a pump more than they did, and the reason is that they were
@@ -1315,7 +1225,8 @@ for (const c of [
      Cross-Through, it is the card that holds on while the pair does the work. */
   mv('Body Tension', 1, 8, 'uncommon', { opposes: true, synergy: 'oppose',
     text: 'Opposition · +1 Power per 3 opposition cards.' }),
-  mv('Lock & Bump', 4, 5, 'uncommon', { text: 'Two moves in one breath.' }),
+  mv('Lock & Bump', 4, 5, 'uncommon', { fx: 'launch',
+    text: 'Launch · +2 Power while your other hand has held a turn. Two moves in one breath.' }),
   mv('Iron Cross', 4, 6, 'uncommon', { opposes: true, text: 'Both arms, nothing spare. Opposition.' }),
   mv('Two-Finger Pocket', 4, 5, 'uncommon', { fx: 'precise', text: 'Precise · +2 vs crimps.' }),
   mv('Finger Lock', 3, 8, 'uncommon', { fx: 'tough', text: 'Tough · ignores Sharp and Razor.' }),
@@ -1366,7 +1277,15 @@ for (const c of [
      card; this reads twice as far and hands you nothing, off the clock instead. Both
      are pure information — resolution never consults readAhead — so this is the one
      part of the ticket that cannot touch the band whatever it costs. */
-  bn('Take It All In', 1, 'uncommon', { read: 4, text: 'Read the next 4 holds off the wall.' }),
+  /* INFO-2: the CARD-18 trade this card carried — depth instead of draw, at a cost — was
+     measured broken the day depth became priceable: reading is worth ~3 points FLAT, +0.1
+     between read 2 and read 4, because refill brings up two holds a turn and a read is a
+     maximum you top up when it empties. So the depth stays as identity and the card buys a
+     real body on the axis its own name describes: taking it all in is stopping to look and
+     BREATHE. Not draw — the CARD-18 guard forbids it, rightly, or Sight the Line has
+     nothing left. Values at 10.9 against a 7.97 take-line, out of the dead set honestly. */
+  bn('Take It All In', 1, 'uncommon', { read: 4, shed: 2,
+    text: 'Read the next 4 holds off the wall, and breathe. Shed 2.' }),
   /* CARD-18: skin was a currency exactly one card ever charged, and that card was a
      rare that bought Power with it. This buys the CLOCK with it, at uncommon: the
      route goes, and the trip is a fall shorter for it. */
@@ -1384,7 +1303,7 @@ for (const c of [
   ft('Bat Hang', 0, 10, 'rare', { support: 2, shed: 3, anchor: true, text: 'Support 2 · rest · shed 3.' }),
   ft('Silent Feet', 2, 8, 'rare', { support: 2, anchor: true, text: 'Support 2. Anchor.' }),
   ft('Hands-Free Rest', 0, 9, 'rare', { support: 2, shed: 4, anchor: true, text: 'Support 2 · shed 4.' }),
-  bn('Perfect Beta', 0, 'rare', { gripCut: 4, cleans: true, targeted: true, text: '−4 Grip, strip its ability.' }),
+  bn('Perfect Beta', 0, 'rare', { gripCut: 5, cleans: true, targeted: true, text: '−5 Grip. A greasy hold stops being greasy.' }),
   bn('Send Train', 1, 'rare', { powerAll: 2, text: '+2 Power to every lane.' }),
   bn('Local Knowledge', 0, 'rare', { draw: 3, text: 'Draw 3.' }),
   bn('Flash Pump', 0, 'rare', { shed: 6, text: 'Shed 6 pump.' }),
@@ -1477,7 +1396,7 @@ for (const c of [
      thing you are paying for, so a foot that slips and catches keeps the hands paid
      for a turn they would otherwise have climbed alone. */
   ft('Rand Smear', 1, 6, 'uncommon', { support: 2, latch: true, text: 'Support 2 · Latch.' }),
-  bn('Wire Brush Pro', 0, 'uncommon', { gripCut: 3, cleans: true, targeted: true, text: '−3 Grip, strip its ability.' }),
+  bn('Wire Brush Pro', 0, 'uncommon', { gripCut: 4, cleans: true, targeted: true, text: '−4 Grip. A greasy hold stops being greasy.' }),
   bn('Spotter', 1, 'uncommon', { shed: 2, draw: 1, text: 'Shed 2. Draw 1.' }),
   bn('Crash Pad', 1, 'uncommon', { shed: 4, text: 'Shed 4 pump.' }),
   bn('Fresh Shoes', 0, 'uncommon', { powerAll: 1, text: '+1 Power to every lane.' }),
@@ -1518,7 +1437,7 @@ for (const c of [
   ft('No-Hands Rest', 0, 11, 'rare', { support: 2, shed: 5, anchor: true, text: 'Support 2 · shed 5.' }),
   ft('Ghost Feet', 3, 9, 'rare', { support: 2, text: 'Support 2. Nobody hears you.' }),
   bn('Beta Flash', 0, 'rare', { draw: 3, shed: 1, text: 'Shed 1. Draw 3.' }),
-  bn('The Right Sequence', 0, 'rare', { gripCut: 4, cleans: true, targeted: true, text: '−4 Grip, strip its ability.' }),
+  bn('The Right Sequence', 0, 'rare', { gripCut: 5, cleans: true, targeted: true, text: '−5 Grip. A greasy hold stops being greasy.' }),
   bn('Full Rack', 1, 'rare', { powerAll: 2, draw: 1, text: '+2 Power everywhere. Draw 1.' }),
   bn('Skin Like Leather', 0, 'rare', { restore: 3, shed: 2, text: 'Shed 2. Return 3 burnt cards.' }),
   bn('Deep Focus', 1, 'rare', { power: 5, targeted: true, text: '+5 Power to one lane.' }),
@@ -1587,7 +1506,7 @@ for (const c of [
   bn('Beta · The Grade', 0, 'beta', { draw: 2, shed: 1, text: 'Shed 1. Draw 2.' }),
   bn('Beta · Conditions', 0, 'beta', { powerAll: 1, text: '+1 Power to every lane.' }),
   mv('Beta · Going Alone', 4, 8, 'beta', { fx: 'tough', text: 'Tough · nobody is coming.' }),
-  bn('Beta · The Crux', 0, 'beta', { gripCut: 5, cleans: true, targeted: true, text: '−5 Grip, strip its ability.' }),
+  bn('Beta · The Crux', 0, 'beta', { gripCut: 6, cleans: true, targeted: true, text: '−6 Grip. A greasy hold stops being greasy.' }),
   bn('Beta · Last Entry', 1, 'beta', { powerAll: 2, text: '+2 Power to every lane.' }),
   // NARR-11: the eight new pages. Deliberately smaller than the original six —
   // fifteen pages means fifteen of these on the finale, and NARR-7 measured the
@@ -1716,18 +1635,6 @@ export function gainXp(s: GameState, amount0: number, rng: RNG): GameState {
     packCards: gained }
 }
 
-export const DECKS: { label: string; list: [string, number][] }[] = [
-  { label: 'Starter', list: [['Crimp Grip', 3], ['Open Hand', 3], ['Lock Off', 2], ['Smear', 3],
-    ['Shake Out', 2], ['Kneebar', 1], ['Chalk Up', 1]] },
-  { label: 'Mid', list: [['Crimp Grip', 3], ['Open Hand', 3], ['Lock Off', 2], ['Smear', 3],
-    ['Shake Out', 2], ['Kneebar', 1], ['Chalk Up', 1], ['Gaston', 1], ['Heel Hook', 1],
-    ['Undercling', 1], ['Drop Knee', 1], ['Breathe', 1], ['Pinch Grip', 1]] },
-  { label: 'Late', list: [['Crimp Grip', 3], ['Open Hand', 3], ['Lock Off', 2], ['Smear', 3],
-    ['Shake Out', 2], ['Kneebar', 1], ['Chalk Up', 1], ['Gaston', 1], ['Heel Hook', 1],
-    ['Undercling', 1], ['Drop Knee', 1], ['Breathe', 1], ['Pinch Grip', 1], ['Mantle', 1],
-    ['Flag', 1], ['Brush', 1], ['Cross-Through', 1], ['Toe Hook', 1], ['Visualize', 1],
-    ['Deadpoint', 1], ['Iron Fingers', 1], ['Perfect Beta', 1]] },
-]
 
 /** The 15 cards you start every climb with. Defaults to the starter kit. */
 export const DEFAULT_LOADOUT: string[] = (() => {
@@ -1797,23 +1704,6 @@ export const TUTORIAL_DECK: string[] = [
   'Gaston', 'Gaston', 'Undercling',
   'Lock Off', 'Lock Off', 'Smear', 'Smear', 'Smear', 'Shake Out', 'Shake Out',
 ]
-/** One idea per hold, in the order the rock introduces them. */
-export const TUTORIAL_STEPS: string[] = [
-  // one per hold, in order — jug jug jug sloper crimp crimp pinch pinch
-  // sharp-crimp crux jug jug
-  'Tap a card, then tap a lane underneath a hold. Then COMMIT — all three go at once, in the order you placed them.',
-  'Your Power — the diamond — chips its Grip. Its Bite chips your Contact. Both at once, so you can work a hold and still come off it.',
-  'The hold reads a range rather than a number. You have not been on it yet. Work it once and it reads true for the rest of the trip.',
-  'That sloper is Greasy: you lose 1 Power on it unless your feet are on something. Put a card in the FEET lane — leaving it empty is campusing, and costs you Bite on both hands.',
-  'Every turn costs pump, plus one for each hold you have not answered — and a Greasy hold does worse than that. It sweats up while you are elsewhere, harder every turn, and the hold says so. Clearing holds is how you outrun all of it. Max pump and you are off.',
-  'Watch the top of the screen. Every few turns the route does something — greases up, dries out, a gust — and it always says so a turn beforehand.',
-  'A card that survives a turn settles in, gaining Power for every turn it stays. Leaving a good card where it is usually beats moving it.',
-  'A gaston pulls sideways, and sideways needs something pulling back. On its own it is weak. Put the undercling in the other hand and both get stronger.',
-  'Sharp holds burn your card out for the rest of the burn when they blow it. Careful what you put on them.',
-  'That is a crux. It needs Power 2 or more or the move does nothing at all. Line something real up for it.',
-  'You are near the top, which the game calls EXPOSED. Backing off from here costs an extra psyche. Finishing does not.',
-  'Last one. Everything you have just learned is the whole game — the rest is more of it, harder, and further from the car.',
-]
 
 /* ===================== CONTENT: THE ACT 1 MAP ======================
    One choice per tier. Renders as a column on a phone and still gives
@@ -1868,7 +1758,6 @@ export const ACTS: MapNode[][][] = [ACT1_MAP, ACT2_MAP, ACT3_MAP]
 export const MAP_NODES = ACTS.reduce((n, act) => n + act.flat().length, 0)
 export const RUN_DECK_MAX = DECK_SIZE + MAP_NODES
 
-export const ACT_NAMES = ['Act 1 · the forest', 'Act 2 · desert towers', 'Act 3 · the alpine wall']
 export const ACT_SKIN = 5        // topped up between acts
 
 /* ======================== CONTENT: THE JOURNAL =====================
@@ -1936,6 +1825,11 @@ export function rollEvent(rng: RNG, act = 0, seen: string[] = [],
 export type Archetype = {
   id: string; name: string; text: string; sig: string; sigText: string
   unlock: number; gear: string; loadout: string[]
+  /* ARCH-1: the thing this climber DOES, once a burn. Every signature in this table was a
+     passive stat dial until v10.79 — "+3 Power on every move", "beta is worth double" — so the
+     five climbers scored differently and played identically. `move` is the verb; the effect is
+     resolved by `signatureStep`, one function over this data rather than five bespoke rules. */
+  move?: { name: string; text: string }
   betaGrip?: number; firstTurnPower?: number; noBeta?: boolean
   /* BAL-12. Three signatures compound over a burn — beta coming back cheaper,
      Contact on every move, settling to +3. The Comp Kid's fired once, on turn
@@ -1975,12 +1869,14 @@ export const L = (...pairs: [string, number][]) => {
 }
 export const ARCHETYPES: Archetype[] = [
   { id: 'boulderer', name: 'The Boulderer', unlock: 1, gear: 'sticky',
+    move: { name: 'Work It', text: 'Read this hold off the wall and keep it: the kind you are on comes back beta\u2019d for the rest of this session.' },
     text: 'Pads, chalk, and forty attempts. The default way in.',
     sig: 'Projecting', sigText: 'Beta is worth double — worked holds come back at −2 Grip.',
     betaGrip: 2,
     loadout: L(['Crimp Grip', 3], ['Open Hand', 2], ['Lock Off', 2], ['Smear', 3],
       ['Shake Out', 2], ['Breathe', 2], ['Chalk Up', 1]) },
   { id: 'comp', name: 'The Comp Kid', unlock: 4, gear: 'downturn',
+    move: { name: 'Read The Set', text: 'Comp habits: look at the next three holds before you touch them.' },
     text: 'Trained on plastic. Enormously strong, no patience at all.',
     sig: 'Plastic', sigText: '+3 Power on every move, and one less burn a day. All engine, no patience. Feet you trust the moment they land, and a boulder that beats you never gets in your head.',
     dPower: 3, dAttempts: -1, quickFeet: true, dPsyche: 1, deed: 'strong',   // META-6: earned by sending V5+
@@ -1988,14 +1884,31 @@ export const ARCHETYPES: Archetype[] = [
       ['Smear', 2], ['High Step', 1], ['Shake Out', 2], ['Deep Breath', 1],
       ['Breathe', 1], ['Chalk Up', 1]) },
   { id: 'trad', name: 'The Trad Dad', unlock: 8, gear: 'tape',
+    move: { name: 'Bomber', text: 'Nothing you have placed comes off this turn. It holds, whatever it costs.' },
     text: 'Slow, bomber, and will tell you about the rack.',
-    sig: 'Bomber', sigText: '+2 Contact on every move, and nothing you place ever settles.',
-    dContact: 2, settleMax: 0, deed: 'fa',       // META-6: earned by putting up a line
+    sig: 'Bomber', sigText: '+3 Contact on every move, and nothing you place ever settles.',
+    /* ARCH-2: dContact 2 -> 3, and it is a BUY-BACK rather than a buff. This climber read 8.0%
+       against a floor Evan set at 9 on 2026-08-23, so the debt was explicit and dated before
+       the dial was chosen. FOUR DIALS AT n=2000, recorded the way BAL-16 recorded the
+       Alpinist's ten, because what they say about this climber outlasts the one that shipped:
+         dSkin +1            6.9%  — WORSE. Skin is not a lever here either, which is the same
+                                     nothing BAL-16 measured on the Alpinist.
+         firstTurnPower 2    9.9%  — clears the floor and was passed over on FICTION: the
+                                     Onsighter's own signature is committing hard off the first
+                                     move, and buying one climber back with another's identity
+                                     is a worse answer than a smaller number.
+         dContact 2 -> 3    11.4%  — SHIPPED. His one stated upside, made to pay.
+         dAttempts +1       12.7%  — a cliff, and it would have topped the roster.
+       The +2 was the whole statline: one upside, one downside, against four and five dials on
+       everybody else. This does not make him a different climber, it makes the one thing he
+       has worth having. */
+    dContact: 3, settleMax: 0, deed: 'fa',       // META-6: earned by putting up a line
     loadout: L(['Hand Jam', 2], ['Arm Bar', 2], ['Undercling', 2], ['Slow Pull', 1],
       ['Heel Hook', 2], ['Smear', 1], ['Kneebar', 1], ['Breathe', 2], ['Brush', 2]) },
   { id: 'alpine', name: 'The Alpinist', unlock: 12, gear: 'liquid',
     text: 'Used to being cold, tired and a long way from the road.',
     sig: 'Endurance', sigText: 'Moves settle all the way to +3 and two more burns a day, but everything has 2 less Contact.',
+    move: { name: 'Dig In', text: 'Settle in and breathe: shed a pump for every turn you have been on this thing, up to 4. Your flow goes with it.' },
     /* NARR-22 BOUGHT THIS CLIMBER BACK, and the reason is worth keeping because the money was
        coming from a bug. RUN-14's swap could take a node the pool cannot hand back, and one side
        effect was that it INFLATED CAMPS from 9 a run to 10.55 — which had been propping the
@@ -2060,6 +1973,7 @@ export const ARCHETYPES: Archetype[] = [
   { id: 'onsight', name: 'The Onsighter', unlock: 16, gear: 'ball',
     text: 'Walks up, ties in, and climbs it. Strong, unfussy, no tick marks.',
     sig: 'Onsight', sigText: 'No beta ever — every hold stays a guess — but nothing the weather does touches you, your hand runs a card deeper, and you commit hard off the first move.',
+    move: { name: 'Commit', text: 'Read it once and go: +2 Power on both hands this turn, and no shaking out for the rest of the burn.' },
     noBeta: true, ignoreWeather: true, dHand: 1, dContact: 1, dSkin: 1, firstTurnPower: 3,
     deed: 'flash',   // META-6: earned by a flash — a first-try send, which is the whole idea
     loadout: L(['Crimp Grip', 2], ['Open Hand', 2], ['Lock Off', 2], ['Mantle', 1],
@@ -2230,36 +2144,6 @@ export type Gear = {
   shedPerTurn?: number; drawFirst?: number; handSize?: number
   attempts?: number; skinSave?: number; brushFirst?: boolean
 }
-export const GEAR: Gear[] = [
-  // NOTE: deck-wide Power is the single most explosive modifier in the game —
-  // the weather sweep proved ±1 Power swings a battle ~40 points. Gear that
-  // touches Power either pays for it in Contact, or only touches the feet
-  // lane (4-5 cards, not 15). Nothing here grants an extra burn.
-  { id: 'downturn', name: 'Downturned Shoes', slot: 'shoes', dPowerHand: 1, dContact: -2,
-    text: '+1 Power to hand moves. −2 Contact to everything.' },
-  { id: 'flat', name: 'Flat-Lasted Shoes', slot: 'shoes', dContact: 1,
-    text: '+1 Contact to every move. All-day comfort.' },
-  { id: 'sticky', name: 'Fresh Rubber', slot: 'shoes', dPowerFeet: 1,
-    text: '+1 Power to foot moves.' },
-  { id: 'slipper', name: 'Soft Slippers', slot: 'shoes', dSupport: 1,
-    text: '+1 Support from the feet lane.' },
-  { id: 'liquid', name: 'Liquid Chalk', slot: 'chalk', shedPerTurn: 1,
-    text: 'Shed 1 pump at the end of every turn.' },
-  { id: 'ball', name: 'Chalk Ball', slot: 'chalk', drawFirst: 2,
-    text: 'Draw 2 extra on the first turn of a burn.' },
-  { id: 'anti', name: 'Antihydral', slot: 'chalk', dContact: 1,
-    text: '+1 Contact to every move. Skin holds up.' },
-  { id: 'loose', name: 'Loose Chalk', slot: 'chalk', handSize: 1,
-    text: '+1 card in hand, every turn.' },
-  { id: 'brush', name: 'Wire Brush', slot: 'kit', brushFirst: true,
-    text: 'The first hold of every burn comes brushed clean.' },
-  { id: 'pads', name: 'Crash Pads', slot: 'kit', skinSave: 1,
-    text: 'The first fall on each boulder costs no skin.' },
-  { id: 'tape', name: 'Tape Gloves', slot: 'kit', dContact: 1,
-    text: '+1 Contact to every move.' },
-  { id: 'nuttool', name: 'Nut Tool', slot: 'kit', dPowerHand: 1, dContact: -1,
-    text: '+1 Power to hand moves. −1 Contact to everything.' },
-]
 export const gearById = (id: string) => GEAR.find(g => g.id === id)
 
 /* CARD-7. One-shot kit. Gear is a rule you carry for the whole run; a
@@ -2280,23 +2164,6 @@ export type Consumable = {
       all off the band (the drafting sim never buys or spends kit). */
   gripCut?: number; skin?: number; psyche?: number
 }
-export const CONSUMABLES: Consumable[] = [
-  { id: 'chalkshot', name: 'Chalk Shot', shed: 5,
-    text: 'A big scoop when you need it. Shed 5 pump.' },
-  { id: 'betanapkin', name: 'Beta Napkin', draw: 2,
-    text: 'Somebody sketched the moves for you. Draw 2.' },
-  { id: 'cruxpad', name: 'Crux Pad', powerAll: 2,
-    text: 'Slid under the crux. +2 Power to every lane you have out, this turn.' },
-  { id: 'secondwind', name: 'Second Wind', burn: 1,
-    text: 'Chalk up, shake out, tie back in. One more burn on this line.' },
-  // CARD-14
-  { id: 'tickstick', name: 'Tick Stick', gripCut: 2,
-    text: 'Chalk the holds you can reach. −2 Grip to every hold on the wall.' },
-  { id: 'skinsalve', name: 'Skin Salve', skin: 3,
-    text: 'Tape and time. Patch your tips — +3 skin.' },
-  { id: 'peptalk', name: 'Pep Talk', psyche: 1,
-    text: 'Somebody talks you back onto it. +1 psyche.' },
-]
 export const consumableById = (id: string) => CONSUMABLES.find(k => k.id === id)
 export const KIT_MAX = 2
 /* SAVE-6. The larder is the only array in the save that grows in NORMAL PLAY without a
@@ -2487,8 +2354,53 @@ export const MAP_SWAP_IN: NodeType[] = ['camp', 'shop']
    WHAT IT COSTS. Variety, a little, honestly: 16 of the 26 stages produced more than one shape
    and now 14 do, because a stage that already offers both a camp and a shop has nothing left to
    be given. That is the price of the map varying the support instead of the story. */
+/* RUN-15. The pools a climb slot may draw from: every route that appears as a CLIMB node in
+   the act's own map, keyed by grade. Derived from ACTS the way ACT_OF_ROUTE is, so there is no
+   second table to drift and a swapped-in line is always one the act already owns — which also
+   keeps `actTicked` whole, because the logbook goal is account-scoped and every pool member is
+   reachable across runs. The row said varying the routes "is authoring, not a rule", and the
+   measured map disagrees twice over: all 35 non-tutorial lines are ALREADY in ACTS (there was
+   no unused pool to author), and the map's own idiom already double-slots nine same-grade
+   pairs and statically offers a 44-point spread in one stage's menu (Rattlesnake 66% · Kiln
+   22% · Blowhole 47% at mid deck) — same-grade-as-interchangeable is the map's existing rule,
+   applied here per run instead of per author. */
+export const CLIMB_POOLS: Record<number, number[]>[] = ACTS.map(map => {
+  const pools: Record<number, number[]> = {}
+  map.forEach(tier => tier.forEach(n => {
+    if (n.type === 'climb' && n.routeIdx >= 0) {
+      const g = ROUTES[n.routeIdx].grade
+      if (!pools[g]) pools[g] = []
+      if (!pools[g].includes(n.routeIdx)) pools[g].push(n.routeIdx)
+    }
+  }))
+  return pools
+})
+
 export function tierNodes(s: GameState, tier = s.tier): MapNode[] {
-  const all = ACTS[s.act]?.[tier] ?? []
+  const staticTier = ACTS[s.act]?.[tier] ?? []
+  /* RUN-15: WHICH LINE fills a climb slot is a property of the run now, the way RUN-14 made
+     the support a property of the run — and under NARR-22's rule from that ticket: the swap
+     may only take what it can give back, so a climb swaps only for another climb, of the same
+     act, at the same grade. The stage's grade ramp is therefore untouched by construction.
+     Bosses are the act's spine and projects are RUN-10's deliberately-distinct boulders:
+     neither is a 'climb', so neither can swap. One route never fills two slots of one stage.
+     Its RNG stream is separate from the support swap's below on purpose, so this ticket left
+     RUN-14's per-seed support layout exactly as it was. */
+  const pools = CLIMB_POOLS[s.act]
+  let all = staticTier
+  if (pools) {
+    const rr = new RNG((s.runSeed ^ (s.act * 48611) ^ (tier * 92821) ^ 0x5eed) >>> 0)
+    const taken = new Set(staticTier.filter(n => n.type === 'climb').map(n => n.routeIdx))
+    all = staticTier.map(n => {
+      if (n.type !== 'climb' || n.routeIdx < 0) return n
+      const pool = pools[ROUTES[n.routeIdx].grade] ?? []
+      const cands = pool.filter(r => r === n.routeIdx || !taken.has(r))
+      const pick = cands.length ? cands[rr.int(cands.length)] : n.routeIdx
+      if (pick === n.routeIdx) return n
+      taken.delete(n.routeIdx); taken.add(pick)
+      return { ...n, routeIdx: pick }
+    })
+  }
   if (all.length <= MAP_FLOOR) return all
   // NARR-22: only what the pool can hand back is in range — see the note above for what each of
   // the two wider versions of this line cost
@@ -2501,6 +2413,42 @@ export function tierNodes(s: GameState, tier = s.tier): MapNode[] {
   // nothing new to offer, so this stage keeps what it had — the width never falls
   if (!fresh.length) return all
   return [...kept, { type: fresh[rng.int(fresh.length)], routeIdx: -1 }]
+}
+
+/* ROPE-2, second row. IS THERE ROPE ON THIS TRIP — asked of the RUN's map, not the table.
+   Three places wanted this answer and all three read `ACTS[act]` directly: the post's rack
+   (stockShop), the clip term in `cardValue`, and the hint the card prints at you. The comment
+   on the rack states the intent exactly — "offered only where ropes exist, DERIVED from the
+   act's own map, so adding a roped line to another act provisions it without anybody
+   remembering to" — and RUN-15 broke the mechanism under it: which line fills a climb slot is
+   a property of the run now, so the static table is no longer what the player will meet.
+
+   MEASURED BEFORE FIXING, because the row deserves the truth rather than a dramatic bug: the
+   divergence is LATENT, not live. `MAP_SWAP_IN` is camps and shops only, so act 3's two roped
+   PROJECTS never move, and 0.0% of 3,000 seeded runs have no roped node. What does vary is the
+   roped CLIMBS: 4.7% of runs are offered none, and the share of the act that is roped swings
+   run to run where the static table says a fixed 0.286. So today this changes what a clip card
+   is WORTH to a run rather than whether the rack appears — and the moment anybody adds a roped
+   climb to an act with no roped project, it is the difference between provisioning that works
+   and a hint that lies.
+
+   Cached per (run, act) because `cardValue` is called thousands of times inside `buildLoadout`
+   and this walks a whole act; the key is exactly what `tierNodes` reads, so the cache cannot
+   answer for a map it did not see. */
+const ropeCache = new Map<string, { any: boolean; share: number }>()
+export function ropeOnTrip(s: GameState): { any: boolean; share: number } {
+  const key = `${s.runSeed ?? 0}:${s.act}`
+  const hit = ropeCache.get(key)
+  if (hit) return hit
+  const map = ACTS[s.act] ?? []
+  let roped = 0, total = 0
+  for (let t = 0; t < map.length; t++)
+    for (const n of tierNodes(s, t))
+      if (n.routeIdx >= 0) { total++; if (ROUTES[n.routeIdx]?.roped) roped++ }
+  const out = { any: roped > 0, share: total ? roped / total : 0 }
+  if (ropeCache.size > 64) ropeCache.clear()
+  ropeCache.set(key, out)
+  return out
 }
 
 export function forecastFor(s: GameState): { weather: number; rock: number }[] {
@@ -2648,7 +2596,7 @@ export function stockShop(s: GameState, rng: RNG): GameState {
      from the shared stream would shift every downstream roll and move the balance guards for
      nothing. And offered only where ropes exist, DERIVED from the act's own map, so adding a
      roped line to another act provisions it without anybody remembering to. */
-  const roped = ACTS[s.act]?.flat().some(n => n.routeIdx >= 0 && ROUTES[n.routeIdx]?.roped)
+  const roped = ropeOnTrip(s).any   // ROPE-2: this run's map, not the table
   const rack = roped ? [spawn(CLIP_STOCK[s.tier % CLIP_STOCK.length])] : []
   /* SEQ-3: and a plan, when this deck could run one. See `shelfPlan` — stage-picked, so it
      perturbs no roll, and gated on the deck, so it is an option rather than a tax on the shelf. */
@@ -2766,84 +2714,6 @@ export type Partner = {
   enough: number
   says: Record<PartnerMoment, string>
 }
-export const PARTNERS: Partner[] = [
-  { id: 'wren', name: 'Wren', who: 'Belays like she is being timed. Has opinions about your feet.', line: 1,
-    enough: 10,
-    says: {
-      again: 'She is already pulling the rope through. "One more. You are climbing well and it will not last."',
-      enough: '"That is the good one to stop on." She starts coiling before you answer.',
-      tie: 'She flakes the rope without being asked. "Straight up it, if you have any sense."',
-      agree: '"Good. I hate traversing." She sits down and watches your feet, not your hands.',
-      differ: '"Fine. I will be here." She does not look up from her book until you are off the ground.',
-      send: '"There you go." She says it like she never doubted it, which is a kindness and a lie.',
-      fall: '"Feet." One word, and she is right, and you both know it.',
-      camp: 'She eats standing up and goes to bed early. "Tomorrow you go first."',
-      top: '"Well." She shakes your hand, formally, like a stranger. Then she laughs at herself.',
-      died: 'She carries the pads down without saying anything. At the car: "Next time you go first."',
-      walked: '"Good. Stop while it is still the good one." She is coiling before she has finished the sentence.',
-      claim: '"Do not be modest, it is a waste of everybody\u2019s time." A beat. "Do not be the other thing either."',
-      curse: '"Two for one and you carry the difference." She has watched people do this before.',
-      phase: 'Wren, from below: "It changes here. You knew that."',
-      spent: 'She turns your hand over and looks at it. "Right. Done." She does not make it a defeat.',
-    } },
-  { id: 'ade', name: 'Ade', who: 'Been coming here thirty years. Knows where the water is.', line: 0,
-    enough: 6,
-    says: {
-      again: '"Go on then, while it is cool." He does not get up.',
-      enough: '"You have had the best of the day." He is looking at the light, not at you.',
-      tie: '"The book has it right, you know. People forget the book was written by somebody who was here."',
-      agree: '"Sensible." He settles in with the flask and does not offer you any.',
-      differ: '"Hm." He watches you go the other way and says nothing at all, which is worse.',
-      send: '"That is the line." He is pleased about the LINE, which is somehow better than being pleased for you.',
-      fall: '"It goes. Not like that, but it goes." He is already thinking about the sequence.',
-      camp: 'He tells you about a winter here in the nineties. Half of it cannot be true.',
-      top: '"I will put it in the book." From him this is an enormous thing to say.',
-      died: '"Thirty years I have been failing on things here." He means it to be comforting, and it is.',
-      walked: '"That will do." He has the flask out already. The light is going off the top of the crag.',
-      claim: '"Whatever you put, somebody will repeat it and disagree. That is the grade working." He is not warning you.',
-      curse: '"You will be carrying that in November." He says it mildly, which is how he says everything.',
-      phase: 'Ade, not looking up: "This is the bit people forget about."',
-      spent: '"Skin is the only thing out here you cannot buy." He has said this before and will say it again.',
-    } },
-  { id: 'moss', name: 'Moss', who: 'Would rather be looking at the rock than climbing it.', line: 2,
-    enough: 3,
-    says: {
-      again: '"If you must." He has found something in the scree and is not really listening.',
-      enough: '"Right — come and see this instead." He has been waiting an hour to show you.',
-      tie: '"There is a way round the side, you know. It is nicer over there."',
-      agree: '"Oh good." He points out three things on the way that have nothing to do with climbing.',
-      differ: '"Suit yourself." He wanders off left anyway and describes it to you while you are pumped.',
-      send: '"Did you see the quartz band? No. You would not have." He is not disappointed in you.',
-      fall: '"That hold is a fossil, you know. Whole animal." You are lying on the ground.',
-      camp: 'He has collected four rocks and wants to talk about all of them.',
-      top: '"Good. Now can we go and look at the other side." He has wanted to all week.',
-      died: '"Shame." He is already photographing something in the moss.',
-      walked: '"Finally." He has been standing by something he wants you to look at for about an hour.',
-      claim: '"Call it what the rock is." He means it literally, and it is not bad advice.',
-      curse: '"Is that the one that hurts?" He has not been following. He is not going to start now.',
-      phase: 'Moss, delighted: "That is a different bed of rock, that is."',
-      spent: '"You have gone through to the pink." He sounds interested rather than sympathetic.',
-    } },
-  { id: 'kit', name: 'Kit', who: 'Nineteen, terrifyingly strong, no idea how lucky that is.', line: 1,
-    enough: 14,
-    says: {
-      again: '"Go again go again go again." It is not a question and she is not tired.',
-      enough: '"Wait, we are stopping? Oh." She gets over it in about four seconds.',
-      tie: '"Just go up it? Why would you not just go up it." Genuine question.',
-      agree: '"Obviously." She is already thinking about the next one.',
-      differ: '"Weird flex but okay." She spots you properly, though, which she does not have to.',
-      send: '"Was that hard? That looked hard." She is not being cruel. That is the problem.',
-      fall: '"Ohhh. Yeah. Go again?" It has not occurred to her that you might not.',
-      camp: 'She is asleep before the water boils and up before you.',
-      top: 'She screams. Genuinely screams, at a wall, in the dark. It is the best moment of the trip.',
-      died: '"Same time next year?" She has already forgotten which one beat you.',
-      walked: '"That was ages." It was not ages. She is already looking at what is next to it.',
-      claim: '"That is soft for the grade." She has climbed it zero times and is completely certain.',
-      curse: '"Free card!" She does not appear to have read the other half of the sentence.',
-      phase: 'Kit, brightly: "Oh, it does a thing here."',
-      spent: '"Tape?" She has tape. She always has tape. It is not going to be enough.',
-    } },
-]
 /** Who is out with you. Derived from the run seed — see the note above. */
 export function partnerFor(s: GameState): Partner | null {
   /* SKIRM-7: the Circuit was the least-served mode in the game — it runs
@@ -3201,16 +3071,6 @@ export function availableTalk(s: GameState): Talk | null {
 
 /** One beta card per journal page you carry. Finale only — this is why the
     pages were worth collecting. */
-export const BETA_CARDS: Record<number, string> = {
-  1: 'Beta · The Approach', 2: 'Beta · The Grade', 3: 'Beta · Conditions',
-  4: 'Beta · Going Alone', 5: 'Beta · The Crux', 6: 'Beta · Last Entry',
-  // NARR-11: the eight new pages. Page 7 is what you find at the top, so it
-  // has never been a beta card and still is not — you read it after.
-  8: 'Beta · The Photograph', 9: 'Beta · The Rock', 10: 'Beta · The Walk In',
-  11: 'Beta · What He Told Her', 12: 'Beta · Being Frightened',
-  13: 'Beta · The Traverse', 14: 'Beta · Waiting It Out',
-  15: 'Beta · The Name',
-}
 
 /* A page grant used to name a specific page, which meant every page needed its
    own event branch and is why there were only ever six findable. An event can
@@ -3319,14 +3179,6 @@ export function applyOutcome(s: GameState, o: EventOutcome, rng: RNG): GameState
    game easier because a cost-0 shed-and-draw is free value, and plans in here made it much
    harder because a plan is dead weight until you build for it. Neither belongs in a pool that
    hands cards over at random. So a plan is SOLD, like the rack — see PLAN_STOCK. */
-export const REWARDS = {
-  common: ['Gaston', 'Sloper Slap', 'Undercling', 'Mantle', 'Pinch Grip', 'Deadpoint',
-    'Heel Hook', 'Drop Knee', 'Flag', 'High Step', 'Breathe', 'Brush',
-    'Hand Jam', 'Palm Press', 'Static Reach'],
-  uncommon: ['Cross-Through', 'Lock & Bump', 'Dyno', 'Toe Hook', 'Visualize', 'Try-Hard Scream',
-    'Crimp Specialist', 'Pocket Poacher'],
-  rare: ['Iron Fingers', 'Static Lock', 'Perfect Beta', 'Send Train'],
-}
 /** ROPE-2: what the post in a roped act keeps on the shelf. Deliberately not in REWARDS —
     these are bought, never handed over. Two commons and the rare, so which one is on the
     shelf still varies by where you are without varying by luck. */
@@ -4511,7 +4363,7 @@ export function endSession(s0: GameState, rng: RNG): GameState {
   return gate({ ...s, beta, offers: rollOffers(rng, 2, true, s.act, s.runDeck, s), phase: 'reward' })
 }
 
-function refillAndDraw(s: GameState, rng: RNG): GameState {
+function refillAndDraw(s: GameState, rng: RNG, setupLanes?: boolean[]): GameState {
   const boardH = s.boardH.slice()
   const holdDeck = s.holdDeck.slice(), feetDeck = s.feetDeck.slice()
   const ph = phaseOf(s)
@@ -4525,7 +4377,13 @@ function refillAndDraw(s: GameState, rng: RNG): GameState {
          `drawn` is that count, so this hold was read if the read reached this far. */
       const known = drawn < s.readAhead
       drawn++
-      const arrived = known ? { ...h, read: true } : h
+      let arrived = known ? { ...h, read: true } : h
+      /* CARD-21: the lane was left worked, so this hold arrives part-done. Applied HERE, where
+         the hold enters the lane, so it is a property of the hold the player is shown rather
+         than a number applied later — `gripShown`, `previewLane` and `resolve` all read the
+         hold, so none of them needs to know this rule exists. */
+      if (setupLanes?.[i] && arrived.grip > 1)
+        arrived = { ...arrived, grip: Math.max(1, arrived.grip - SETUP_GIVE) }
       boardH[i] = ph?.allCrux && !arrived.crux
         ? { ...arrived, crux: true, grip: arrived.grip + 2 } : arrived
     }
@@ -4535,6 +4393,7 @@ function refillAndDraw(s: GameState, rng: RNG): GameState {
   if (!boardH[2] && feetDeck.length) boardH[2] = feetDeck.pop()!
   const gm = gearMods(s.gear)
   const want = HAND_SIZE + gm.handSize + boonMods(s.boons).dDraw
+    + (s.handBonus ?? 0)     // ARCH-1: the Comp Kid's read buys a card of HAND, not a draw
     + (s.inRun ? (archOf(s).dHand ?? 0) : 0) + (s.turn === 1 ? gm.drawFirst : 0)
     - (mutMods(s.mutators).retain ? SUSTAINED_CUT : 0)   // RUN-11: a smaller working hand
     // PUMP-1: past DUSK_AT the light is going, and it keeps going — one card fewer for every
@@ -4597,6 +4456,8 @@ export function startBurn(s: GameState, rng: RNG): GameState {
     // DAILY-2: per-burn, like peakPump above it — a fresh go asks the objective again
     rests: 0, cruxFree: 0,
     clipped: false, seq: null, readAhead: 0,
+    // ARCH-1: the signature move comes back on a fresh go, like savedBlow beside it
+    moveUsed: false, bomber: false, commitPower: false, handBonus: 0,
     // CARD-9: a second wind buys a go on THIS boulder only — clear it when a
     // fresh line begins (burn 1), keep it across a retry on the same line.
     bonusBurns: s.burn <= 1 ? 0 : (s.bonusBurns ?? 0),
@@ -4776,6 +4637,26 @@ export const WEIGHT_BOARD = 1.86
    eight cards at all. So the effect a card could not deliver is granted by the wall instead:
    this IS the Guard rule, handed to you by the shape of the board.
 
+   CARD-23 CORRECTION (v10.87): THE 0.12% FOR `weight` IS A PROPERTY OF ONE DECK, NOT OF THE
+   GAME, AND THE ARGUMENT ABOVE RESTS ON IT. Re-measured over drafted campaigns rather than
+   starting decks, 81,854 turns on the archetype loadouts and 87,672 on the built one:
+
+                        default loadout + draft     BUILT loadout + draft
+       fx: 'weight'        0.09% of turns              17.46% of turns, 100% of runs
+       fx: 'guard'         0.07%                        0.03%
+
+   `buildLoadout` puts exactly ONE weight card in fifteen and no archetype loadout carries one
+   at all, which is the whole difference — and the BUILT deck is the one every band number in
+   this project is measured through (SIM-8). So `weight` is not dead, it is dead for a new
+   player and on a sixth of the turns for the deck the balance rides on. `guard` IS dead in
+   both, at 0.03% and 0.07%, and the reasoning above holds for it unchanged.
+
+   Nothing is reverted: Matching earned its place on its own measurement (28.35% of climb
+   turns, +4.8 against the pin) and does not depend on the weight number being small. What is
+   corrected is the CLAIM, because a later ticket reading "0.12%" would price a mechanic that
+   is on the board a sixth of the time. CARD-24 inherits this: the dead card list is `guard`,
+   not `guard` and `weight`.
+
    Measured before writing it: the same hold type lands in both hands on 28.35% of climb turns and
    nothing in the game read it. Requiring a card in the other hand too is what makes it a decision
    rather than weather — you have to commit both hands to be matched. */
@@ -4795,8 +4676,141 @@ export function matched(boardH: (Hold | null)[], boardP: (Card | null)[]): boole
   const [a, b] = [boardH[0], boardH[1]]
   return !!a && !!b && a.name === b.name && !!boardP[0] && !!boardP[1]
 }
+/* HOLD-2. CHAINED — the first rule in this game that makes the ORDER you resolve in pay.
+   The board has held three holds that ignore each other since v0: the only relationships were
+   matched hands, chip, and the feet lane's Support. The obvious fix — a hold that eases when
+   its neighbour clears — was measured before it was built and is DEAD: over 45,488 campaign
+   turns both hand holds are up on 97.2% and a lane clears with the other hold still standing
+   on 97.7%, so "the neighbour went" is not a condition in this game, it is the default, and
+   CARD-20 already recorded what a near-constant condition is worth (nothing, dearly).
+
+   WHAT DOES VARY IS THE ORDER: both hand lanes are clearable on 34.7% of turns, so a third of
+   the time WHICH ONE GOES FIRST is a real decision the player is already making and the game
+   has never paid for. ENG-18 made the order the player's (`s.order`), and it currently matters
+   only for blow-outs — a hand that comes off first stops opposing the other. So a Chained hold
+   gives ground to whoever lets the other hand go first, and the cost is exactly that existing
+   rule: the lane you send first may blow before the second one resolves, taking its opposition
+   and its `weight` with it. A trade, not a discount.
+
+   KEYED ON THE ORDER AND NOT ON THE CLEAR, and that is what keeps the preview honest. A rule
+   that fires when the neighbour CLEARS cannot be previewed exactly: a dyno's clear is an RNG
+   roll, so the preview would have to guess, and UX-4's 100%-accurate preview is a stated
+   pillar this project has broken twice and guards in three places. Order is known at commit
+   time, so `resolve` and `previewLane` read the same array and cannot diverge. */
+/* CARD-21. SETUP — the combination that spans a turn, carried by the LANE because nothing else
+   in this game lasts. A placed hand card stands 1.09 turns and 83.7% of them blow the turn they
+   land (SIM-9), so a combo held on the CARD has almost no board to pay on; CARD-20 shipped
+   Launch sideways across lanes for exactly that reason. What persists is the lane: measured over
+   45,488 campaign turns, a hand lane clears 1.18 times a turn and the lane is carded again the
+   next turn on 27.9% of those clears. So a Setup move leaves the lane worked — the hold that
+   arrives there next comes SETUP_GIVE Grip easier — and the player collects it by choosing to
+   climb back into the same lane.
+
+   NOT ON EVERY CLEAR, which is the trap this ticket was written after: HOLD-2 measured that
+   "a lane cleared" happens on 97.7% of turns, so a handoff on every clear is a flat discount on
+   the whole wall wearing a combination's clothes. It rides two CARDS instead, so the rate is
+   what the player built. */
+export const SETUP_GIVE = 1
+/** CARD-21: how often the Grip a Setup move left in the lane is actually collected — 86.7%,
+    measured over 45,698 campaign turns on the shipped mechanic (a Setup move is out on 18.4% of
+    turns and leaves the lane worked on 9.9%). An expectation for pricing, never a rule, the same
+    shape as WEIGHT_BOARD and LAUNCH_RATE.
+    THE FIRST NUMBER HERE WAS 0.28 AND IT WAS THE WRONG QUESTION. The design probe measured how
+    often a cleared lane is carded ON THE VERY NEXT TURN, which is 27.9% — but the discounted
+    hold SITS THERE until it is worked, so the next turn is not the window. Priced at 0.28 the
+    drafter valued Setup at a third of what it pays. Measured on the mechanic itself rather than
+    on a proxy for it. */
+export const SETUP_RATE = 0.87
+export const CHAIN_GIVE = 2
+/* HOLD-3. THE CHAIN HAD NO COST, AND THAT WAS MEASURED, NOT ARGUED. HOLD-2 shipped saying the
+   price of going second was the rule that already existed — the lane you send first may blow
+   before the second resolves, taking its opposition with it — and left an honest limit in its
+   own row: the policy takes the discount on 99.7% of the turns it is offered, so as measured
+   it is a discount with a skill floor rather than a dilemma. This ticket measured that limit
+   instead of inferring it. Every turn where the policy reorders, resolved TWICE from a forked
+   RNG, over 84,346 campaign turns and 7,255 decisions:
+
+     the lane sent first BLEW                        69.0% of decisions
+     ...and it changed how many cards you lost         0.0%
+     taking the chain was better                      11.0%
+     DECLINING was better                              0.3%   (n=22, every one an `opposes` card)
+     the two orders produced an identical turn        88.7%
+
+   THE 0.0% IS THE FINDING AND IT IS STRUCTURAL, not a sample. Whether a lane blows is Contact
+   against Bite (`laneBlows`), and neither term reads the live board — `biteAgainst` takes the
+   committed `boardP`, which is fixed for the whole lane loop. ENG-18's note says so in as many
+   words, because that is what lets the preview resolve in one pass without recursion. So the
+   lane that goes first blows in EITHER order. Nothing is lost by sending it. And `weight`
+   reads the committed board too (ENG-21, deliberately), so HOLD-2's row naming `weight` as
+   part of the cost is wrong on the code — the only order-sensitive term in `powerAgainst` is
+   opposition, and it flips the turn on 0.3% of decisions.
+
+   A POLICY THAT PRICED THAT WOULD BE PRICING NOTHING — 0.3% of decisions is 0.026% of turns,
+   and a branch that fires there is the dead branch GUARD-9's header exists to complain about.
+   SO THE COST IS BUILT, out of the condition HOLD-2 named and could not make pay: the hand you
+   sent first comes off. It fires on 69.0% of the turns the chain gives, it is deterministic and
+   order-independent, `previewLane` already computes it for every lane, and the player reads it
+   off the board as "This burns out" before committing. You let the other hand go, it came off,
+   and you are hanging there alone: CHAIN_HANG pump.
+
+   THAT IS WHAT MAKES IT A DECISION. The 88.7% of turns where the order changed nothing become
+   turns where taking it can only cost, and the policy's answer splits instead of always taking.
+   Two things the player can now read and route around rather than one.
+
+   SEVEN ARMS AT n=3000, because the first version of this was a flat pump and the choice
+   between them is not visible in a single number (band · then the ladder floor and spread):
+
+     free chain, blind policy (v10.81)   62.0    floor 10.5   spread 1.36x
+     flat pump, blind policy             58.6
+     flat pump, policy prices it         60.7    floor  9.2   spread 1.41x
+     flat pump, window widened           60.7
+     flat pump, window narrowed          60.8
+     flat pump, pump-headroom gate       60.6    floor  9.2   spread 1.41x
+     flat pump, give raised to 3         61.1    floor  8.8   spread 1.51x
+     SHIPPED: charged on the blow-out    61.0    floor  9.2   spread 1.50x
+
+   THE POLICY IS NOT THE LEVER AND THAT IS FOUR MEASUREMENTS SAYING SO: three windows and a
+   headroom gate all land inside 0.2 of each other. What is worth 2.1 points is HAVING a rule
+   rather than always taking; which rule is below what the band can resolve. The price is the
+   lever, and raising the give to pay for it is worse than either (floor 8.8).
+
+   THE LAST TWO ARMS ARE STATISTICALLY THE SAME BAND AND THIS ONE WAS CHOSEN ON DESIGN, WHICH
+   IS SAID HERE RATHER THAN DRESSED UP AS A MEASUREMENT: 61.0 against 60.7 is 0.3 at an SE of
+   0.9, and every per-climber gap between them is inside one SE. The flat pump is a tax on using
+   the ability; this is a condition on the board that the player can read and route around, which
+   is what the seventh set is for. It also makes HOLD-2's stated cost TRUE rather than replacing
+   it. The cost of the choice is the spread, 1.41x against 1.50x — inside its guard either way,
+   both of them wider than the 1.36x this started at, and if the roster tightens again it is the
+   first thing to re-measure. */
+export const CHAIN_HANG = 1
 export const OPPOSE_ALONE = -2
 export const OPPOSE_PAIR = 2
+/* CARD-20. LAUNCH — the combination that spans a turn. The row asked for a combination that
+   creates a plan rather than a bigger number, and the constraint that killed every obvious
+   candidate was measured first, on 45,606 climb turns of the real campaign:
+     · both hands share a card tag on 19.1% of turns now, not the 61% the row was written
+       against — LANE-2's spread builder dissolved that objection — but a same-tag bonus is
+       still a same-TURN number, not a plan;
+     · a standing hand REST exists on 0.0% of built-campaign turns (the built deck's rests are
+       feet cards, SIM-9's finding), so a rest-payoff combo is born dead in the reference
+       instrument;
+     · a SET foot stands on 63.8% of turns — a condition that common is the old matched-hands
+       problem wearing new clothes;
+     · a SET hand — a card that has held a turn — is out on 44.2% of turns, and a hand
+       placement finds the OTHER hand set on 21.1%. Conditional, chosen, and it spans turns.
+   So: a launch move fires off the other hand having HELD — Settle's rule turned sideways,
+   your neighbour's durability becoming your offence. The player builds the state by keeping
+   a durable card alive and then moves hard off it; +2 mirrors OPPOSE_PAIR, the game's other
+   cross-lane pairing. Carried by the two cards whose names had promised exactly this and
+   delivered nothing — Bump ("small hand, then the good one") and Lock & Bump ("two moves in
+   one breath"), both vanilla statlines until this ticket — rather than by new cards, because
+   CARD-18 measured what adding cards does: every pool length changes and every offer roll
+   downstream diverges. */
+export const LAUNCH_SET = 2
+/** What the drafter may assume about the state the launch needs: 21.1% of hand placements in
+    the measured campaign find the other hand set. An expectation for pricing, never a rule —
+    the same shape as WEIGHT_BOARD. */
+export const LAUNCH_RATE = 0.21
 
 /* ENG-11. "The route is the opponent" has been the thesis since v0 and the
    opponent has never done anything: holds are static numbers and only a boss
@@ -5024,7 +5038,29 @@ export function afterMove(s: GameState): { s: GameState; noRestLane: number } {
 /** Only beta makes a hold readable. Anything else would let you tell the
     wobbled holds from the flat ones by whether they showed a span at all. */
 // INFO-1: `|| h.read` — a hold you read arrives known, so the preview is exact on it
-export const holdKnown = (s: GameState, h: Hold) => s.beta.includes(h.name) || !!h.read
+/* INFO-3. AND SOME THINGS CANNOT BE READ AT ALL. INFO-2 made the policy see what the player
+   sees — a span, not the truth — and measured that 60% of open lanes are span-limited while the
+   actual gamble, where your best card clears the low edge and not the high, is only 5.0% of
+   them (and lands 57.6% of the time). So the game HAS uncertainty and the player almost never
+   gets to engage with it: you are either sure or you are guessing blind.
+
+   Two carriers of one idea, and the idea is the honest one: YOU CANNOT READ WHAT NOBODY HAS
+   READ. An unclimbed line is unread by construction — that is what `fa` MEANS, and until now a
+   first ascent differed from a guidebook route only by a grip of dirt. And a `Blank` feature is
+   the named version of it, for a line in the book with one move nobody can call.
+
+   BEATS THE ALTERNATIVES ON THE ONE CONSTRAINT THAT MATTERED. ARCH-1 left about 0.2 points of
+   band headroom against the pin, so a mechanic that PAYS for taking a gamble was unaffordable
+   however good it read. Denying information is band-NEGATIVE by construction — the
+   uncertainty-limited policy plays a span more conservatively than a number — which is the
+   direction the pins can absorb. It is also free of content: no new hold type, no pool
+   reshuffle, and nothing for the drafter to price. */
+export const holdKnown = (s: GameState, h: Hold) =>
+  !unreadable(s, h) && (s.beta.includes(h.name) || !!h.read)
+/** INFO-3: is this hold beyond reading? One function, because `gripShown` and `holdKnown` are
+    the two things the player's certainty is made of and they must not disagree. */
+export const unreadable = (s: GameState, h: Hold) =>
+  abilityOf(h) === 'Blank' || specOf(s).fa === true
 /** What the player may read off a hold: a number once worked, a span before.
     The span is always WOBBLE wide, so it gives away nothing about which side
     of it this particular hold sits on. */
@@ -5132,8 +5168,14 @@ export function powerAgainst(s: GameState, card: Card, hold: Hold, lane: number,
   if (card.fx === 'greedy') p += desperationOf(s)
   if (card.fx === 'momentum') p += Math.min(3, s.flow)   // ENG-23: keep Power at the old ceiling; the raised flow cap feeds tempo
   if (s.inRun && s.turn === 1) p += archOf(s).firstTurnPower ?? 0
+  // ARCH-1: the Onsighter committed this turn — both hands, and it is spent when the turn ends
+  if (lane < 2 && s.commitPower) p += ARCH_COMMIT_POWER
   if (s.inRun) p += archOf(s).dPower ?? 0
   if (card.fx === 'weight') p += s.boardP.filter((c, k) => c && k !== lane).length
+  /* CARD-20: a launch fires off the OTHER hand having held a turn — Settle's rule turned
+     sideways, a neighbour's durability becoming this card's offence. Reads the live board the
+     way opposition does, so the policy, the preview and the resolution price ONE formula. */
+  if (card.fx === 'launch' && lane < 2 && board[1 - lane]?.set) p += LAUNCH_SET
   if (abilityOf(hold) === 'Greasy' && card.fx !== 'friction' && !s.boardP[2]) p -= 1
   if (abilityOf(hold) === 'Slick') p -= 1
   if (card.fx === 'precise' && (hold.name === 'crimp' || hold.name === 'sharp crimp')) p += 2
@@ -5288,6 +5330,10 @@ export function resolve(s: GameState, rng: RNG): GameState {
   // ENG-18: the order you placed them is the order they go
   const laneOrder = [...s.order.filter(i => i >= 0 && i < 3),
     ...[0, 1, 2].filter(i => !s.order.includes(i))]
+  /* HOLD-2: where each lane sits in the order, so a Chained hold can ask whether the other
+     hand went first. Built once from the same array the loop walks. */
+  const laneAt = new Map(laneOrder.map((l, k) => [l, k]))
+  const setupLanes = [false, false, false]   // CARD-21: lanes a Setup move left worked
   for (const i of laneOrder) {
     const hold = boardH[i], card = boardP[i]
     if (!hold) continue
@@ -5303,7 +5349,25 @@ export function resolve(s: GameState, rng: RNG): GameState {
       power = 0
       log.push(`${hold.name}: too committing for ${card.name}.`)
     }
-    const target = gripFor(s, hold)
+    // HOLD-2: it gives to whoever let the other hand go first
+    /* HOLD-3: and going second COSTS, because until this ticket it did not — measured, the
+       order changed how many cards you lost on 0.0% of 7,255 decisions, so there was nothing
+       to trade against. You hung here while the other hand moved; the hang is charged whatever
+       this lane then does, because it already happened. Read off the COMMITTED board through
+       the same one predicate `previewLane` calls, so the pump the player was shown is the pump
+       they pay — see `previewPump`, which charges it off `LanePreview.chained`. */
+    const gave = chainGive(hold, i, laneAt, sMove.boardP)
+    /* AND THE HANG IS CHARGED WHEN THE HAND YOU SENT FIRST COMES OFF, which is the condition
+       HOLD-2 named and could not make load-bearing. `laneBlows` off the COMMITTED board, so it
+       is the same answer in either order and the same one `previewLane` already computes for
+       every lane — one function, ENG-19's whole point, and the player reads it as "This burns
+       out" before committing. */
+    const hung = gave && laneBlows(sMove, 1 - i)
+    if (hung) {
+      pump += CHAIN_HANG
+      log.push(`The other hand goes. Hanging on the ${hold.name} alone. +${CHAIN_HANG} pump.`)
+    }
+    const target = Math.max(0, gripFor(s, hold) - (gave ? CHAIN_GIVE : 0))
     const snapped = card.fx === 'snap' && target <= 3
     // the commitment check: rolled from the run RNG, so a seed still replays
     const isDyno = card.fx === 'commit'
@@ -5320,6 +5384,8 @@ export function resolve(s: GameState, rng: RNG): GameState {
     }
     if (g <= 0) {
       cleared++; clearedThis++
+      // CARD-21: it worked this hold, so the next one in this lane comes easier
+      if (card.fx === 'setup') setupLanes[i] = true
       if (!worked.includes(hold.name)) worked.push(hold.name)
       if (ab === 'Rest') { pump = Math.max(0, pump - 1); log.push(`${card.name} works the jug. Shed 1.`) }
       else log.push(`${card.name} works the ${hold.name}.`)
@@ -5359,6 +5425,14 @@ export function resolve(s: GameState, rng: RNG): GameState {
     } else boardH[i] = { ...hold, grip: g }
 
     if (c <= 0 || committed) {
+      /* ARCH-1: the Trad Dad's placement holds, whatever it costs. Ahead of the Second Wind
+         boon's save because this one is a choice he made this turn, and it deliberately does
+         not consume that boon's once-a-burn save. */
+      if (s.bomber && !committed) {
+        boardP[i] = { ...card, spent: (card.spent ?? 0) + contactOf(s, card) - 1 }
+        log.push(`${card.name} should have gone. Bomber — it stays.`)
+        continue
+      }
       if (bm.saveBlow && !savedBlow && !committed) {
         savedBlow = true
         boardP[i] = { ...card, spent: (card.spent ?? 0) + contactOf(s, card) - 1 }
@@ -5370,7 +5444,15 @@ export function resolve(s: GameState, rng: RNG): GameState {
         log.push(`${card.name} latches. Barely.`)
       } else {
         boardP[i] = null; fxLane[i] = 'blow'
-        piles = card.anchor && !committed ? pileDiscard(piles, [card]) : pileExhaust(piles, card)
+        /* CARD-20: a card that blows is OFF THE WALL, so it is filed without its stand — the
+           same reset an echo and a spit already make. It mattered the moment `set` became a
+           state another card can fire off: an anchored card recycling through the discard used
+           to come back claiming the turns it had held before it blew, so a launch could fire
+           off a neighbour that was placed this turn, and ENG-32's fresh-foot cost was skipped
+           for a recycled foot the same way. `spent` stays, deliberately — wear is the one
+           thing COND-3 says survives every trip through the piles. */
+        const filed = { ...card, settled: 0, set: false }
+        piles = card.anchor && !committed ? pileDiscard(piles, [filed]) : pileExhaust(piles, filed)
         if (!committed) {
           if (card.fx === 'peel') { piles = pileDraw(piles, 1, rng); log.push(`${card.name} rips. You grab something else.`) }
           else if (card.fx === 'tough') log.push(`${card.name} blows, but takes it clean.`)
@@ -5466,7 +5548,7 @@ export function resolve(s: GameState, rng: RNG): GameState {
   out = { ...out, routeMove: move }
   if (move) out = { ...out, log: [...out.log, `▸ ${move.text}`] }
   // the nerve a piece buys you lasts exactly one turn
-  out = { ...out, bonusUsed: false, clipped: false }
+  out = { ...out, bonusUsed: false, clipped: false, bomber: false, commitPower: false }   // ARCH-1: both are one turn
   const nowPh = phaseOf(out)
   if (nowPh && out.phaseSeen !== nowPh.name)
     out = { ...out, phaseSeen: nowPh.name, log: [...out.log, `— ${nowPh.name.toUpperCase()} — ${nowPh.text}`] }
@@ -5553,7 +5635,7 @@ export function resolve(s: GameState, rng: RNG): GameState {
   const endPiles = mutMods(out.mutators).retain
     ? out.piles
     : pileDiscard(out.piles, out.piles.hand)
-  return refillAndDraw({ ...out, piles: endPiles, selected: null }, rng)
+  return refillAndDraw({ ...out, piles: endPiles, selected: null }, rng, setupLanes)
 }
 
 /* SIM-5. Playing a technique card was implemented twice — once in the screen's
@@ -5612,11 +5694,46 @@ export function playBonusStep(s: GameState, c: Card, lane: number, rng: RNG): Ga
     boardP[lane] = { ...boardP[lane]!, power: boardP[lane]!.power + c.power }
     log.push(`${c.name}. +${c.power} Power.`)
   }
+  /* HOLD-4. BRUSHING STRIPS GREASY AND NOTHING ELSE, and the Grip cut it already had went up
+     one to pay for the abilities it no longer takes.
+
+     THE PREMISE THIS TICKET WAS WRITTEN ON WAS WRONG AND THE MEASUREMENT REPLACED IT. The row
+     said the wall was two abilities, on half the turns each; that was holds-per-turn across
+     three lanes read as a share of turns. Corrected, on 142,919 hand holds of a drafted
+     campaign, the spread is FLAT — Greasy 14.1%, Sharp 13.3%, Squeeze 10.9%, Committing 8.5%,
+     Two-finger 7.4%, Razor 6.9%, Rest 5.8%, Chained 3.9%. No ability dominates anything.
+
+     WHAT THE CENSUS FOUND INSTEAD: THE LARGEST CATEGORY ON A HAND LANE WAS NO ABILITY AT ALL,
+     28.5%, and `abilityOf` only returns '' for a brushed hold. Attributed by counting the
+     transitions rather than guessing: the player brushed a hold on 42.98% of turns and the
+     telegraphed route move did it on 0.16%. So a card was switching the wall off on nearly
+     three hand holds in ten, and every ability HOLD-1, HOLD-2 and HOLD-3 built was being
+     deleted at that rate.
+
+     DECOMPOSED AT n=1500, because a strong card is not a defect and the two halves had to be
+     told apart:
+       shipped, the policy brushes freely            60.9
+       the cut still lands, the ability SURVIVES     58.3    <- the strip is worth +2.6
+       the policy never brushes at all               49.9    <- the CUT is worth +8.4
+     So the card is enormous and the erasure is the small half of it.
+
+     AND THE NARROW VERSIONS WERE MEASURED, NOT ASSUMED. Stripping only Greasy reads 57.7,
+     which is the same number as stripping nothing (58.3) inside half a standard error — so
+     the strip's value is entirely in the abilities brushing has no business answering:
+     Committing on a crux, Sharp on a crimp. Removing it outright reads 58.3 and would put the
+     band 3.7 from a pin Evan set at 62, which is a re-pin, not a fix.
+
+     WHAT SHIPS IS THE ONE ARM THAT COSTS NOTHING: Greasy-only, +1 Grip. 60.7 against 60.9, a
+     fifth of a standard error. HOLD-1's counterplay is kept exactly — it named brushing as the
+     answer to a sweating hold and that still works — the other seven abilities stay on the
+     wall, and the card keeps its strength through the cut rather than through deletion. */
   if (c.gripCut && lane >= 0 && boardH[lane]) {
+    const greasy = c.cleans && abilityOf(boardH[lane]!) === 'Greasy'
     boardH[lane] = { ...boardH[lane]!, grip: Math.max(1, boardH[lane]!.grip - c.gripCut),
-      clean: c.cleans ? true : boardH[lane]!.clean }
+      clean: greasy ? true : boardH[lane]!.clean }
+    // the dirt comes off whatever it is: that is brushing, and it is not the ability
     if (c.cleans) boardH[lane] = clearDirt(boardH[lane]!)
-    log.push(`${c.name}. −${c.gripCut} Grip${c.cleans ? ', ability stripped' : ''}.`)
+    log.push(`${c.name}. −${c.gripCut} Grip${greasy ? ', and it is not greasy any more' : ''}.`)
   }
   /* CARD-17: a curse you have paid for is WRITTEN OFF — exhausted, not discarded, so
      it cannot come back round this burn. Every other bonus recycles as it always has. */
@@ -5634,6 +5751,116 @@ export function playBonusStep(s: GameState, c: Card, lane: number, rng: RNG): Ga
     selected: null, log: [...s.log, ...log] }
 }
 
+/* ARCH-1. THE FIVE CLIMBERS HAVE A VERB NOW. Every signature in ARCHETYPES was a passive stat
+   dial — "+3 Power on every move", "beta is worth double", "settles all the way to +3" — so the
+   roster scored differently and PLAYED identically: there was no moment in a burn where being
+   the Trad Dad rather than the Comp Kid changed what you could DO.
+
+   ONE FUNCTION OVER THE DATA, not five bespoke rules, for the reason SIM-5 gives about
+   `playBonusStep`: a rule implemented per-climber is a rule that gets added to one of them and
+   forgotten in the other four. Each effect is expressed in state the engine already owns —
+   `beta`, `readAhead`, `pump`, `flow`, and two per-burn flags beside `savedBlow` — so nothing
+   here invents a mechanic, it spends one the game already has.
+
+   ONCE A BURN, AND A RETRY GETS IT BACK (`startBurn` clears `moveUsed`), which is the same
+   shape as `savedBlow` and `peakPump`. Each one is narrow or carries a cost, because an active
+   is a gift to every climber at once and the band is pinned: Dig In takes your flow, Commit
+   stops you resting for the rest of the burn, Work It only pays if you come back, and Read The
+   Set buys information — which INFO-2 made worth something and worth measuring. */
+export function signatureStep(s: GameState): GameState {
+  const a = archOf(s)
+  if (!a.move || s.moveUsed || s.phase !== 'climb') return s
+  const spent = { ...s, moveUsed: true }
+  switch (a.id) {
+    case 'boulderer': {
+      /* Projecting, made into a move: the hold you are on becomes a kind you know. Pushed into
+         `beta`, which is exactly what falling already teaches — so this is the climber's own
+         signature (beta at -2 Grip) reaching one hold earlier. */
+      const h = s.boardH.find(Boolean)
+      if (!h || s.beta.includes(h.name)) return s
+      return { ...spent, beta: [...s.beta, h.name],
+        log: [...s.log, `${a.move.name}. You have got the ${h.name} sussed.`] }
+    }
+    case 'comp':
+      /* Plastic: reading a set is what comp climbing IS. Information only — the resolution never
+         consults `readAhead` — so it is band-safe by construction (RUN-9, ENG-24) and worth
+         something only because INFO-2 made the policy uncertainty-limited. */
+      /* AND IT DRAWS, which is a buy-back rather than a flourish. Read alone measured at NOTHING
+         for this climber (8.3% to 7.8% at n=2000, inside the noise), and INFO-2 explains why: a
+         read is a maximum you top up, so one read in a six-turn burn covers a turn or two and
+         then saturates — worth ~3 points as a repeatable CARD effect and ~0 as a one-shot.
+         BAL-16 measured what this climber is actually starved of: one card of hand swings it
+         15.6 points, where a point of skin and a point of betaGrip moved nothing. So the draw
+         is on the axis it dies on and it amplifies the signature rather than eroding it, which
+         is the CARD-15 / LANE-5 shape. NOT a Grip discount on what it read: INFO-1 built that,
+         measured +1.8 of band that four dials could not contain, and retracted it. */
+      /* AND IT BUYS A CARD OF HAND, which is a buy-back on the axis this climber is measured
+         to die on — and the second thing tried, because the first was VOID. Read alone measured
+         at nothing (8.3% to 7.8% at n=2000); a one-off DRAW measured at nothing too, and the
+         reason is structural rather than small: `refillAndDraw` tops the hand up to a target
+         size every turn, so a card drawn mid-turn is simply one the refill does not draw. That
+         is why BAL-16 measured a point of HAND at +15.6 for this climber while a draw moves
+         nothing — the same shape as INFO-1's read discount, which was flat for its own
+         structural reason. So the move raises `want` for the rest of the burn. */
+      if (!s.holdDeck.length) return s
+      return { ...spent, handBonus: (s.handBonus ?? 0) + ARCH_READ_HAND,
+        readAhead: Math.min(s.holdDeck.length, Math.max(s.readAhead, ARCH_READ)),
+        log: [...s.log, `${a.move.name}. You read the next ${Math.min(s.holdDeck.length, ARCH_READ)} off the wall, and keep one more in hand.`] }
+    case 'trad':
+      /* Bomber, made into a move: what he places, stays. One turn, and it is the only way in the
+         game to make a placement unconditional. */
+      return { ...spent, bomber: true,
+        log: [...s.log, `${a.move.name}. That is not coming off.`] }
+    case 'alpine': {
+      /* Endurance: the one climber who gets PAID for having been up there a while. Capped, and
+         it costs the flow — so it is a reset, not a free shed, and it competes with the tempo
+         the flow bar rewards. */
+      const give = Math.min(ARCH_DIG_MAX, Math.max(1, s.turn - 1))
+      if (s.pump <= 0) return s
+      return { ...spent, pump: Math.max(0, s.pump - give), flow: 0,
+        log: [...s.log, `${a.move.name}. ${give} back, and you have lost your rhythm.`] }
+    }
+    case 'onsight':
+      /* Onsight: read it once and go — the Power lands this turn and you pay for it in pump.
+         THE FIRST CUT PRICED THIS AT THE REST OF THE BURN'S RESTS and it was a disaster,
+         measured: the Onsighter fell 13.3% to 2.0% at n=2000, through the 5% floor, and took
+         the roster spread to 7.95x against a 2.2x ceiling. The reason is SIM-9's own finding —
+         shaking out is worth +21 points of session send because 74.6% of burns die of pump —
+         so banning rests costs far more than 2 Power can ever pay. A cost has to be smaller
+         than the thing it buys. Pump is the currency this climber is spending anyway. */
+      return { ...spent, commitPower: true, flow: 0,
+        log: [...s.log, `${a.move.name}. All of it, now — and your rhythm goes with it.`] }
+  }
+  return s
+}
+/** ARCH-1: what committing is worth on the turn you spend it, on both hands. */
+export const ARCH_COMMIT_POWER = 2
+/* ARCH-1: WHAT COMMITTING COSTS, and it took two wrong answers to find. The rest of the burn's
+   RESTS took this climber 13.3% to 2.0% — through the 5% floor — because SIM-9 measured shaking
+   out as worth +21 points of session send. Two PUMP was still wrong and by a lot: 13.3% to
+   10.6% spent on turn one, and 9.0% spent where the Power converts a miss, because pump is the
+   resource 74.6% of failed burns die of and 2 Power on one turn cannot buy 2 of it back.
+   So it costs the FLOW, which is what Dig In pays with two cases above: real, thematic
+   ("you went at it and lost your rhythm"), and not made of the currency that kills you. */
+/** ARCH-1: what the Comp Kid's read hands back, on the axis BAL-16 measured it starved on —
+    a card of HAND for the rest of the burn, because a one-off draw is void against a refill. */
+export const ARCH_READ_HAND = 1
+/** ARCH-1: how deep the Comp Kid reads. Two is what a card gives; three is a signature. */
+export const ARCH_READ = 3
+/* ARCH-1: the most the Alpinist can dig back. FOUR WAS TOO MUCH AND IT SHOWED IN THE ROSTER
+   RATHER THAN THE BAND: this climber already runs the longest burns in the game (182 turns
+   against the Comp Kid's 93), so a shed that scales with turns survived scales with its own
+   signature — measured, it took the Alpinist 10.7% to 15.9% at n=2000 and the roster spread
+   1.60x to 2.04x against a 2.2x ceiling. Two keeps the verb and halves the compounding. */
+/* ARCH-2: 2 -> 4, AND IT IS A CORRECTION, NOT A BUFF. The move's own text has always read
+   "shed a pump for every turn you have been on this thing, UP TO 4" and the code capped it at
+   2 — the game promising the player something the resolution does not do, which is UX-4's
+   pillar and the reason this was found while looking for a dial rather than a bug.
+   THE LEVER IS THE GATE, NOT THE GIVE, measured at n=2000: raising only the give reads 9.7%
+   against a baseline of 9.9% — nothing. Raising both reads 11.8%. The move has to be HELD
+   until the burn is long enough to be worth spending on, and the constant does both jobs. */
+export const ARCH_DIG_MAX = 4
+
 /** Headless policy — used by the sim so it exercises the shipping engine. */
 /* SIM-6. What a worked FOOTHOLD is worth to the policy, against a point of Support.
    A cleared foothold is one hold of progress, certain. A point of Support is +1 Power
@@ -5641,8 +5868,59 @@ export function playBonusStep(s: GameState, c: Card, lane: number, rng: RNG): Ga
    certain thing is worth a little more than the point that might pay — that is the whole
    content of this number, and it is measured rather than reasoned (see the ledger). */
 export const FOOT_CLEAR_VALUE = 3
-export function autoPlay(s: GameState, rng: RNG): GameState {
+/* SIM-9. The pump at which a lane nothing in hand clears is worth a shake-out instead of a
+   burned card. The ROADMAP row said the policy cannot plan, and the cost was measured before
+   the design: 74.6% of failed burns die of pump while the 30-turn clock NEVER binds (0% of
+   2,780 burns), so the binding resource was being spent as if it were the free one. A rest
+   placed on a lane sheds every turn it stands and soaks the hold's bite into its own Contact,
+   so on a hold the hand cannot clear it buys exactly the thing that ends burns.
+
+   Swept at n=1200 paired sessions on the four conditions-mode routes: threshold 0 reads 77.2%,
+   2 reads 79.3, 3 reads 79.6, 4 reads 79.9, 5 reads 77.8, 6 reads 75.8, 7 reads 73.4, against
+   58.8 for the policy that never plans. So 4, and the gate is deliberately the ONLY clause —
+   every smarter version measured worse or flat on the same seeds:
+     · rest only when the best card is 3+ Power short: 72.8. Grinding a near-miss converts next
+       turn, but the sweep says pacing the far ones matters more.
+     · rest only while a card that clears this hold still exists in the burn's cycle: 60.5.
+       Backwards — the gain comes precisely from pacing the holds nothing in the deck clears,
+       interleaving cheap grinds with recovery instead of feeding cards to the wall.
+     · stop resting at dusk so the shrinking hand is not stretched further: 79.8, nothing.
+   Where it pays, sessions, same seeds: mid routes 58.8 to 79.9, V8-V9 12.3 to 20.5, roped
+   21.0 to 34.6 — the roped gain is the largest, because a caught fall costs the pitch.
+
+   AND THE ROW'S OTHER TWO CLAIMS MEASURED WRONG, which is why this is one clause and not a
+   planner. "Hold a card for next turn" is not a thing this economy contains: a placed hand
+   card stands 1.09 turns and 83.7% blow the turn they land, so there is no second turn to
+   hold it for. And "value knowing what is coming" priced at ZERO even with the rest rule in
+   place: making the threshold read the holds ahead — rest deeper before a known-hard hold —
+   moved nothing at readAhead depth (79.8) or with an oracle handed the whole hold deck
+   (79.4). Holds arrive only when the one in front of you clears, so the policy always SEES
+   the hold it is choosing for; foreknowledge of the ORDER is not where a plan can live. What
+   a read buys a human is certainty against the WOBBLE span, and the sim already reads exact
+   grip — so reads stay unpriceable until somebody makes the policy uncertainty-limited, which
+   is INFO-2's ground and a bigger change than this one. */
+export const SHAKE_AT = 4
+/** `shakeAt` is a parameter so the harness can measure the policy with the plan disabled
+    (`REST_AT=99 node sim/run.mjs policy ...` is the pre-SIM-9 policy exactly); the game and
+    every default caller get SHAKE_AT. */
+export function autoPlay(s: GameState, rng: RNG, shakeAt: number = SHAKE_AT,
+  clairvoyant = false): GameState {
   let st = { ...s, boardP: s.boardP.slice(), piles: { ...s.piles, hand: s.piles.hand.slice() } }
+  /* INFO-2. THE POLICY SEES WHAT THE PLAYER SEES, and until this ticket it did not: every
+     decision below read `gripFor` — the true grip, wobble included — while the screen shows
+     an unworked, unread hold as a WOBBLE-wide span that gives away nothing about which side
+     the truth sits on. Measured over 60,010 open-lane decisions of the real campaign, the
+     policy was clairvoyant on 72.2% of them (beta covers 27.8%), and on 10.9% of ALL
+     decisions a candidate sat exactly on the span's low edge, where knowing the truth is the
+     whole decision. That is why `read` was unpriceable for eleven tickets: the policy already
+     knew everything a read could tell it. `seen` is `gripShown` — the SAME function the
+     screen prints, so the policy and the display cannot disagree about what is known — and
+     `clairvoyant` reproduces the old all-knowing policy for the guard's A/B and for old
+     measurements (KNOW=all in run.mjs). The RULES are untouched: resolve still reads the
+     true grip; what changed is what the modelled player knows while choosing. */
+  const seen = (h: Hold) => clairvoyant
+    ? { lo: gripFor(st, h), hi: gripFor(st, h), sure: true }
+    : gripShown(st, h)
   const feet = st.piles.hand.filter(c => c.kind === 'move' && c.lane === 'feet')
   if (!st.boardP[2] && feet.length) {
     /* SIM-6: the policy used to take the most Support in hand and nothing else, which
@@ -5669,8 +5947,11 @@ export function autoPlay(s: GameState, rng: RNG): GameState {
     const footValue = (c: Card) => {
       const now = supWith(c, false)
       if (!h2) return now + supWith(c, true)    // nothing under you; it can only stand there
-      const clears = powerAgainst(st, c, h2, 2) >= gripFor(st, h2)
-      return clears ? now + FOOT_CLEAR_VALUE : now + supWith(c, true)
+      /* INFO-2: the clear is priced at what the span makes it — certain over the high edge,
+         a coin flip in between (the wobble prior is an even one), nothing below. */
+      const g = seen(h2), pow = powerAgainst(st, c, h2, 2)
+      const p = pow >= g.hi ? 1 : pow >= g.lo ? 0.5 : 0
+      return now + p * FOOT_CLEAR_VALUE + (1 - p) * supWith(c, true)
     }
     const pick = feet.reduce((a, b) => (footValue(b) > footValue(a) ? b : a))
     st.boardP[2] = pick; st.piles = pileFromHand(st.piles, pick.uid)
@@ -5687,7 +5968,7 @@ export function autoPlay(s: GameState, rng: RNG): GameState {
     let pick: Card
     if (rests.length && st.pump >= PUMP_MAX - 4 && real.length === 0) pick = rests[0]
     else if (real.length) {
-      const target = gripFor(st, hold)
+      const shown = seen(hold)
       /* ENG-25: opposition pays +2 only with a hand partner pulling the other
          way, and −2 alone. The greedy fill placed one hand lane at a time
          against an empty partner, so every opposition card was scored at its
@@ -5707,11 +5988,106 @@ export function autoPlay(s: GameState, rng: RNG): GameState {
         }
         return powerAgainst(st, c, hold, i)
       }
-      const clears = real.filter(c => scorePow(c) >= target)
-      pick = (clears.length ? clears : real).reduce((a, b) =>
-        (scorePow(b) > scorePow(a) ? b : a))
+      /* INFO-2: what "clears" means depends on what you can see. Over the span's high edge
+         it clears whatever the wobble hides; over only the low edge it is a coin flip. A sure
+         thing beats a gamble of any size, so the tiers are strict — and a KNOWN hold (beta,
+         a read, or the clairvoyant knob) collapses both tiers to the old exact filter. */
+      const sure = real.filter(c => scorePow(c) >= shown.hi)
+      const maybes = sure.length ? sure : real.filter(c => scorePow(c) >= shown.lo)
+      /* SIM-9: when nothing in hand clears this hold and there is pump worth shedding, shake
+         out instead of burning a card — the one deliberate multi-turn move the policy makes.
+         The rest stands on the lane, sheds every turn it holds on, and soaks the bite the
+         hold would otherwise put straight into the pump. See SHAKE_AT for every number.
+         INFO-2 gates it on the MAYBES: a coin-flip clear is still a reason to try. */
+      if (!maybes.length && rests.length && st.pump >= shakeAt) {
+        pick = rests.reduce((a, b) => (b.shed > a.shed ? b : a))
+      } else
+      /* CARD-21: among cards that clear this hold equally well, take the one that leaves the
+         lane worked. A TIE-BREAK and nothing more — the greedy comparison still decides which
+         cards are in the running, so this cannot spend Power on a future. Without it the
+         policy is blind to Setup and the mechanic measures as dead, which is ENG-25's failure
+         and has now happened six times in this project. */
+      pick = (maybes.length ? maybes : real).reduce((a, b) => {
+        const d = scorePow(b) - scorePow(a)
+        if (d !== 0) return d > 0 ? b : a
+        return (b.fx === 'setup') && (a.fx !== 'setup') ? b : a
+      })
     } else pick = rests[0]
     st.boardP[i] = pick; st.piles = pileFromHand(st.piles, pick.uid)
+  }
+  /* HOLD-2: THE POLICY HAS TO BE ABLE TO USE THE ORDER, or the mechanic measures as dead —
+     ENG-25's failure mode, which this project has now hit five times (opposition, restChip,
+     `read`, the feet lane, Launch). `s.order` is the screen's, set by tapping lanes; the
+     policy never touched it, so it always resolved 0, 1, 2 and a Chained hold could never
+     give. It sends the OTHER hand first when this one is chained, which is the whole decision
+     the ability exists to create — and it costs what the ability costs: the lane sent first
+     may blow before the second resolves, taking its opposition with it. Only when exactly one
+     hand hold is chained; two chained holds cannot both go second. */
+  /* ARCH-1: THE POLICY HAS TO SPEND THE SIGNATURE, or all five measure as dead — ENG-25's
+     failure, now eight for eight in this project. One heuristic per climber, each the cheapest
+     honest reading of what the move is FOR, and each deliberately conservative: a move spent
+     badly is worse than a move held, and the ladder is what these numbers feed.
+       Work It     — on a hold this hand cannot clear, so the beta is worth having next go
+       Read The Set— holding no read, with holds still to come (INFO-2's own gate)
+       Bomber      — a card is out and would come off this turn
+       Dig In      — deep enough into a burn that the shed beats the flow it costs
+       Commit      — turn one, when the Power lands before the no-rest bill does
+     Placed BEFORE the bonus loop so a signature that reads or sheds is visible to it. */
+  const mv = archOf(st).move
+  if (mv && !st.moveUsed && st.phase === 'climb') {
+    const id = archOf(st).id
+    const wantsIt =
+      id === 'boulderer' ? [0, 1].some(i => {
+        const h = st.boardH[i], c = st.boardP[i]
+        return h && c && !st.beta.includes(h.name)
+          && powerAgainst(st, c, h, i, st.boardP) < gripFor(st, h)
+      })
+      : id === 'comp' ? st.readAhead === 0 && st.holdDeck.length > 0
+      : id === 'trad' ? [0, 1].some(i => st.boardP[i] && st.boardH[i] && laneBlows(st, i))
+      : id === 'alpine' ? st.turn > ARCH_DIG_MAX && st.pump >= ARCH_DIG_MAX
+      /* ARCH-1: NOT turn one out of habit — measured, that cost this climber 2.7 points,
+         because it already carries `firstTurnPower` and was paying pump for Power it did not
+         need. Spend it where the 2 Power CONVERTS a lane that would otherwise miss. */
+      : id === 'onsight' ? [0, 1].some(i => {
+          const h = st.boardH[i], c = st.boardP[i]
+          if (!h || !c) return false
+          const short = gripFor(st, h) - powerAgainst(st, c, h, i, st.boardP)
+          return short > 0 && short <= ARCH_COMMIT_POWER
+        })
+      : false
+    if (wantsIt) st = signatureStep(st)
+  }
+  /* HOLD-3: AND NOW IT HAS TO PRICE IT. The clause above sent the other hand first every single
+     time, because before this ticket going second was free — and that is what made the take-rate
+     99.7% and the ability a discount rather than a decision. It pays CHAIN_HANG pump now, so the
+     policy buys the 2 Grip only where the 2 Grip CONVERTS this lane: a hold it does not already
+     clear and does clear with the give. Measured, that is 11% of the decisions it is offered,
+     against 89% where the two orders produce an identical turn and the pump would buy nothing.
+     Read through `seen`, not `gripFor`, because INFO-2 made this policy see the span the screen
+     shows rather than the truth behind it, and a chain decision is exactly the kind that would
+     otherwise be made clairvoyantly. Against the HIGH edge on both sides, so what it buys is a
+     SURE clear — from a miss or from a coin flip — never a better gamble.
+     IT DOES NOT WEIGH WHETHER THE HAND IT SENDS FIRST WILL BLOW, and that is deliberate: the
+     chain is free when that hand holds, so declining there would forfeit a hold for nothing,
+     and when it blows the pump is the price of a hold it would otherwise miss. Either way the
+     conversion is the question. Measured, the four policy variants tried here land inside 0.2
+     of one another, so this is not where the points are.
+     TWO THINGS IT DELIBERATELY DOES NOT MODEL, both stated rather than hidden:
+       · a dyno, whose clear is the roll and never the target, so the give is worth nothing
+         there — excluded outright rather than left to score as if it converted something;
+       · Snap, which clears a target of 3 or less outright, so the give converts it over a
+         grip of 4 or 5 by a rule this power comparison cannot see. Two cards of 248. Modelling
+         it would add a branch that fires too rarely for any measurement here to resolve, which
+         is the dead branch HOLD-2 found in its own code and GUARD-9's header complains about. */
+  const chainedLane = [0, 1].filter(i => st.boardH[i] && abilityOf(st.boardH[i]!) === 'Chained')
+  if (chainedLane.length === 1) {
+    const c = chainedLane[0]
+    const hold = st.boardH[c]!, card = st.boardP[c]
+    const shown = seen(hold)
+    const pow = card ? powerAgainst(st, card, hold, c, st.boardP) : 0
+    const converts = !!card && !!st.boardP[1 - c] && card.fx !== 'commit'
+      && pow < shown.hi && pow >= shown.hi - CHAIN_GIVE
+    if (converts) st = { ...st, order: [1 - c, c, 2] }
   }
   // bonuses last, once we know which lanes need help. The POLICY lives here —
   // which card, which lane, whether it is worth the pump — but the RULES are
@@ -5738,12 +6114,14 @@ export function autoPlay(s: GameState, rng: RNG): GameState {
       }
       return bestScore > -Infinity ? at : -1
     }
+    /* INFO-2: targeting reads the span's midpoint — the believed grip — not the truth. */
+    const believed = (h: Hold) => { const g = seen(h); return (g.lo + g.hi) / 2 }
     const lane = !c.targeted ? -1
-      : c.gripCut ? best(i => (st.boardH[i] ? gripFor(st, st.boardH[i]!) : -Infinity))
+      : c.gripCut ? best(i => (st.boardH[i] ? believed(st.boardH[i]!) : -Infinity))
       : best(i => {
           const card = st.boardP[i], hold = st.boardH[i]
           if (!card || !hold) return -Infinity
-          const short = gripFor(st, hold) - powerAgainst(st, card, hold, i, st.boardP)
+          const short = believed(hold) - powerAgainst(st, card, hold, i, st.boardP)
           // closest to clearing without being there already
           return short > 0 && short <= c.power ? 100 - short : -short
         })
@@ -5753,10 +6131,16 @@ export function autoPlay(s: GameState, rng: RNG): GameState {
       || (c.shed > 0 && st.pump >= Math.min(c.shed, 2))
       || (c.clip === true && specOf(st).roped)
       || (!!c.seq && !st.seq)
-      /* INFO-1 taught the policy to spend a read here and then took it back out: with the grip
-         half retracted a read buys information the greedy policy cannot use, so playing one for
-         it would spend a pump on nothing. `Take It All In` is therefore still unplayable by the
-         policy, which is the honest state of a card whose whole effect is knowledge. */
+      /* INFO-1 taught the policy to spend a read here, took it back out because a greedy
+         clairvoyant policy cannot use information — and INFO-2 puts it back for good, because
+         the policy is uncertainty-limited now: it scores a hold at the span the screen shows,
+         and what a read buys — the next holds arriving KNOWN — is finally something it can
+         spend. Gated on holding NO read at all — the first cut gated on coverage
+         (holdDeck.length > readAhead) and re-bought overlapping reads every time one was in
+         hand, which is INFO-1's own warning about a read being a maximum you top up the
+         moment it empties: measured in the shell probe it cost 16.6 and 30.7 points. Off
+         under the clairvoyant knob, which reproduces the old world exactly. */
+      || (c.read > 0 && !clairvoyant && st.readAhead === 0 && st.holdDeck.length > 0)
       || (c.powerAll > 0 && st.boardP.some(Boolean))
       || ((c.power > 0 || c.gripCut > 0) && lane >= 0)
       /* CARD-17: writing a curse off buys HAND QUALITY, not progress, so it wants more
@@ -5826,7 +6210,7 @@ export function actTicked(book: Record<string, LogEntry>, act: number): boolean 
   return lines.length > 0 && lines.every(r => book[r.name])
 }
 export const ACT_XP = 120
-/** Brushing a hold takes the season off it as well as stripping its ability. */
+/** Brushing a hold takes the season off it as well as its grease (HOLD-4). */
 export const clearDirt = (h: Hold): Hold =>
   h.dirt ? { ...h, grip: Math.max(1, h.grip - h.dirt), dirt: 0 } : h
 /** What the rock says about the grade you claimed. */
@@ -5856,10 +6240,44 @@ export type LanePreview = {
   hold: boolean; clears: boolean; gripLeft: number
   card: boolean; blows: boolean; contactLeft: number
   biteToPump: number
+  /** HOLD-3: this lane took the chain AND the hand it sent first comes off, so it pays
+      CHAIN_HANG. Named for the charge and not for the chain, because the 2 Grip and the pump
+      fire on different conditions and a field named for one of them would drift into the other.
+      `previewPump` charges it from here rather than recomputing — UX-4, the ENG-19 shape. */
+  hang: boolean
 }
 /* ENG-19. Whether a lane comes off was written out twice — once for the lane
    itself and once inside the simulation of the lanes before it — and two
    copies of one formula drift. They are one function now, so they cannot. */
+/* HOLD-2: does this Chained hold give? ONE function, called by `resolve` and by
+   `previewLane`, for the reason ENG-19 made `laneBlows` one function: two copies of a rule
+   drift, and this one decides a number the player is shown before committing. Hands only —
+   the chain is about the other HAND having gone, and the feet lane is not a hand. */
+export function chainGive(hold: Hold, i: number, laneAt: Map<number, number>,
+  boardP: (Card | null)[]): boolean {
+  if (abilityOf(hold) !== 'Chained') return false
+  /* ONE mechanism, and it is this line: the chain is about the other HAND, so the feet lane
+     has no partner and can neither grant it nor claim it. Written as an explicit partner
+     rather than as a second `i > 1` guard beside a `1 - i` lookup — those two were redundant,
+     each short-circuited the other, and whichever ran first made the other impossible to
+     break, so one of them could never have been tested. A branch that cannot fail is the
+     shape GUARD-9's header exists to complain about. */
+  const partner = i === 0 ? 1 : i === 1 ? 0 : -1
+  /* HOLD-3: AND THE OTHER HAND HAS TO BE ON THE WALL TO GO FIRST. `laneAt` indexes all three
+     lanes whether or not anything is in them, so an EMPTY hand lane counted as having gone and
+     the chain gave for free — measured at 2.4% of every give, 0.8% of them with no hold there
+     at all. Harmless while the give was free; not harmless now that it charges a pump for a
+     hang, because there is nothing to hang and wait for. Reads the COMMITTED board, not the
+     live one: a hand that moves and then blows still moved, and the committed board is the one
+     `weight` and `matched` already read (ENG-21), so this stays exact in the preview without
+     the preview having to simulate anything.
+     `went` ALSO CARRIES THE FEET LANE, which used to be an `other !== undefined` on the line
+     below. Two ways of saying "there is no partner here" would have short-circuited each other
+     and left one untestable — the redundancy this function's own header was written about. */
+  const went = partner >= 0 && !!boardP[partner]
+  const mine = laneAt.get(i)!, other = laneAt.get(partner)!
+  return went && other < mine
+}
 export function laneBlows(s: GameState, i: number): boolean {
   const c = s.boardP[i], h = s.boardH[i]
   if (!c || !h) return false
@@ -5872,7 +6290,7 @@ export function previewLane(s0: GameState, i: number): LanePreview {
   const { s, noRestLane } = afterMove(s0)
   const hold = s.boardH[i], card = s.boardP[i]
   const blank: LanePreview = { hold: false, clears: false, gripLeft: 0,
-    card: false, blows: false, contactLeft: 0, biteToPump: 0 }
+    card: false, blows: false, contactLeft: 0, biteToPump: 0, hang: false }
   /* ENG-18: resolve reads the board as it stands, so a lane that comes off
      before this one is no longer opposing it. Whether a lane blows depends on
      Contact against Bite and never on opposition, so this can be worked out
@@ -5903,7 +6321,12 @@ export function previewLane(s0: GameState, i: number): LanePreview {
   if (bmL.restChips && card.shed > 0) g0 = Math.max(0, g0 - bmL.restChips)
   if (!noRestL && card.restChip) g0 = Math.max(0, g0 - card.restChip)
   if (card.hex) g0 = g0 + card.hex
-  const target = gripFor(s, g0 === hold.grip ? hold : { ...hold, grip: g0 })
+  /* HOLD-2: the same order array the loop above already built, through the same predicate
+     `resolve` uses — so what the player is shown before committing is what happens. */
+  const laneAtP = new Map(order.map((l, k) => [l, k]))
+  const gave = chainGive(hold, i, laneAtP, s.boardP)
+  const target = Math.max(0, gripFor(s, g0 === hold.grip ? hold : { ...hold, grip: g0 })
+    - (gave ? CHAIN_GIVE : 0))
   const snapped = card.fx === 'snap' && target <= 3
   const isDyno = card.fx === 'commit'
   const gripLeft = snapped ? 0 : target - power
@@ -5914,7 +6337,7 @@ export function previewLane(s0: GameState, i: number): LanePreview {
   return { hold: true, clears: isDyno ? false : gripLeft <= 0,
     stick: isDyno ? stickChance(s) : undefined,
     gripLeft: isDyno ? 0 : Math.max(0, gripLeft),
-    card: true, blows, contactLeft: Math.max(0, contactLeft), biteToPump: 0 }
+    card: true, blows, contactLeft: Math.max(0, contactLeft), biteToPump: 0, hang: gave && laneBlows(s, 1 - i) }
 }
 /** Predicted pump after COMMIT — rests, unanswered lanes, and the clock.
     Takes precomputed lanes so a render does not recompute them per call. */
@@ -5937,6 +6360,11 @@ export function previewPump(s0: GameState, lanes?: LanePreview[]): number {
   for (let i = 0; i < 3; i++) {
     const p = L[i]
     pump += p.biteToPump
+    /* HOLD-3: the hang the chain charges. INSIDE this loop and not above it, because that is
+       where `resolve` charges it — the sheds above both loops clamp at zero and anything that
+       ADDS pump has to sit on the same side of them in both functions or the two disagree by
+       however far the shed went negative. LANE-1 measured that gap at 34 of 1750 turns. */
+    if (p.hang) pump += CHAIN_HANG
     if (p.clears) {
       cleared++
       /* working a jug sheds a pump — Rest fires on the clear, not on contact.
@@ -5992,12 +6420,22 @@ export function previewPump(s0: GameState, lanes?: LanePreview[]): number {
 const BONUS_WEIGHT = 3.2
 function bonusValue(c: Card, deck: Card[]): number {
   // only the benefits scale — a pump cost is a pump cost, not a scaled benefit
-  /* INFO-1 gave `read` a term here and took it back out with it. The term was justified by a
-     read granting beta on the holds it covered; that half was retracted (see `effGrip`), so
-     there is nothing for a valuation to price again and `read` stays situational in the
-     dead-card guard for the reason CARD-18 gave. */
+  /* INFO-1 gave `read` a term here and took it back out; INFO-2 puts one back, and this time
+     there is something to price: the policy is uncertainty-limited (autoPlay scores a hold at
+     the span `gripShown` shows), so a read's holds arriving KNOWN is spendable at last.
+     Priced from the per-card probe against the card's own class, the way restChip was priced
+     against anchor: Sight the Line (read 2, draw 1) beats Coffee (draw 2) by +3.0 points and
+     Take It All In (read 4, one pump) beats it by +3.1 net of cost — READING IS WORTH ~3
+     POINTS AND IT IS FLAT IN DEPTH, within 0.1 between read 2 and read 4, which is INFO-1's
+     structural note made a price: refill brings up at most two holds a turn and a read is a
+     maximum you top up when it empties, so coverage saturates and depth buys almost nothing.
+     So the term is FLAT — a card either reads or it does not — at 1, which lands +3.2 through
+     BONUS_WEIGHT, the same neighbourhood anchor's measured +2.6 is priced at. A consequence
+     the dead-card guard now states honestly: Take It All In still prices under the take-line,
+     because its ONLY effect past read 2 is depth and depth is structurally worthless — that
+     is a finding about the CARD, recorded on the INFO-2 row for a card ticket to take up. */
   const good = c.shed * 1.4 + c.draw * 2.2 + c.gripCut * 1.6 + c.powerAll * 4.5
-    + c.power * 1.8 + c.restore * 1.8 + (c.cleans ? 1.6 : 0)
+    + c.power * 1.8 + c.restore * 1.8 + (c.cleans ? 1.6 : 0) + (c.read > 0 ? 1 : 0)
   const share = deck.length ? deck.filter(x => x.kind === 'bonus').length / deck.length : 0
   // full value up to about a fifth of the deck, then away sharply
   const saturation = share <= 0.2 ? 1 : Math.max(0.25, 1 - (share - 0.2) * 3)
@@ -6268,10 +6706,8 @@ export function cardValue(s: GameState, c: Card, deck: Card[]): number {
     : c.power * 2 + c.contact * (contactRate * 2)
   // protection does nothing at all on a boulder, and a great deal on a rope
   if (c.clip) {
-    const act = ACTS[s.act] ?? []
-    const idx = act.flat().map(n => n.routeIdx).filter(i => i >= 0)
-    const share = idx.length ? idx.filter(i => ROUTES[i]?.roped).length / idx.length : 0
-    v += specOf(s).roped ? 6 : s.circuit ? 1.5 : share * 7
+    // ROPE-2: what share of THIS run's act is roped — the rack is worth what it will be used on
+    v += specOf(s).roped ? 6 : s.circuit ? 1.5 : ropeOnTrip(s).share * 7
   }
   // boons change what a card is worth: a free technique, a rest that chips,
   // feet that count double
@@ -6337,6 +6773,17 @@ export function cardValue(s: GameState, c: Card, deck: Card[]): number {
      other cards out. Priced at that, through the same `power * 2` the raw stat line uses, rather
      than at a number chosen to make it get picked. */
   if (c.fx === 'weight') v += WEIGHT_BOARD * 2
+  /* CARD-20: launch is priced at the measured state rate — 21.1% of hand placements find the
+     other hand set — through the same `power * 2` the raw stat line uses, exactly the way
+     `weight` above is priced at the measured board occupancy. The realised rate under a policy
+     that can see the term will run higher (it prefers the launch when the state exists); the
+     drafter is told the unconditional truth, not the optimised one. */
+  if (c.fx === 'launch') v += LAUNCH_SET * 2 * LAUNCH_RATE
+  /* CARD-21: priced at what it actually pays — SETUP_GIVE of Grip, collected on the 27.9% of
+     clears where the player climbs back into the same lane, through the same coefficient `chip`
+     uses for a point of Grip off a hold (2.5). The same shape as `weight` at WEIGHT_BOARD and
+     `launch` at LAUNCH_RATE: the drafter is told the unconditional truth, not the best case. */
+  if (c.fx === 'setup') v += SETUP_GIVE * 2.5 * SETUP_RATE
   if (c.fx === 'echo') v += 3
   if (c.fx === 'settle2') v += settleCap
   if (c.chip) v += c.chip * 2.5
@@ -6454,7 +6901,7 @@ export function cardHints(s: GameState, c: Card, deck: Card[]): string[] {
     ? `a curse — pay ${c.cost + CURSE_TAX} pump mid-climb to write it off for the burn`
     : 'a curse — it does nothing good')
   if (c.clip) sharp.push(
-    specOf(s).roped || ACTS[s.act]?.flat().some(x => ROUTES[x.routeIdx]?.roped)
+    specOf(s).roped || ropeOnTrip(s).any
       ? 'there is rope on this trip' : 'nothing to clip on a boulder')
   if (c.seq) {
     const q = seqById(c.seq)
@@ -6537,16 +6984,6 @@ export const postOpen = (s: GameState) =>
    when it goes. The only thing you can do about it is the honest one: go
    anyway, or wait. */
 export type Tweak = { kind: string; hold: string; runs: number; text: string }
-export const TWEAKS: Omit<Tweak, 'runs'>[] = [
-  { kind: 'pulley', hold: 'crimp',
-    text: 'A pulley in the ring finger. Crimps are going to let you know about it.' },
-  { kind: 'elbow', hold: 'sloper',
-    text: 'Something in the elbow. Anything you have to press down on aches.' },
-  { kind: 'shoulder', hold: 'sharp crimp',
-    text: 'The shoulder again. It is fine until it is above your head.' },
-  { kind: 'tips', hold: 'pinch',
-    text: 'The tips have not come back properly. Anything you have to squeeze is raw.' },
-]
 export const TWEAK_RUNS = 2
 export const TWEAK_GRIP = 1
 
@@ -6568,18 +7005,6 @@ export const tweakGrip = (s: GameState, holdName: string) =>
   s.tweak && s.tweak.hold === holdName ? TWEAK_GRIP : 0
 
 export type CurseCause = 'rawskin' | 'exposed' | 'sprayed' | 'bargain'
-export const EARNED_CURSES: Record<CurseCause, { card: string; why: string }> = {
-  rawskin: { card: 'Flapper', why: 'You went again on tips that were already gone.' },
-  exposed: { card: 'Doubt', why: 'You came off with the top in reach. That stays with you.' },
-  sprayed: { card: 'Ego', why: 'You told everyone the grade before anybody repeated it.' },
-  // CARD-8: the odd one out, kept here for the full picture but NOT earned from
-  // how a burn ended. rawskin/exposed come from curseEarned reading the fall,
-  // sprayed from claimCurse reading your grades; bargain is a choice you make in
-  // an event, applied through the `curse` outcome (spawn by name), so
-  // curseEarned deliberately never returns it — a test pins that so nobody
-  // wires it into the fall and double-applies Sandbagged Beta with the events.
-  bargain: { card: 'Sandbagged Beta', why: 'Cheap topo, cheap for a reason.' },
-}
 export const RAW_SKIN_AT = 2
 
 /** Has this fall earned you something? Checked once, as the burn ends. */
@@ -6842,50 +7267,6 @@ export function coach(s: GameState): string | null {
   return null
 }
 
-export const KEYWORDS: { name: string; text: string }[] = [
-  { name: 'What a hold reads', text: 'A hold you have not worked shows a range, not a number — you have not been on it yet. Beta makes it exact. That is what projecting buys.' },
-  { name: 'Opposition', text: 'A move that pulls sideways needs the other hand pulling back. Alone it is weaker; opposed by another sideways move it is stronger. Which hand you use is a decision.' },
-  { name: 'Resolve order', text: 'Lanes resolve in the order you placed them, and a hand that has already come off stops holding for the other one.' },
-  { name: 'The route acts', text: 'Every few turns the route does something, and always says so a turn beforehand. Greasing up, drying out, a gust, a flake coming off.' },
-  { name: 'Exposed', text: 'Past about two thirds of the way up, backing off costs an extra psyche. Walking away from something you had nearly done is not free.' },
-  { name: 'Clipping', text: 'On a rope, placing a piece resets your runout and, for one turn, lets you climb like somebody who is not going to hit the ground.' },
-  { name: 'Sequence', text: 'A plan held across turns. Meet its condition every turn and it pays out; miss once and it is gone.' },
-  { name: 'Boons', text: 'Found where gear is found. Gear gives you numbers; a boon changes a rule. The wild ones change how a turn feels.' },
-  { name: 'Power / Contact', text: 'Your Power chips a hold\'s Grip. Its Bite chips your Contact. Both happen at once.' },
-  { name: 'Bite / Grip', text: 'A hold\'s attack and its health. Grip to 0 works the hold; Contact to 0 burns your card.' },
-  { name: 'Pump', text: 'Your health and your mana in one bar. Bonus cards spend it. Fill it and you fall.' },
-  { name: 'The clock', text: '+1 pump every turn, plus 1 for every hold you have not answered. Clearing slows it.' },
-  { name: 'Support / campusing', text: 'A card in the feet lane adds Power to both hands. An empty feet lane adds Bite instead.' },
-  { name: 'Settle', text: 'A move that survives a turn gains +1 Power, up to +2. Durability turns into offence.' },
-  { name: 'Beta', text: 'Hold types you have worked come back at −1 Grip on later burns. Falling is learning.' },
-  /* CARD-18: both of these were mechanics the game had and never named. A card can
-     spend skin and a card can read the wall, and until this ticket exactly one card
-     did each — so neither was worth explaining. Now they are. */
-  { name: 'Reading ahead', text: 'The next holds off the route deck, before you are on them. Some cards read them, some holds read themselves, and being dialed in reads them for free. It changes what you plan and never what the hold does.' },
-  { name: 'Skin', text: 'How much more your hands will take on this trip. Falls cost it, a camp gives some back, and running out ends the trip wherever you happen to be standing. A few cards spend it outright.' },
-  { name: 'Anchor', text: 'Does not burn out when it blows — it returns to the discard pile.' },
-  { name: 'Latch', text: 'Survives its first blow at 1 Contact instead of being destroyed.' },
-  { name: 'Precise', text: '+2 Power against crimps and sharp crimps.' },
-  { name: 'Friction', text: 'Ignores a sloper\'s Greasy penalty.' },
-  { name: 'Static', text: 'Takes 1 less Bite. A move made slowly and deliberately costs you less when it goes wrong.' },
-  { name: 'Tough', text: 'Ignores Sharp and Razor when it blows.' },
-  { name: 'Balance', text: 'Prevents a pinch\'s Squeeze.' },
-  { name: 'Hooked', text: 'Cancels the extra hang tax a crux adds.' },
-  { name: 'Snap', text: 'Outright clears any hold at Grip 3 or less.' },
-  { name: 'Commit', text: 'A dyno. Roll to stick it — better fresh, worse pumped, better with feet on. Stick it and you skip the next hold as well. Miss and you are off it.' },
-  { name: 'Guard', text: 'While it survives, the other hand lane takes 1 less Bite.' },
-  { name: 'Matching', text: 'Both hands on the same kind of hold, with a card on each. You have '
-    + 'worked the move once, so you get a breath — shed 1 pump. But you are square to the wall, '
-    + 'and opposition needs something to pull against: while you are matched, a sideways move is '
-    + 'alone even with a partner beside it.' },
-  { name: 'Momentum', text: '+1 Power for each point of flow.' },
-  { name: 'Weight', text: '+1 Power for every other card you have on the board.' },
-  { name: 'Echo', text: 'Returns to your hand when it clears a hold.' },
-  { name: 'Peel', text: 'Draw a card when it blows.' },
-  { name: 'Cycle', text: 'Draws a card each turn it holds on, as the turn resolves.' },
-  { name: 'Chip', text: 'Also damages the Grip of every other hold on the board.' },
-  { name: 'Greedy', text: 'Stronger the closer you are to coming off: +1 Power for every 2 pump you are carrying.' },
-]
 
 
 /* ============================ INK MATHS ============================

@@ -9,7 +9,10 @@
  *   node sim/test-core.mjs
  */
 import { build } from 'esbuild'
-import { readFileSync, existsSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { findBrowser } from '../scripts/browser.mjs'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
+import { builtinModules } from 'node:module'
 import { gzipSync } from 'node:zlib'
 import { unlinkSync } from 'node:fs'
 
@@ -24,8 +27,10 @@ function test(name, fn) {
    shared with test.mjs, because two copies of one rule drift (ENG-19). Read the header
    there for what each of them refuses to do. `guardScan` is asserted at the bottom of
    this file, over this file. */
-import { ok, eq, region, declBody, appFn, cssRule, tail, guardScan, stripComments } from './guard.mjs'
+import { ok, eq, region, declBody, appFn, cssRule, tail, guardScan, stripComments,
+  contrast, lum, palette } from './guard.mjs'
 import { BAND_PIN, BAND_TOL, BAND_N, ENDING_N, ARCH_N, ARCH_FLOOR, ARCH_TOL, BAND_LOG } from './band.mjs'
+import { CENSUS_FLOOR, CENSUS_LOG, LIVE_BUILT, LIVE_ARCH, DEAD } from './census.mjs'
 /* GUARD-9: the kept injections. The table is data; the guard below checks it has not
    rotted. `node sim/mutants.mjs` is what actually runs them. */
 import { MUTANTS, applyPatch, touched } from './mutants.mjs'
@@ -197,6 +202,105 @@ test('the conditions are on the paper, and still readable', () => {
   // and colour-blind mode must keep the cue while dropping the hue
   ok(/\.cb\[class\*="wx-"\]::before\{filter:saturate/.test(app),
     'colour-blind mode gets the same hues as everybody else')
+})
+
+test('ART-5: the wall is legible, and the palette is measured rather than eyeballed', () => {
+  /* VIS-3 wrote "69 points of the gap between ink and paper" into a comment, measured by
+     hand at mock time. Nothing ever re-ran it, so for forty releases it was prose sitting
+     next to code that could move under it. This is that measurement as an instrument, and
+     the FIRST thing it did was fail against the palette that was shipping:
+       --tan on --paper 2.45:1, and --tan IS body text (the cash figure, the xp gain, HIS
+       PAGES, six .sub lines) — under the 3:1 large-text bar, never mind 4.5:1;
+       --fade on --stone 4.08:1, carrying .tx, which is 8px, on every hold on the board.
+     Seven pairs were under 4.5 and the worst was 1.85. So this guard is not decoration on
+     a reskin — the reskin is what happens when you point a real instrument at a palette
+     nobody had measured.
+     BOTH DIRECTIONS, because that is the hole the flip opened: --ink stopped being only a
+     foreground and became a GROUND on three surfaces (.btn.go, .teach, .tile.hero), where
+     every quiet token tuned against rock lands at 1.6-2.3:1. --onink is the missing half,
+     and .tile.hero was shipping a cream literal that went invisible on it. */
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const ROCK = ['--paper', '--card', '--stone', '--well', '--bonus', '--void']
+  const ON_ROCK = ['--ink', '--fade', '--red', '--green', '--tan', '--blue']
+  const ON_CHALK = ['--paper', '--onink']
+  const BAR = 4.5                                     // WCAG AA for body text
+
+  for (const mode of [null, '.cb']) {                 // colour-blind mode is measured too
+    const p = palette(app, mode)
+    for (const t of [...ROCK, ...ON_ROCK, ...ON_CHALK])
+      ok(p[t], `${mode ?? ':root'} has no ${t}`)
+    /* THE DIRECTION FIRST, and the ordering is deliberate. Rock is the ground and chalk
+       is what you write on it — asserted as a property, never as a hex, so a re-tuned
+       palette is free and an inverted one is not. It goes ABOVE the ratios because it is
+       the more fundamental claim: a palette flipped back to paper fails half the pairs
+       below on its way past, and the failure a reader gets should name what is actually
+       wrong (this is not the game's palette) rather than the first ratio to trip over it.
+       Injecting that flip is what found the ordering. */
+    ok(lum(p['--paper']) < lum(p['--ink']), `${mode ?? ':root'}: the ground is lighter than the ink`)
+    ok(lum(p['--stone']) < 0.1, `${mode ?? ':root'}: the route ground is not rock`)
+
+    for (const g of ROCK) for (const f of ON_ROCK) {
+      const r = contrast(p[f], p[g])
+      ok(r >= BAR, `${mode ?? ':root'}: ${f} on ${g} is ${r.toFixed(2)}:1, under ${BAR}`)
+    }
+    for (const f of ON_CHALK) {
+      const r = contrast(p[f], p['--ink'])
+      ok(r >= BAR, `${mode ?? ':root'}: ${f} on the chalk ground is ${r.toFixed(2)}:1`)
+    }
+  }
+  /* EVERY ground the stylesheet actually uses has to be one the loop above measured, or
+     the next one added is unmeasured and this guard passes by not looking. The three
+     exceptions are named rather than pattern-matched, because "does this fill carry text"
+     cannot be read off the CSS — naming them means adding a fourth is a deliberate act
+     with a reason, instead of a silent hole. */
+  const DECOR = {                      // fills with nothing written on them
+    '--green': '.tick.done, a cleared mark on the topo',
+    '--red': '.seg.danger, a pump segment',
+    '--tan': '.seg.on and .wkboard i, a pump segment and a week bar',
+  }   /* --void is NOT here: body sets color:var(--ink) as the document default, so it is
+         cheaper to measure the pair than to special-case the one rule that declares both */
+  const css = stripComments(region(app, 'const CSS = `', ['\n`\n'], { what: 'the stylesheet' }))
+  const grounds = new Set([...css.matchAll(/background(?:-color)?:\s*(?:color-mix\(in srgb,\s*)?var\((--[\w-]+)/g)]
+    .map(m => m[1]))
+  for (const g of grounds)
+    ok([...ROCK, '--ink'].includes(g) || DECOR[g],
+      `${g} is painted as a ground and nothing measures text on it`)
+  /* and the named exceptions have to still BE exceptions — a decorative fill that grows
+     a colour rule is text on an unmeasured ground. */
+  for (const g of Object.keys(DECOR))
+    ok(!new RegExp(`background:var\\(${g}\\)[^}]*;color:`).test(css), `${g} (${DECOR[g]}) now carries text`)
+
+  /* ONE palette. Every colour in this file lives in :root or .cb — the share canvas used
+     to carry six literals as "fallbacks", under a comment citing ENG-19 for not making a
+     second copy, and they went stale the instant the palette inverted. */
+  const bare = css.replace(/:root\{[^}]*\}/, '').replace(/\.cb\{[^}]*\}/, '')
+  const strays = [...bare.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map(m => m[0])
+  eq(strays.length, 0, `the stylesheet carries colour literals outside the palette: ${strays.join(' ')}`)
+  ok(/TOKENS\[n\]/.test(stripComments(app)), 'the share canvas has gone back to hard-coded fallbacks')
+
+  /* the chalk itself: one filter for the document, and the board referencing it. A chalk
+     line is broken and displaced, which is what separates it from an ink line — drop the
+     filter and every frame goes back to being a rectangle drawn in a pale colour. */
+  const shell = readFileSync('index.html', 'utf8')
+  ok(/<filter id="chalkline"/.test(shell), 'the chalk filter is not defined in the document')
+  ok(/feDisplacementMap/.test(shell), 'the chalk filter no longer displaces anything')
+  const ink = declBody(app, 'function Ink(', 'the frame primitive')
+  ok(/url\(#chalkline\)/.test(ink), 'a frame on the wall is no longer drawn in chalk')
+  ok(/strokeDasharray/.test(ink), 'the chalk line is continuous, which is an ink line')
+  ok(/url\(#chalkline\)/.test(declBody(app, 'function ChalkRing(', 'the ring')), 'the ring is not chalk')
+
+  /* VIS-7: the crux must be a SHAPE, not a colour — in colour-blind mode --red and --ink
+     are two greys a shade apart, and the 1.5px/2.2px stroke difference is not one you see
+     without the other stroke beside it. */
+  ok(/h\.crux && <ChalkRing/.test(stripComments(app)), 'the crux is marked by colour alone again')
+
+  /* the chrome the player sees before React runs: the status bar, the splash and the
+     no-JS page all have to be the rock, or the app opens cream and then flips. */
+  const paper = palette(app)['--paper']
+  ok(shell.includes(`content="${paper}"`), `index.html theme-color is not ${paper}`)
+  const build = readFileSync('scripts/build-html.mjs', 'utf8')
+  ok(build.includes(`theme_color: '${paper}'`), `the manifest theme colour is not ${paper}`)
+  ok(build.includes(`background_color: '${paper}'`), `the manifest background is not ${paper}`)
 })
 
 test('every condition does what it says it does', () => {
@@ -1561,7 +1665,14 @@ group('boundary')
 test('the engine knows nothing about a screen', () => {
   // ENG-8. The whole point of the split: if the rules can reach the DOM, the
   // boundary is decorative and the next state-shape bug hides in the seam.
-  const src = readFileSync('src/engine.ts', 'utf8')
+  /* CARD-21: COMMENTS STRIPPED, and it is a real defect rather than tidiness. This read the raw
+     file, so `\bwindow\.` matched any comment whose sentence ENDED on the word window — and
+     ROUTE-6's whole mechanic is called the window, so the prose here says it constantly. It
+     fired on a CARD-21 comment reading "the next turn is not the window." That is ART-4's class,
+     which this suite already strips comments for in three other places. The claim is about what
+     the CODE reaches for, so stripping cannot weaken it — and the comment that caught it is
+     still in engine.ts, so a revert of this line fails here rather than silently. */
+  const src = stripComments(readFileSync('src/engine.ts', 'utf8'))
   const forbidden = [
     [/className=/, 'JSX className'],
     [/<\/[A-Za-z]/, 'a closing JSX tag'],
@@ -2564,6 +2675,221 @@ test('ENG-25: the sim can see opposition — it drafts toward it and seats the p
     'cardValue is blind to a partner already in the deck')
 })
 
+test('CARD-20: a launch fires off the hand that held, and only that hand', () => {
+  /* THE ROW ASKED FOR A COMBINATION THAT CREATES A PLAN, NOT A BIGGER NUMBER, and its stated
+     objection had dissolved by the time it was built: both hands share a card tag on 19.1% of
+     turns now, not the 61% measured on the pre-LANE-2 mono-tag builder. What survived is the
+     constraint list — conditional on setup the player CHOOSES, spanning turns — which SIM-9's
+     measurement sharpened: a placed hand card stands 1.09 turns, so a combination can only
+     honestly span turns on a state that STANDS. Measured on 45,606 campaign turns: a set foot
+     stands on 63.8% of turns (a condition that common is the matched-hands objection in new
+     clothes), a standing hand rest on 0.0% (the built deck's rests are feet cards — SIM-9),
+     and a SET HAND is out on 44.2%, with a hand placement finding the other hand set on 21.1%.
+     Conditional, chosen, durable. So: LAUNCH — Settle turned sideways, a neighbour's stand
+     becoming this card's offence — carried by the two cards whose names had promised exactly
+     this combination since they existed and delivered nothing (Bump, Lock & Bump), rather
+     than by new cards, because CARD-18 measured what adding cards does to every offer roll. */
+  const base = { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null,
+    gear: [], boons: [], mutators: [], pump: 0 }
+  const hold = { uid: 10, name: 'crimp', bite: 3, grip: 9, crux: false, clean: false }
+  const other = { uid: 11, name: 'pinch', bite: 3, grip: 9, crux: false, clean: false }
+  const launch = E.spawn('Bump')
+  eq(launch.fx, 'launch', 'Bump no longer launches — the card whose name promised the combination is vanilla again')
+  eq(E.spawn('Lock & Bump').fx, 'launch', 'Lock & Bump no longer launches')
+
+  // the combination itself: the same card, against the same hold, reads LAUNCH_SET more
+  // Power when the neighbour has held a turn — and exactly that much
+  const stood = { ...E.spawn('Hand Jam'), set: true }
+  const fresh = { ...E.spawn('Hand Jam'), set: false }
+  const stSet = { ...base, boardH: [hold, other, null], boardP: [null, stood, null] }
+  const stFresh = { ...base, boardH: [hold, other, null], boardP: [null, fresh, null] }
+  eq(E.powerAgainst(stSet, launch, hold, 0) - E.powerAgainst(stFresh, launch, hold, 0),
+    E.LAUNCH_SET, 'a launch does not read the other hand having held — the combination is not firing')
+
+  /* and ONLY that hand. A set FOOT stands on 63.8% of measured turns — fire off that and the
+     condition is near-constant, which is the exact shape the row already rejected once. The
+     control is an equal-Power vanilla card in the same state, so feet Support cancels out. */
+  const plain = E.spawn('Half Crimp')
+  eq(plain.power, launch.power, 'the Half Crimp control no longer matches Bump for Power, so the foot check below compares nothing')
+  const foothold = { uid: 12, name: 'smear', bite: 1, grip: 4, crux: false, clean: false }
+  const setFoot = { ...E.spawn('Smear'), set: true }
+  const stFoot = { ...base, boardH: [hold, null, foothold], boardP: [null, null, setFoot] }
+  eq(E.powerAgainst(stFoot, launch, hold, 0), E.powerAgainst(stFoot, plain, hold, 0),
+    'a set FOOT fires the launch — the near-constant condition the row rejected, in new clothes')
+
+  // one formula: the preview turns a non-clear into a clear exactly when the neighbour stands
+  const grip = launch.power + E.LAUNCH_SET
+  const tight = { ...hold, grip }
+  const pv = (board1) => E.previewLane({ ...base,
+    boardH: [tight, other, null], boardP: [launch, board1, null], order: [0] }, 0)
+  ok(pv(stood).clears && !pv(fresh).clears,
+    'the preview and the resolution disagree about a launch — the term is not in the one formula')
+
+  // the policy can execute the plan it is being offered (ENG-25's law) — offered a launch
+  // and an equal-Power vanilla card with the neighbour standing, it seats the launch
+  const seated = E.autoPlay({ ...base, boardH: [hold, null, null], boardP: [null, stood, null],
+    piles: { ...base.piles, hand: [plain, launch] } }, new E.RNG(3))
+  eq(seated.boardP[0]?.fx, 'launch',
+    'offered a launch with the neighbour standing, the policy seats the vanilla card instead')
+
+  // the drafter prices the state at its measured rate — not zero, not a rule
+  const vanilla = { ...launch, fx: '' }
+  const dv = E.cardValue(base, launch, []) - E.cardValue(base, vanilla, [])
+  ok(Math.abs(dv - E.LAUNCH_SET * 2 * E.LAUNCH_RATE) < 1e-9,
+    `the drafter prices launch at ${dv.toFixed(2)} against the measured ${(E.LAUNCH_SET * 2 * E.LAUNCH_RATE).toFixed(2)} — blind or inventing`)
+
+  /* AND THE STATE IS HONEST, which is what made this ticket touch resolve at all: the moment
+     `set` became a state another card fires off, a card recycling with its old stand became a
+     rules bug rather than a cosmetic one. A card that blows is OFF THE WALL: it files without
+     its stand (the reset an echo and a spit already made), while `spent` survives, which is
+     COND-3's deliberate rule about wear. */
+  const worn = { ...E.spawn('Shake Out'), set: true, settled: 2, spent: 5 }   // anchor: recycles
+  const burnt = { ...E.spawn('Half Crimp'), set: true, settled: 1, spent: 4 } // no anchor: exhausts
+  const blowSt = { ...base, boardH: [{ ...hold, grip: 99, bite: 9 }, { ...other, grip: 99, bite: 9 }, null],
+    boardP: [worn, burnt, null], order: [0, 1],
+    piles: { draw: [], discard: [], exhaust: [], hand: [] } }
+  const blown = E.resolve(blowSt, new E.RNG(5))
+  /* the anchored card recycles IMMEDIATELY here — the empty draw pile makes refillAndDraw
+     reshuffle the discard and deal it straight back to hand, which is exactly the round trip
+     the reset exists for — so the filed cards are found wherever they landed */
+  const allPiles = [...blown.piles.hand, ...blown.piles.draw, ...blown.piles.discard, ...blown.piles.exhaust]
+  const filedD = allPiles.find(c => c.uid === worn.uid)
+  const filedX = allPiles.find(c => c.uid === burnt.uid)
+  ok(filedD && filedX && !blown.boardP[0] && !blown.boardP[1],
+    'the blow fixture no longer blows both cards, so nothing below is tested')
+  ok(!filedD.set && (filedD.settled ?? 0) === 0 && !filedX.set && (filedX.settled ?? 0) === 0,
+    'a card that blew was filed with its stand — it will come back claiming turns it is not holding')
+  ok(filedD.spent === worn.spent && filedX.spent === burnt.spent,
+    'the off-the-wall reset took the WEAR too — spent is the one field COND-3 says survives the piles')
+
+  // the screen's lift makes the same reset — a standing card picked back up has let go
+  const app = stripComments(readFileSync('src/App.tsx', 'utf8'))
+  const lift = region(app, 'function tapLane', ['function commit'], { min: 400, what: 'tapLane' })
+  ok(/\{ \.\.\.placed, settled: 0, set: false \}/.test(lift),
+    'lifting a standing card keeps its stand, so a Launch can fire off a hold nobody is holding')
+
+  // and the vocabulary: the keyword says what it does, and both carriers say the number
+  ok(E.KEYWORDS.some(k => k.name === 'Launch' && /other hand/.test(k.text)
+      && k.text.includes(`+${E.LAUNCH_SET} Power`)),
+    'the Launch keyword is gone or no longer says what it does')
+  for (const n of ['Bump', 'Lock & Bump'])
+    ok(E.CARDS[n].text.includes('Launch') && E.CARDS[n].text.includes(`+${E.LAUNCH_SET} Power`),
+      `${n} launches and its text does not say so — the card undersells itself (CARD-17's rule)`)
+})
+
+test('RUN-15: which line fills a stage is a property of the run', () => {
+  /* THE ROW SAID THIS NEEDS AUTHORING, NOT A RULE, AND THE MEASURED MAP DISAGREED TWICE.
+     "36 routes cover 26 stages, nearly all used once": all 35 non-tutorial lines are ALREADY
+     in ACTS, nine of them double-slotted — there was no unused pool waiting to be authored.
+     And "interchangeable" is already the map's own idiom: its double-slotted same-grade pairs
+     sit 18-21 points of send rate apart, and one act-2 stage statically menus a 44-point
+     spread (Rattlesnake 66% / Kiln 22% / Blowhole 47% at the mid deck), resolved by the
+     forecast rather than by difficulty. So RUN-15 is RUN-14's lever pointed at the one node
+     kind it deliberately skipped: a climb slot draws per run from its act's exact-grade pool
+     (CLIMB_POOLS, derived from ACTS so there is no second table to drift), under NARR-22's
+     rule that a swap may only take what it can give back. What this guard holds, in order:
+     the variety exists at all; the grade ramp is untouched; the spine (bosses, projects)
+     never moves; no line fills two slots of one stage; every dealt line belongs to its act
+     (so the account-scoped logbook tick stays reachable); and the map is deterministic per
+     run, because the stage you plan on has to be the stage you get. */
+  const runFor = (seed, act) => ({ ...E.freshRun(0, 0, 1), act, runSeed: seed })
+  // the three stages the static map pins to exactly ONE climb — one per act
+  for (const [act, tier] of [[0, 2], [1, 1], [2, 1]]) {
+    const seen = new Set()
+    for (let seed = 1; seed <= 60; seed++)
+      for (const n of E.tierNodes(runFor(seed, act), tier))
+        if (n.type === 'climb') seen.add(n.routeIdx)
+    ok(seen.size >= 2,
+      `act ${act + 1}'s single-climb stage offered ${seen.size} line(s) across 60 seeds — the climbs are the same every run again`)
+  }
+  for (let seed = 1; seed <= 20; seed++) for (let act = 0; act < E.ACTS.length; act++) {
+    const s = runFor(seed, act)
+    E.ACTS[act].forEach((st, t) => {
+      const got = E.tierNodes(s, t)
+      eq(JSON.stringify(got.map(n => n.routeIdx)),
+        JSON.stringify(E.tierNodes(s, t).map(n => n.routeIdx)),
+        `tierNodes is not deterministic at act ${act + 1} stage ${t + 1} — the map a player plans on is not the map they get`)
+      const grades = ns => ns.filter(n => n.type === 'climb')
+        .map(n => E.ROUTES[n.routeIdx].grade).sort((a, b) => a - b).join(',')
+      eq(grades(got), grades(st),
+        `act ${act + 1} stage ${t + 1} changed its grades under the swap — the ramp is not preserved`)
+      const spine = ns => ns.filter(n => n.type === 'boss' || n.type === 'project')
+        .map(n => `${n.type}:${n.routeIdx}`).join(' ')
+      eq(spine(got), spine(st),
+        `act ${act + 1} stage ${t + 1} swapped a boss or a project — only climbs may move`)
+      const climbs = got.filter(n => n.type === 'climb').map(n => n.routeIdx)
+      ok(new Set(climbs).size === climbs.length,
+        `act ${act + 1} stage ${t + 1} offers one line twice: ${climbs.join(', ')}`)
+      for (const n of got) if (n.type === 'climb')
+        ok(E.ACT_OF_ROUTE[n.routeIdx] === act,
+          `act ${act + 1} stage ${t + 1} dealt a line from another act — the logbook tick cannot reach it here`)
+    })
+  }
+})
+
+test('INFO-2: the policy sees what the player sees, and a read is worth spending', () => {
+  /* THE POLICY WAS CLAIRVOYANT AND NOBODY HAD SAID SO. Every decision in `autoPlay` read
+     `gripFor` — the true grip, wobble included — while the screen shows an unworked, unread
+     hold as a WOBBLE-wide span that gives away nothing. Measured over 60,010 open-lane
+     decisions of the real campaign: the policy knew the truth on 72.2% of them (beta covers
+     27.8%), and on 10.9% of ALL decisions a candidate sat exactly on the span's low edge,
+     where knowing is the whole decision. That is the real reason `read` was unpriceable for
+     eleven tickets — SIM-9 measured that an oracle handed the whole hold deck gains nothing,
+     because holds arrive only when the one in front clears; what a read buys is CERTAINTY
+     against the span, and a policy that already knows everything cannot want it. So the
+     policy now scores a hold through `gripShown` — the SAME function the screen prints — a
+     sure clear beats a coin-flip clear beats a grind, and the `clairvoyant` parameter
+     (KNOW=all in run.mjs) reproduces every measurement before v10.74. The rules never
+     changed: resolve still reads true grip. */
+  const base = { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null,
+    gear: [], boons: [], mutators: [], pump: E.SHAKE_AT, beta: [], assist: false }
+  const mover = E.synth(3, 6)
+  const rest = E.spawn('Shake Out')
+  const probe = { uid: 91, name: 'jug', bite: 1, grip: 9, crux: false, clean: false }
+  const pow = E.powerAgainst({ ...base, boardH: [probe, null, null] }, mover, probe, 0)
+  // the span's low edge sits exactly on the card: grip = pow + 1 with a wobble of 1 shows
+  // [pow, pow + 1], and the truth is the high side — a coin flip the card loses
+  const hold = { uid: 92, name: 'jug', bite: 1, grip: pow + 1, wobble: 1, crux: false, clean: false }
+  const st = { ...base, boardH: [hold, null, null],
+    piles: { ...base.piles, hand: [mover, rest] } }
+  const span = E.autoPlay(st, new E.RNG(3))
+  const clair = E.autoPlay(st, new E.RNG(3), E.SHAKE_AT, true)
+  eq(span.boardP[0]?.uid, mover.uid,
+    'shown a coin-flip clear, the span policy rests instead of trying — a maybe is still a reason')
+  eq(clair.boardP[0]?.uid, rest.uid,
+    'the clairvoyant policy gambles on a hold it can see the truth of — the policy still knows the wobble')
+  // a read collapses the span: the read hold plays exactly like the clairvoyant one
+  const read = { ...st, boardH: [{ ...hold, read: true }, null, null] }
+  eq(E.autoPlay(read, new E.RNG(3)).boardP[0]?.uid, rest.uid,
+    'a hold that arrived read still plays as a gamble — a read no longer buys certainty')
+  // one formula: the policy's knowledge IS the display's
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const auto = region(eng, 'export function autoPlay', ['const order = [0, 1]'],
+    { min: 300, what: 'the policy head' })
+  ok(/: gripShown\(st, h\)/.test(auto),
+    'the policy reads its own idea of a hold instead of gripShown — the screen and the policy can now disagree about what is known')
+  /* the read is SPENT: holding no read, with holds still to come, the policy plays one.
+     Take It All In on purpose, at pump 0: its draw is 0 and its shed clause needs pump, so
+     the READ clause is the only way it gets played — Sight the Line would be played for its
+     draw under either knob and prove nothing about reads. */
+  const tiai = E.spawn('Take It All In')
+  const spendSt = { ...base, pump: 0, readAhead: 0,
+    holdDeck: [probe, { ...probe, uid: 93 }],
+    boardH: [hold, null, null], piles: { ...base.piles, hand: [tiai] } }
+  ok(E.autoPlay(spendSt, new E.RNG(3)).readAhead > 0,
+    'holding no read with holds still to come, the policy leaves the read in hand — a read is never spent')
+  eq(E.autoPlay(spendSt, new E.RNG(3), E.SHAKE_AT, true).readAhead, 0,
+    'the clairvoyant policy spends reads — the old world is no longer reproducible')
+  // and the drafter prices reading FLAT, because depth measured worthless (+0.1 from 2 to 4)
+  const val = c => E.cardValue(base, c, [])
+  const sight = E.spawn('Sight the Line')
+  const dSight = val(sight) - val({ ...sight, read: 0 })
+  const dTiai = val(tiai) - val({ ...tiai, read: 0 })
+  ok(dSight > 0, 'the drafter prices a read at nothing, though the policy can spend one now')
+  ok(Math.abs(dSight - dTiai) < 1e-9,
+    `read 2 prices at ${dSight.toFixed(2)} and read 4 at ${dTiai.toFixed(2)} — priced by a depth the game measures as worthless`)
+})
+
 test('BAL-13: the early bosses are fights, not flat routes', () => {
   /* The fourth audit found The Priest (act 1) and The Hourglass (act 2) were
      single-phase — a slightly harder route — against the two- and three-phase
@@ -2853,8 +3179,11 @@ test('somebody is out there with you, and they wanted something else (NARR-14)',
   // and they disagree about when to stop, or the threshold is decoration
   ok(new Set(E.PARTNERS.map(p => p.enough)).size >= 3,
     'the partners all stop at the same point, so who you are out with does not matter')
-  const eng = readFileSync('src/engine.ts', 'utf8')
-  const table = region(eng, 'export const PARTNERS', ['export function partnerFor'],
+  /* ENG-9: the partner TABLE is literal content and lives in ./content now; `partnerFor` and
+     the rest of the rules that read it stayed in the engine, which is why the closer moved
+     with the window rather than the window following the function. */
+  const partnerFile = readFileSync('src/content.ts', 'utf8')
+  const table = region(partnerFile, 'export const PARTNERS', ['\nexport const ', '\n/* ='],
     { min: 800, what: 'the partner table' })
   ok(!/\b(power|contact|grip|bite|support|skin|psyche|pump|dTax|shed)\s*:/i.test(table),
     'the partner table grew a mechanical field — a partner is text')
@@ -2864,7 +3193,7 @@ test('somebody is out there with you, and they wanted something else (NARR-14)',
     // GUARD-8: bounded at the next declaration, not at 4000 characters. With a fixed
     // window a function that outgrows it puts its tail outside, and the negative
     // assertion below then passes on the part that was cut off.
-    const body = declBody(eng, fn, fn)
+    const body = declBody(readFileSync('src/engine.ts', 'utf8'), fn, fn)
     /* match the API, not the English word: autoPlay's opposition comments call the other
        hand lane a "partner", which is a different thing entirely. */
     ok(!/\b(partnerFor|partnerSays|partnerAgrees|partnerPush|PARTNERS)\b/.test(body),
@@ -3022,6 +3351,92 @@ test('the Circuit is not the mode nobody bothered with (SKIRM-7)', () => {
   ok(!/circuitScore/.test(declBody(readFileSync('src/engine.ts', 'utf8'),
     'export function bankDaily', 'bankDaily')),
     'the Circuit feeds the season score now — that is farmable, and it wants a decision first')
+})
+test('SAVE-8: the roster can grow without deleting everyone\'s decks', () => {
+  /* MEASURED AGAINST THE SHIPPED LOADER BEFORE THIS WAS WRITTEN. `loadouts` was kept only when
+     `d.loadouts.length === ARCHETYPES.length`, so a save carrying FOUR customised decks against
+     a five-climber build lost all four — not the missing one, all of them. 6 lost all six. Only
+     an exact 5 survived. The same equality gate on the singular `loadout` threw away a 14-card
+     list for being 14.
+
+     THE GATE WAS NOT AN OVERSIGHT. `loadouts` is indexed positionally (`st.loadouts[st.arch]`,
+     five places in App.tsx), so a short array at a new archetype index is `loadoutDeck(undefined)`
+     and a TypeError. Dropping to defaults really did prevent that. It is the price that is
+     wrong: the player's whole collection of decks, to avoid an undefined at one index.
+
+     What it was defending is also handled one layer down — `loadoutDeck` opens with
+     `loadout.length === DECK_SIZE ? loadout : DEFAULT_LOADOUT` and filters names it does not
+     know — so a bad DECK is already survivable and only a MISSING SLOT is not. */
+  /* A REAL DECK, because the interesting assertion below is that `loadoutDeck` can still build
+     what comes back — and a fixture of invented names filters to nothing and would have made
+     that assertion a test of the fixture. One real card swapped in as the marker, so "the
+     player's deck" is distinguishable from any default. */
+  const marker = Object.keys(E.CARDS).find(n => n !== E.DEFAULT_LOADOUT[0]
+    && E.CARDS[n].rarity === 'starter')
+  ok(marker, 'no starter card to build a fixture deck from')
+  const mine = [marker, ...E.DEFAULT_LOADOUT.slice(1)]
+  eq(mine.length, E.DECK_SIZE, 'the fixture deck is not a legal size, so it tests the wrong thing')
+  const put = (slot, d) => localStorage.setItem(`sandbagged.save.${slot}`,
+    JSON.stringify({ v: E.SAVE_FILE_VERSION, level: 3, ...d }))
+  const N = E.ARCHETYPES.length
+
+  // a save from a build with one fewer climber — exactly what adding a climber produces
+  put(41, { loadouts: Array.from({ length: N - 1 }, () => mine.slice()) })
+  const grown = E.loadGame(41)
+  /* Checked as a SHAPE first, and the message says what the player lost rather than what the
+     array measured — the old gate returned no `loadouts` key at all, so a length assertion
+     here reads `undefined.length` and reports a TypeError instead of the defect. */
+  ok(Array.isArray(grown.loadouts),
+    'a save from a smaller roster comes back with no loadouts at all — every deck the player built is gone')
+  eq(grown.loadouts.length, N, 'a save from a smaller roster does not come back with one deck per climber')
+  /* Shape before content, and before the identity check below, so a repair that lets a
+     non-deck through reports THAT rather than failing the pad assertion for a reason the
+     message does not describe. */
+  for (let i = 0; i < N; i++)
+    ok(Array.isArray(grown.loadouts[i]),
+      `loadouts[${i}] is not an array, so loadoutDeck(undefined) throws for ${E.ARCHETYPES[i].name}`)
+  for (let i = 0; i < N - 1; i++)
+    eq(grown.loadouts[i][0], marker,
+      `the deck the player built for ${E.ARCHETYPES[i].name} was thrown away because the roster grew`)
+  /* AND THE NEW SLOT IS THAT CLIMBER'S OWN DEFAULT. Padding with the first climber's list, or
+     with an empty array, would satisfy every length assertion above and hand the newest climber
+     somebody else's deck — which is the shape of pad that looks right and reads wrong. */
+  eq(JSON.stringify(grown.loadouts[N - 1]), JSON.stringify(E.ARCHETYPES[N - 1].loadout),
+    `the climber the save never knew about got somebody else's deck instead of its own`)
+
+  // a save from a build with one MORE climber
+  put(42, { loadouts: Array.from({ length: N + 1 }, () => mine.slice()) })
+  eq(E.loadGame(42).loadouts.length, N, 'a save from a bigger roster is not trimmed to this one')
+
+  /* THE PROPERTY THAT ACTUALLY PREVENTS THE CRASH, stated as the consumer sees it rather than
+     as a length: every archetype index yields a deck `loadoutDeck` can build. */
+  for (const slot of [41, 42]) {
+    const l = E.loadGame(slot).loadouts
+    for (let i = 0; i < N; i++) {
+      ok(Array.isArray(l[i]), `loadouts[${i}] is not an array, so loadoutDeck(undefined) throws for ${E.ARCHETYPES[i].name}`)
+      ok(E.loadoutDeck(l[i]).length > 0, `${E.ARCHETYPES[i].name} loads an empty deck`)
+    }
+  }
+
+  // an entry that is not a deck at all falls back per climber rather than propagating
+  put(43, { loadouts: [mine, 'not an array', null, 42, mine] })
+  const junk = E.loadGame(43)
+  ok(junk.loadouts.every(Array.isArray), 'a junk entry survives as a junk entry')
+  eq(JSON.stringify(junk.loadouts[1]), JSON.stringify(E.ARCHETYPES[1].loadout),
+    'a junk entry does not fall back to that climber\'s own default')
+
+  // SAVE-6's bound applies inside the decks too, or the repair is a new way in
+  put(44, { loadouts: [Array.from({ length: 5000 }, () => 'x'), ...Array.from({ length: N - 1 }, () => mine.slice())],
+    loadout: Array.from({ length: 5000 }, () => 'x') })
+  const big = E.loadGame(44)
+  eq(big.loadouts[0].length, E.DECK_SIZE, 'a 5,000-card deck is accepted whole, which is SAVE-6 reopened inside the fix for SAVE-8')
+  eq(big.loadout.length, E.DECK_SIZE, 'the singular loadout is unbounded')
+
+  // and the control: an exact save is untouched
+  put(45, { loadouts: Array.from({ length: N }, () => mine.slice()), loadout: mine })
+  const same = E.loadGame(45)
+  eq(JSON.stringify(same.loadouts), JSON.stringify(Array.from({ length: N }, () => mine)),
+    'a save that already matched is no longer round-tripping unchanged')
 })
 test('SAVE-6: a save cannot claim an array longer than the game can make', () => {
   /* SAVE-6. SAVE-5 was ONE unvalidated number — `xp: undefined` beat freshRun's 0, `gainXp`
@@ -3238,9 +3653,15 @@ test('BAL-16: a floor nobody can measure is not a floor', () => {
      is — and NARR-22 is what two copies of one quantity cost: the band pin sat two versions stale
      in test.mjs while a guard happily confirmed its two copies agreed with each other. The floor
      lives in band.mjs and both sides read it. */
-  ok(ARCH_FLOOR === 5,
+  /* ARCH-2 (v10.89): 5 -> 9, agreed with Evan on 2026-08-23 and dated in band.mjs. Asserted as
+     a FLOOR ON THE FLOOR rather than as an equality, because the two directions are not the
+     same thing: RAISING this is a decision somebody made, and LOWERING it is a drift with an
+     excuse, which is the v9.32 move BAL-9 exists to forbid. An equality here would also fail
+     the next honest raise, and a guard that fires on its own improvement gets deleted. */
+  ok(ARCH_FLOOR >= 9,
     `the floor is ${ARCH_FLOOR} — it was lowered to 4 once at v9.32 to accommodate a drift instead `
-    + 'of fixing it, and BAL-9 exists to forbid exactly that')
+    + 'of fixing it, and BAL-9 exists to forbid exactly that. It was raised to 9 with Evan on '
+    + '2026-08-23 after three releases took the worst climber 10.5 -> 9.2 -> 8.0 without one guard firing')
   ok(/ok\(lo > ARCH_FLOOR,/.test(spread),
     'the guard no longer compares the lowest climber against the ledger floor')
   /* match the COMMAND, not the word: the prose in that guard explains why `ARCH_ONLY`
@@ -3349,6 +3770,173 @@ test('the tuning policy can see the feet lane (SIM-6)', () => {
      while the property it defends was untouched. Comments are stripped first. */
   const simCode = sim.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
   ok(!/support/i.test(simCode), 'the harness grew its own opinion about the feet')
+})
+test('HOLD-4: brushing takes the grease off, not the wall', () => {
+  /* THE ROW SAID THE WALL WAS TWO ABILITIES AND THAT WAS AN ARITHMETIC ERROR IN THE AUDIT that
+     wrote it — holds-per-turn across three lanes read as a share of turns. Corrected over
+     142,919 hand holds of a drafted campaign the spread is flat: Greasy 14.1%, Sharp 13.3%,
+     Squeeze 10.9%, Committing 8.5%, Two-finger 7.4%, Razor 6.9%, Rest 5.8%, Chained 3.9%.
+
+     WHAT THE CENSUS FOUND INSTEAD is that the biggest category on a hand lane was NO ability,
+     28.5%, and `abilityOf` returns '' only for a brushed hold. Counted as transitions rather
+     than inferred: the player brushed on 42.98% of turns, the route move on 0.16%. One card
+     was deleting the work of HOLD-1, HOLD-2 and HOLD-3 on three hand holds in ten.
+
+     DECOMPOSED AT n=1500 — shipped 60.9, ability-survives 58.3, never-brush 49.9 — so the cut
+     is worth +8.4 and the erasure only +2.6. Stripping Greasy alone reads 57.7, the same as
+     stripping nothing inside half an SE, which says the strip's value was entirely in the
+     abilities brushing has no business answering. Greasy-only plus one Grip reads 60.7 against
+     60.9: the card keeps its strength, the wall keeps its character, the band does not move. */
+  const H = (name, extra = {}) => ({ uid: 1, name, grip: 6, bite: 3, crux: false, clean: false, ...extra })
+  const base = { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null, gear: [], boons: [],
+    mutators: [], pump: 0, beta: [], assist: true }
+  const brush = Object.values(E.CARDS).find(c => c.cleans)
+  ok(brush, 'no card brushes at all any more')
+
+  const greasy = Object.entries(E.HOLD_STATS).find(([, d]) => d.ability === 'Greasy')
+  const sharp = Object.entries(E.HOLD_STATS).find(([, d]) => d.ability === 'Sharp')
+  ok(greasy && sharp, 'the two holds this rule is about are gone')
+
+  const play = (holdName) => {
+    const st = { ...base, boardH: [H(holdName), null, null], boardP: [null, null, null],
+      piles: { ...base.piles, hand: [E.spawn(brush.name)] } }
+    const after = E.playBonusStep(st, E.spawn(brush.name), 0, new E.RNG(1))
+    return after.boardH[0]
+  }
+  /* IT STILL ANSWERS A GREASY HOLD, which is what HOLD-1 named as the counterplay to a hold
+     that sweats up while you leave it hanging. Removing that would have broken a shipped
+     mechanic to fix a measurement. */
+  eq(E.abilityOf(play(greasy[0])), '',
+    'brushing no longer takes the grease off, so HOLD-1 lost the counterplay it was designed with')
+  /* AND IT TAKES NOTHING OFF ANYTHING ELSE. */
+  eq(E.abilityOf(play(sharp[0])), 'Sharp',
+    'brushing strips an ability it has no business answering again — 28.5% of hand holds had no ability because of this')
+
+  /* THE CUT PAYS FOR WHAT THE STRIP NO LONGER TAKES. Asserted as a floor per rarity rather
+     than as five literals, so a re-priced card fails only if it drops below what this ticket
+     bought the band back with. */
+  const floors = { common: 3, uncommon: 4, rare: 5, beta: 6 }
+  for (const c of Object.values(E.CARDS).filter(x => x.cleans)) {
+    const f = floors[c.rarity]
+    ok(f === undefined || c.gripCut >= f,
+      `${c.name} cuts ${c.gripCut} Grip against a floor of ${f} — the strip was removed and paid for in Grip, and unpaying it drops the band 2.6`)
+    ok(!/strip/i.test(c.text ?? ''),
+      `${c.name} still promises to strip an ability it no longer strips`)
+  }
+  /* THE DIRT STILL COMES OFF WHATEVER IT IS — that half of brushing was never about abilities
+     and a first ascent is a grip of dirt on every hold. Written against a hold that ACTUALLY
+     CARRIES DIRT, because the first cut of this assertion used the fixture above, which has
+     none, and passed by testing nothing. */
+  const st = { ...base, boardH: [H(sharp[0], { dirt: E.DIRT_GRIP, grip: 6 + E.DIRT_GRIP }), null, null],
+    boardP: [null, null, null], piles: { ...base.piles, hand: [E.spawn(brush.name)] } }
+  ok(E.DIRT_GRIP > 0, 'a first ascent carries no dirt, so this checks nothing')
+  const cleaned = E.playBonusStep(st, E.spawn(brush.name), 0, new E.RNG(1)).boardH[0]
+  eq(cleaned.dirt, 0, 'brushing stopped clearing dirt, which is the part of it that was never about abilities')
+  eq(E.abilityOf(cleaned), 'Sharp', 'clearing the dirt took the ability with it after all')
+})
+test('CARD-23: a firing rate belongs to a deck, not to the game', () => {
+  /* CARD-23 ASKED WHETHER ELEVEN CARD EFFECTS EVER REACH THE BOARD AND THE ANSWER IS THAT THE
+     QUESTION WAS UNDER-SPECIFIED. Measured over drafted campaigns instead of starting decks —
+     81,854 turns on the archetype loadouts, 87,672 on the built one — only `settle2` and `peel`
+     sit at zero, and each is non-zero in the other population. Eight effects are under 1% of
+     turns in BOTH and those are the real dead list: settle2, peel, cycle, echo, momentum,
+     guard, greedy, snap.
+
+     THE FINDING IS THE PAIR THAT INVERT, and it lands on a shipped claim. LANE-1 records
+     `fx: 'weight'` firing on 0.12% of turns and uses it to argue the effect had to be granted
+     by the board instead of by a card. Re-measured:
+
+                     default loadout + draft     BUILT loadout + draft
+       weight            0.09% of turns            17.46% of turns, 100% of runs
+       friction         17.22%, 100% of runs        0.07%
+
+     `buildLoadout` takes exactly one weight card in fifteen and no friction; no archetype
+     loadout carries a weight card and three carry friction. THE BUILT DECK IS THE ONE EVERY
+     BAND NUMBER RIDES (SIM-8), so the rate that justified a design decision was 145x wrong for
+     the population the project actually measures through.
+
+     WHAT IS GUARDED IS THE DIVERGENCE ITSELF, behaviourally, because prose cannot be. If the
+     builder stops taking a weight card the 17.46% quietly becomes wrong, and this fails. */
+  const owned = Object.keys(E.CARDS)
+    .filter(n => ['common', 'uncommon', 'rare'].includes(E.CARDS[n].rarity ?? 'common'))
+  const built = E.buildLoadout({ ...E.freshRun(0, 0, 1), owned, gear: [], boons: [],
+    mutators: [], arch: 0 }, [], owned)
+  const fxOf = n => E.CARDS[n].fx || ''
+  const count = (deck, fx) => deck.filter(n => fxOf(n) === fx).length
+
+  ok(count(built, 'weight') > 0,
+    'the built deck no longer carries a weight card, so the 17.46% recorded against it is stale and LANE-1\'s corrected note is wrong again')
+  eq(count(E.DEFAULT_LOADOUT, 'weight'), 0,
+    'the default deck now carries a weight card, so the two populations no longer diverge and the correction describes nothing')
+  for (const a of E.ARCHETYPES)
+    eq(count(a.loadout, 'weight'), 0,
+      `${a.name} starts with a weight card, so a new player meets the effect and the 0.09% is stale`)
+
+  /* `guard` is the one LANE-1 was right about, in both populations, and it is asserted so the
+     dead list CARD-24 inherits cannot quietly gain or lose a member. */
+  eq(count(built, 'guard'), 0, 'the built deck carries a guard card, so `guard` is no longer the dead one')
+  eq(count(E.DEFAULT_LOADOUT, 'guard'), 0, 'the default deck carries a guard card')
+
+  /* And the note itself has to carry the correction, or the next ticket reads 0.12% and prices
+     a mechanic that is on the board a sixth of the time. Read off STRIPPED source would defeat
+     the point — this IS the comment — so it is read raw and anchored on the numbers. */
+  const eng = readFileSync('src/engine.ts', 'utf8')
+  const note = region(eng, 'LANE-1: MATCHING', ['export const MATCH_SHED'],
+    { min: 600, what: "LANE-1's matching note" })
+  ok(/17\.46%/.test(note) && /CARD-23/.test(note),
+    'LANE-1 records 0.12% for weight with no population attached again — the number that justified granting the effect through the board')
+})
+test('CARD-22: the per-card probe prices a deck a player could hold', () => {
+  /* SIM-8's SIBLING, and the same bug one instrument along. SIM-8 found the BAND pinned on an
+     illegal deck — six of fifteen slots were beta cards `buildable()` refuses, worth +10.5.
+     The per-card probe in `cards` mode had it too, and nobody looked: it added THREE copies of
+     every card while `copyLimit` is 1 for a rare and 2 for an uncommon, so every rare and
+     uncommon it has ever priced was priced on a deck no player can hold.
+
+     IT FABRICATED FINDINGS, which is how this was caught. An audit read six cards as more than
+     2sd below their own rarity and named three RARES among them. Re-measured at one copy:
+     Quiet Feet -11.3 -> +1.4, Second Skin -11.3 -> +10.9, Local Knowledge -20.9 -> -4.9. Three
+     of the six were arithmetic on an impossible deck.
+
+     AND IT ADDED RATHER THAN REPLACED, which is a second, independent error. A 14-card shell
+     plus 3 copies is a 17-card deck, so every delta carried a dilution term scaling with how
+     good the shell already was — the same card read -11.3 against a 70.2% shell and -24.6
+     against an 81.4% one. Swapping holds the size fixed. Sidepull reads -11.3 added and -28.5
+     swapped on the SAME shell, which is the worst card measured and one the additive table
+     never flagged.
+
+     On the fixed instrument the within-rarity outlier count went from six to ONE, and that one
+     is positive (Precise Feet +24). The rarity ladder came out cleanly monotonic instead:
+     common -10.9, uncommon +6.9, rare +12.7. */
+  /* STRIPPED SOURCE, and that is not tidiness. Written against raw source first, the
+     CARDS_ADD assertion below passed on a mutant that had DELETED the flag — because the
+     comment beside it still says the words `CARDS_ADD=1`. A guard that matches its own prose
+     verifies nothing, which is ART-4's class and the second time this project has hit it. */
+  const sim = stripComments(readFileSync('sim/run.mjs', 'utf8'))
+  const cards = region(sim, "if (mode === 'cards')", ['\nif (mode', '\nfunction '],
+    { min: 400, what: "the per-card probe" })
+  ok(/E\.copyLimit\(/.test(cards),
+    'the per-card probe no longer asks copyLimit how many copies are legal, so it is free to price a deck nobody can hold — SIM-8, one instrument along')
+  ok(/CARDS_ADD/.test(cards),
+    'the flag that reproduces the old additive three-copy probe is gone, so every number measured before CARD-22 becomes unreproducible rather than merely wrong')
+  /* SWAP, not push. Checked on the helper rather than the whole block, because the block
+     legitimately pushes under the CARDS_ADD branch — a file-wide ban would fail on the
+     compatibility path this ticket deliberately kept. */
+  const helper = region(cards, '  const swapIn =', ['\n  for (', '\n  const '],
+    { min: 60, what: 'the probe swap' })
+  ok(/=\s*E\.spawn\(name\)/.test(helper) && !/\.push\(/.test(helper),
+    'the probe adds copies instead of replacing them, so every delta is a dilution term as much as a card')
+
+  /* THE BEHAVIOURAL HALF, and it is the rule the bug actually broke: the copy count the probe
+     uses has to be one a LOADOUT could carry. `copyLimit` caps copies of one card and
+     RARE_SLOTS / UNCOMMON_SLOTS cap the rarity across the deck, so both have to allow it —
+     three copies of a rare failed the first and the second at once. */
+  for (const [r, slots] of [['rare', E.RARE_SLOTS], ['uncommon', E.UNCOMMON_SLOTS]]) {
+    const k = E.copyLimit(r)
+    ok(k <= slots,
+      `the probe would price ${k} copies of a ${r} into a loadout that may hold ${slots} of that rarity at all`)
+    ok(k >= 1, `copyLimit('${r}') is ${k}, so the probe would price nothing`)
+  }
 })
 test('SIM-8: the band measures a deck a player can actually hold', () => {
   /* SIM-8. The pinned band was measured on an ILLEGAL deck for as long as there has been a
@@ -3787,7 +4375,10 @@ test('FEET-1: the wall can make your feet matter, and every foothold says what i
   /* THE EXACT LINE, not the pattern. `supWith(c, true)` appears twice in this window — the
      other is the nothing-under-you branch — so the loose form passed while the injection that
      blanks the staying branch went straight through it. Found by that injection. */
-  ok(/clears \? now \+ FOOT_CLEAR_VALUE : now \+ supWith\(c, true\)/.test(pick),
+  /* INFO-2 moved the line under this window: the clear is a probability over the shown span
+     now, and the staying branch is the (1 - p) side of the same expression. The claim is
+     unchanged — a foot that stays is scored on what it pays once bedded in. */
+  ok(/return now \+ p \* FOOT_CLEAR_VALUE \+ \(1 - p\) \* supWith\(c, true\)/.test(pick),
     'the policy no longer scores a staying foot on what it will pay once settled, so Solid is invisible to it')
 
   /* SOLID IS A CHARACTERISTIC OF THE ROCK, NOT THE DEFAULT. It was 5 of the 10 weight on every
@@ -4722,6 +5313,483 @@ test('ROPE-2: the rack ROPE-1 built can actually be got', () => {
   }
 
 })
+test('ROPE-2 second row: the rope is provisioned off the trip you are on', () => {
+  /* THE ROW ASKED FOR TWO THINGS AND ONE OF THEM HAD ALREADY SHIPPED. "A rope-first campaign
+     act or a multi-pitch finale variant is still open" — the finale variant went out at v10.48
+     (`specOf`: the finale you roped is three pitches), so half the row was stale for twenty-six
+     versions. It is asserted here rather than re-argued.
+
+     WHAT A ROPE IS WORTH, which nobody had measured and a rope-first act needs before anybody
+     authors one. Four act-3 lines that are not roped as authored, roped by hand, same seeds,
+     same fourteen-card deck, 1,600 sessions an arm:
+
+         as authored, no rack .......  8.2%
+         roped, no rack .............  8.3%     the rope alone: +0.1
+         unroped, carrying a rack ...  1.8%
+         roped, carrying a rack ..... 10.2%     the rope, with a rack: +8.4
+
+     So the belays are worth NOTHING on their own and the whole value is in the CLIPPING —
+     runout reset and CLIPPED_POWER — which is why a third pitch adds +0.1 over a second. A
+     rope-first act is therefore not a difficulty change, it is a DECK-CONSTRUCTION act: it
+     would force a rack, and the rack is what pays. (The 6.4 between the two no-rope arms is
+     the fixture displacing a rest, not the rack's true price — read it as "carrying a rack you
+     cannot use costs you the cards it replaced", which is ROPE-1's whole point.)
+
+     AND THE PROVISIONING HAD TO FOLLOW THE RUN. Three places asked "is there rope on this
+     trip" and all three read the static table, while RUN-15 made which line fills a climb slot
+     a property of the run. Measured: the divergence is latent rather than live — MAP_SWAP_IN
+     is camps and shops, so act 3 keeps its two roped projects and 0.0% of runs have no roped
+     node — but 4.7% are offered no roped CLIMB, the roped share swings run to run against a
+     static 0.286, and the moment a roped climb lands in an act with no roped project the rack
+     appears for ropes that are not there and the card tells the player so. */
+  const finale = E.ROUTES.findIndex(r => r.finale)
+  ok(finale >= 0, 'there is no finale, so the variant below cannot be checked')
+  const solo = E.specOf({ ...E.freshRun(finale, 0, 1), routeIdx: finale, ropedUp: false })
+  const roped = E.specOf({ ...E.freshRun(finale, 0, 1), routeIdx: finale, ropedUp: true })
+  ok(!solo.roped && roped.roped,
+    'the finale no longer changes shape when you rope up — that is ROPE-2 §3, and the second row calls it open')
+  ok((roped.pitches ?? 0) > 1,
+    `the roped finale is ${roped.pitches} pitch — the multi-pitch variant the row asks for is what shipped at v10.48`)
+
+  /* THE DERIVATION READS THE RUN. Asserted by finding a run whose own map disagrees with the
+     table — if none exists inside a bounded search, the derivation is not reading the run. */
+  const staticShare = (act) => {
+    const idx = E.ACTS[act].flat().map(n => n.routeIdx).filter(i => i >= 0)
+    return idx.length ? idx.filter(i => E.ROUTES[i]?.roped).length / idx.length : 0
+  }
+  const ropedAct = E.ACTS.findIndex((_, a) => staticShare(a) > 0)
+  ok(ropedAct >= 0, 'no act carries a rope, so nothing below is asserting anything')
+  /* FIFTY SEEDS, AND THE BOUND IS LOAD-BEARING: `ropeOnTrip` evicts its cache past 64 entries,
+     so a longer loop clears the very entry the cache-key injection needs the bare act below to
+     collide with — measured, at 200 seeds that injection reads green while the key is broken.
+     Raise this and you retire an injection without noticing. */
+  let differs = 0, seenShares = new Set()
+  for (let seed = 1; seed <= 50; seed++) {
+    const s = { ...E.freshRun(0, 0, 1), act: ropedAct, runSeed: seed }
+    const got = E.ropeOnTrip(s)
+    seenShares.add(got.share.toFixed(4))
+    if (Math.abs(got.share - staticShare(ropedAct)) > 1e-9) differs++
+    eq(got.share, E.ropeOnTrip(s).share, `ropeOnTrip disagreed with itself on seed ${seed} — the cache is answering for a map it did not see`)
+  }
+  ok(differs > 0,
+    'every run reports the table\'s own roped share, so the rack and the valuation are still reading the static map and RUN-15 is invisible to them')
+  ok(seenShares.size > 1, `the roped share is the same ${seenShares.size} value in every run — the derivation is not reading the run`)
+  // an act with no rope on it says so, whatever the run
+  const bare = E.ACTS.findIndex((_, a) => staticShare(a) === 0)
+  if (bare >= 0) ok(!E.ropeOnTrip({ ...E.freshRun(0, 0, 1), act: bare, runSeed: 7 }).any,
+    `act ${bare + 1} has no roped line and the trip says it has rope — the rack would be sold for nothing`)
+
+  /* AND ALL THREE CONSUMERS GO THROUGH IT, because the failure this fixes is three copies of
+     one question drifting apart — the ENG-26 class, and the reason RUN-14 had to move the
+     harness onto `tierNodes` in the first place. */
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const shop = region(eng, 'export function stockShop', ['export function priceOf',
+    '\nexport function ', '\nexport const '], { min: 200, what: 'stockShop' })
+  ok(/ropeOnTrip\(s\)/.test(shop), 'the post stocks its rack off the static table again')
+  const value = region(eng, 'export function cardValue', ['export function cardHints'],
+    { min: 400, what: 'cardValue' })
+  ok(/ropeOnTrip\(s\)\.share/.test(value),
+    'the valuation prices protection off the static table again, so a run with no rope on it still pays for a rack')
+  const hints = region(eng, 'export function cardHints', ['\nexport function ', '\nexport const '],
+    { min: 200, what: 'cardHints' })
+  ok(/ropeOnTrip\(s\)\.any/.test(hints),
+    'the card still tells the player "there is rope on this trip" off the static table — the one place it is a lie rather than a mispricing')
+})
+
+test('HOLD-2: a flake gives to whoever lets the other hand go first', () => {
+  /* THE BOARD HAS HELD THREE HOLDS THAT IGNORE EACH OTHER SINCE v0, and the obvious fix was
+     measured dead before it was built. Over 45,488 turns of the real campaign both hand holds
+     are up on 97.2% and a lane clears with the other hold still standing on 97.7% — so "the
+     neighbour went" is not a condition here, it is the default, and CARD-20 already paid to
+     learn what a near-constant condition is worth. What varies is the ORDER: both hand lanes
+     are clearable on 34.7% of turns, which is a decision the player already makes and the game
+     has never paid for.
+
+     WORTH: BAND-NEUTRAL, and the decomposition this comment used to carry is retracted. Three
+     arms at n=3000 read 58.9 stripped / 59.0 with the flake / 59.1 shipped — every gap inside
+     0.2. The -4.9 / +3.1 story it reported first was measured at n=900, where the band cannot
+     resolve a texture change; the v10.77 ledger row retracts it with both sets of numbers.
+
+     ORDER, NOT THE CLEAR, and that is what keeps the preview honest: a dyno's clear is an RNG
+     roll, so a rule firing on "the neighbour cleared" could not be previewed exactly, and
+     UX-4's 100%-accurate preview is a pillar this project guards in three places. */
+  const flake = Object.entries(E.HOLD_STATS).find(([, d]) => d.ability === 'Chained')
+  ok(flake, 'no hold carries Chained, so the mechanic is gone')
+  const [flakeName, flakeDef] = flake
+  const H = (name, grip, bite = 3) => ({ uid: 40 + grip, name, grip, bite, crux: false, clean: false })
+  const base = { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null,
+    gear: [], boons: [], mutators: [], pump: 0, beta: [], assist: true }
+  const mover = E.synth(3, 8)
+  const hold = H(flakeName, flakeDef.grip)
+  const other = H('jug', 3)
+
+  /* THE PREDICATE. Second in the order gives; first does not; and the feet lane is not a hand,
+     so it can neither grant the chain nor claim it. */
+  const at = arr => new Map(arr.map((l, k) => [l, k]))
+  // HOLD-3: the predicate reads the committed board too, because an empty lane cannot go first
+  const both = [E.synth(1, 8), E.synth(1, 8), null]
+  ok(E.chainGive(hold, 0, at([1, 0, 2]), both), 'the flake does not give when the other hand went first')
+  ok(!E.chainGive(hold, 0, at([0, 1, 2]), both), 'the flake gives to the hand that went FIRST — the order buys nothing')
+  ok(!E.chainGive(hold, 2, at([0, 2, 1]), both), 'a foot is claiming the chain, and the chain is about the other HAND')
+  ok(!E.chainGive(other, 0, at([1, 0, 2]), both), 'a hold with no Chained ability is giving ground')
+  ok(!E.chainGive({ ...hold, clean: true }, 0, at([1, 0, 2]), both),
+    'a brushed flake still chains, so brushing does not strip this ability as it strips every other')
+
+  /* IT IS WORTH EXACTLY CHAIN_GIVE, AND THE PREVIEW SAYS SO BEFORE YOU COMMIT. The grip is set
+     so the card clears only with the discount — the whole point is a turn that goes one way or
+     the other on the order alone. */
+  const tight = H(flakeName, mover.power + E.CHAIN_GIVE)
+  const stFirst = { ...base, boardH: [tight, other, null], boardP: [mover, E.synth(2, 8), null], order: [0, 1] }
+  const stSecond = { ...stFirst, order: [1, 0] }
+  ok(!E.previewLane(stFirst, 0).clears && E.previewLane(stSecond, 0).clears,
+    'the order does not change what the preview says about a flake, so the ability is invisible where the player reads it')
+  const gone = E.resolve(stSecond, new E.RNG(3))
+  const stayed = E.resolve(stFirst, new E.RNG(3))
+  ok(!gone.boardH[0] && stayed.boardH[0],
+    'the resolution disagrees with the preview about the flake — one formula, two answers')
+
+  /* AND THE POLICY CAN USE IT, which is the difference between a mechanic and a dead one:
+     ENG-25's failure has been hit five times here, so the ordering clause is asserted. */
+  const played = E.autoPlay({ ...base, boardH: [tight, other, null], boardP: [null, null, null],
+    piles: { ...base.piles, hand: [mover, E.synth(2, 8)] } }, new E.RNG(3))
+  eq(played.order[0], 1,
+    'the policy still resolves 0, 1, 2 with a flake on the board — every measurement through it prices the ability at zero')
+
+  // a characteristic, not the wall: FEET-1's lesson about Solid at 5 of 10
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const styles = region(eng, 'const STYLES', ['export const CRUX_CHAR', '\nexport const ', '\nconst '],
+    { min: 200, what: 'the style weights' })
+  const flakeW = [...styles.matchAll(new RegExp(`'${flakeName}': (\\d+)`, 'g'))].map(m => Number(m[1]))
+  ok(flakeW.length >= 1, 'the flake is on no style at all, so no route can deal one')
+  ok(Math.max(...flakeW) <= 3,
+    `the flake is weighted ${Math.max(...flakeW)} on some style — FEET-1 measured what happens when a characterful hold becomes the default`)
+  ok(E.KEYWORDS.some(k => k.name === 'Chained' && /other hand/.test(k.text)),
+    'Chained is not in the glossary, so the one rule on the board about ORDER is unexplained')
+})
+
+test('HOLD-3: going second costs a pump, and the policy pays it only where it buys a hold', () => {
+  /* HOLD-2 SHIPPED SAYING THE ORDER WAS A TRADE AND IT WAS NOT, and this ticket measured that
+     rather than arguing it. Every turn where the policy reorders, resolved TWICE from a forked
+     RNG over 84,346 campaign turns and 7,255 decisions: the lane sent first blew on 69.0% of
+     them and that changed how many cards you lost on 0.0%. STRUCTURAL, not a sample — whether a
+     lane blows is Contact against Bite, and `biteAgainst` reads the committed board, which is
+     fixed for the whole lane loop (ENG-18 says so, because that is what lets the preview
+     resolve in one pass). The two orders produced an identical turn on 88.7%, taking was better
+     on 11.0%, and declining on 0.3% — 22 turns, every one an `opposes` card losing its partner.
+
+     So the cost is BUILT out of the condition HOLD-2 named and could not make pay: the hand you
+     sent first comes off, and you are hanging there alone. CHAIN_HANG pump, on 69.0% of the
+     turns the chain gives. Deterministic and order-independent, so it previews exactly. */
+  const flake = Object.entries(E.HOLD_STATS).find(([, d]) => d.ability === 'Chained')
+  ok(flake, 'no hold carries Chained, so there is nothing here to price')
+  const [flakeName] = flake
+  const H = (name, grip, bite = 3) => ({ uid: 60 + grip, name, grip, bite, crux: false, clean: false })
+  const base = { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null,
+    gear: [], boons: [], mutators: [], pump: 0, beta: [], assist: true }
+  const mover = E.synth(3, 8)
+  const other = H('jug', 3)
+  const partner = E.synth(2, 8)
+
+  ok(E.CHAIN_HANG > 0,
+    'the chain gives 2 Grip for nothing, so it is a discount with a skill floor and not a decision — which is the limit HOLD-2 recorded in its own row and this ticket exists to close')
+
+  /* THE PRICE, ISOLATED. A flake this card clears from either side, so the ONLY thing the order
+     changes is the hang — and the hand sent first is on a hold that takes it off, which is the
+     condition the charge fires on. The gap between the two resolutions is exactly CHAIN_HANG. */
+  const easy = H(flakeName, mover.power)
+  const doomed = E.synth(2, 1)                       // 1 Contact against a 3-Bite jug: it goes
+  const stTake = { ...base, boardH: [easy, other, null], boardP: [mover, doomed, null], order: [1, 0] }
+  const stFirst = { ...stTake, order: [0, 1] }
+  ok(E.laneBlows(stTake, 1), 'the hand sent first is holding on, so this fixture never charges the hang')
+  const took = E.resolve(stTake, new E.RNG(3)), went = E.resolve(stFirst, new E.RNG(3))
+  ok(!took.boardH[0] && !went.boardH[0],
+    'the fixture stopped clearing both ways, so it is no longer isolating the hang from the clear')
+  eq(took.pump - went.pump, E.CHAIN_HANG,
+    'resolving second costs nothing, so the chain is free again and the order is not a decision')
+
+  /* AND NOT WHEN THAT HAND HOLDS ON. That is the whole shape of it: the same 2 Grip, and
+     whether it costs anything is a thing the player can read off the other lane. A charge that
+     fired either way would be a flat tax on using the ability. */
+  const safeTake = { ...stTake, boardP: [mover, partner, null] }
+  ok(!E.laneBlows(safeTake, 1), 'the partner is coming off, so this fixture cannot test the free case')
+  eq(E.resolve(safeTake, new E.RNG(3)).pump,
+    E.resolve({ ...safeTake, order: [0, 1] }, new E.RNG(3)).pump,
+    'the chain charges a pump even when the hand sent first holds on, so it is a flat tax and not a condition on the board')
+
+  /* AND IT IS CHARGED WHATEVER THIS LANE THEN DOES. The hang already happened — a rule that
+     refunded it on a miss would make taking the chain free on exactly the turns it does not
+     pay, which is the same discount wearing a different shape. */
+  const hard = H(flakeName, mover.power + E.CHAIN_GIVE + 3)
+  const missTake = { ...base, boardH: [hard, other, null], boardP: [mover, doomed, null], order: [1, 0] }
+  const missFirst = { ...missTake, order: [0, 1] }
+  const mT = E.resolve(missTake, new E.RNG(3)), mF = E.resolve(missFirst, new E.RNG(3))
+  ok(mT.boardH[0] && mF.boardH[0], 'the fixture is clearing, so it is not measuring a miss')
+  eq(mT.pump - mF.pump, E.CHAIN_HANG,
+    'the hang is refunded when the lane misses, so taking the chain costs nothing on the turns it does not pay')
+
+  /* THE PREVIEW PROMISES THE PUMP IT CHARGES — UX-4. The flag comes first because `previewPump`
+     reads it off `LanePreview` rather than recomputing the predicate: one answer, not two, and
+     the two failures are told apart rather than both arriving as a pump disagreement. */
+  ok(E.previewLane(stTake, 0).hang && !E.previewLane(stFirst, 0).hang,
+    'the preview does not report which lane is paying the hang, so the screen cannot show the player what is charging them')
+  ok(!E.previewLane(safeTake, 0).hang,
+    'the preview charges the hang against a hand that holds on, so it promises a pump the resolution does not take')
+  ok(!E.previewLane(stTake, 1).hang,
+    'a lane with no Chained hold is reported as hanging, so the pump lands on the wrong lane')
+  for (const st of [stTake, stFirst, safeTake, missTake, missFirst]) {
+    const lanes = [0, 1, 2].map(i => E.previewLane(st, i))
+    eq(E.previewPump(st, lanes), E.resolve(st, new E.RNG(3)).pump,
+      'the preview and the resolution disagree on what the chain costs')
+  }
+
+  /* AN EMPTY HAND CANNOT GO FIRST. `laneAt` indexes all three lanes whether or not anything is
+     in them, so before this the chain gave against an empty lane — 2.4% of every give, 0.8% of
+     them with no hold there at all. Free was harmless; charging a pump to hang and wait for a
+     hand that is not on the wall is not. */
+  const at = arr => new Map(arr.map((l, k) => [l, k]))
+  const hold = H(flakeName, 6)
+  ok(E.chainGive(hold, 0, at([1, 0, 2]), [null, partner, null]),
+    'the chain does not give with the other hand carded and resolving first, so the rule is gone')
+  ok(!E.chainGive(hold, 0, at([1, 0, 2]), [null, null, null]),
+    'an EMPTY hand lane counts as having gone first, so the flake gives — and now charges a pump — for a hand that is not on the wall')
+
+  /* THE POLICY PRICES IT, which is the whole ticket: it took the discount on 99.7% of the turns
+     it was offered because the discount was free. It buys the 2 Grip only where the 2 Grip
+     converts THIS lane. Both hand lanes are carded and the hand is empty, so the fill loop has
+     nothing to do and the ordering clause is the only thing under test; `moveUsed` is set
+     because a signature that reads a hold would move the span this decision is made against. */
+  const play = (grip, c = mover) => E.autoPlay({ ...base, moveUsed: true,
+    boardH: [H(flakeName, grip), other, null], boardP: [c, partner, null],
+    piles: { ...base.piles, hand: [] } }, new E.RNG(3))
+  eq(play(mover.power + E.CHAIN_GIVE).order[0], 1,
+    'the policy will not send the other hand first even where the chain turns a miss into a clear — ENG-25, and every measurement through it prices the ability at zero')
+  ok(play(mover.power).order[0] !== 1,
+    'the policy pays a pump for a chain on a hold it already clears, which is the free discount this ticket priced')
+  ok(play(mover.power + E.CHAIN_GIVE + 4).order[0] !== 1,
+    'the policy pays a pump for a chain on a hold it misses anyway, so the price buys nothing')
+  ok(play(mover.power + E.CHAIN_GIVE, { ...mover, fx: 'commit' }).order[0] !== 1,
+    'the policy buys 2 Grip for a DYNO, whose clear is the roll and never the target, so the pump is spent on a number the resolution does not consult')
+
+  ok(E.KEYWORDS.some(k => k.name === 'Chained' && /pump/.test(k.text)),
+    'the glossary still describes Chained as a free 2 Grip, so the player is not told what it costs')
+  ok(/pump/.test(E.HOLD_STATS[flakeName].text),
+    'the flake on the board does not say it costs a pump, and a price the player only sees in the total is not a decision')
+})
+
+test('CARD-21: the lane carries the combination, because nothing else lasts', () => {
+  /* WHY THE LANE AND NOT THE CARD. SIM-9 measured that a placed hand card stands 1.09 turns and
+     83.7% of them blow the turn they land, so a combination held on the CARD has almost no board
+     to pay on — CARD-20 went sideways across lanes for that reason. The lane persists: over
+     45,488 turns a hand lane clears 1.18 times a turn, and the discount a Setup move leaves is
+     collected 86.7% of the time. Not on every clear, which HOLD-2 measured at 97.7% of turns —
+     a flat discount wearing a combination's clothes — so it rides two cards and the rate is what
+     the player built (a Setup move is out on 18.4% of turns, leaving the lane worked on 9.9%).
+
+     APPLIED WHERE THE HOLD ENTERS THE LANE, in `refillAndDraw`, which is the whole reason this
+     needed no GameState field and no save migration: `gripShown`, `previewLane` and `resolve`
+     read the hold, so none of them has to know the rule exists. */
+  const carriers = Object.entries(E.CARDS).filter(([, c]) => c.fx === 'setup')
+  ok(carriers.length >= 2, `only ${carriers.length} card carries Setup — a singleton mechanic is CARD-18's complaint`)
+  for (const [n, c] of carriers) {
+    eq(c.kind, 'move', `${n} carries Setup and is not a move, so it can never clear a hold to leave one`)
+    ok(c.text.includes('Setup') && c.text.includes(`${E.SETUP_GIVE} Grip`),
+      `${n} leaves the lane worked and its text does not say so — CARD-17's rule`)
+  }
+
+  /* THE HOLD THAT ARRIVES NEXT COMES EASIER, AND ONLY AFTER A SETUP MOVE CLEARS. Two runs of
+     the same fixture, differing only in the card, so the hold deck and every draw match. */
+  const setupCard = E.spawn(carriers[0][0])
+  const plain = Object.keys(E.CARDS).find(n => {
+    const c = E.CARDS[n]
+    return c.kind === 'move' && !c.fx && (c.lane === 'hand' || c.lane === 'any')
+      && c.power >= setupCard.power && c.contact >= setupCard.contact
+  })
+  ok(plain, 'no plain control move at least as strong as the Setup carrier, so the comparison below is confounded')
+  const soft = { uid: 61, name: 'jug', grip: 1, bite: 1, crux: false, clean: false }
+  const next = { uid: 62, name: 'crimp', grip: 6, bite: 2, crux: false, clean: false }
+  const base = { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null, gear: [], boons: [],
+    mutators: [], pump: 0, beta: [], assist: true, holdDeck: [next], feetDeck: [],
+    boardH: [soft, null, null], order: [0] }
+  const after = c => {
+    const st = { ...base, boardP: [E.spawn(c), null, null],
+      piles: { draw: [], discard: [], exhaust: [], hand: [] } }
+    return E.resolve(st, new E.RNG(5)).boardH[0]
+  }
+  const viaSetup = after(carriers[0][0]), viaPlain = after(plain)
+  ok(viaSetup && viaPlain && viaSetup.uid === next.uid && viaPlain.uid === next.uid,
+    'the fixture did not bring the next hold up in that lane, so nothing below is tested')
+  eq(viaPlain.grip - viaSetup.grip, E.SETUP_GIVE,
+    'clearing with a Setup move leaves the lane no easier than clearing with a plain one — the mechanic is dead')
+  // and it cannot drive a hold to nothing
+  const tiny = { ...next, grip: 1 }
+  const st1 = { ...base, holdDeck: [tiny], boardP: [E.spawn(carriers[0][0]), null, null],
+    piles: { draw: [], discard: [], exhaust: [], hand: [] } }
+  ok((E.resolve(st1, new E.RNG(5)).boardH[0]?.grip ?? 0) >= 1,
+    'a Setup move can hand you a hold at zero Grip, which is a hold that is not there')
+
+  /* THE POLICY CAN SEE IT — a TIE-BREAK among cards that already clear, never a preference, or
+     it would spend present Power on a future. ENG-25 has caught six mechanics the policy could
+     not use; this asserts the clause exists and that it does not outrank the clear. */
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const pick = region(eng, 'export function autoPlay', ['const ab = boonMods'],
+    { min: 600, what: 'the hand pick' })
+  ok(/b\.fx === 'setup'/.test(pick),
+    'the policy no longer prefers a Setup move, so every number is measured by a player who cannot use it')
+  ok(/const d = scorePow\(b\) - scorePow\(a\)/.test(pick),
+    'the Setup preference no longer sits behind the Power comparison — the policy is spending the turn on a future')
+
+  /* AND THE DRAFTER PRICES WHAT IT PAYS. The first cut priced it at 0.28 — how often a cleared
+     lane is carded on the VERY NEXT turn — which is the wrong window, because the discounted
+     hold sits there until it is worked. Measured on the mechanic itself: 86.7%. */
+  const stV = { ...E.freshRun(4, 0, 1), inRun: true, gear: [], boons: [], mutators: [] }
+  const term = E.cardValue(stV, setupCard, []) - E.cardValue(stV, { ...setupCard, fx: '' }, [])
+  ok(Math.abs(term - E.SETUP_GIVE * 2.5 * E.SETUP_RATE) < 1e-9,
+    `the drafter prices Setup at ${term.toFixed(2)} rather than at what it pays`)
+  ok(E.SETUP_RATE > 0.5,
+    `Setup is priced at a ${E.SETUP_RATE} collection rate against a measured 0.867 — the drafter is being told it is worth a fraction of what it is`)
+  ok(E.KEYWORDS.some(k => k.name === 'Setup' && /lane/.test(k.text)),
+    'Setup is not in the glossary, so the only rule in the game the LANE remembers is unexplained')
+})
+
+test('ARCH-1: every climber has a verb, and the policy spends it', () => {
+  /* THE FIVE SIGNATURES WERE ALL PASSIVE STAT DIALS — "+3 Power on every move", "beta is worth
+     double", "settles all the way to +3" — so the roster SCORED differently and PLAYED
+     identically. There was no moment in a burn where being the Trad Dad rather than the Comp Kid
+     changed what you could DO. One `signatureStep` over the table rather than five bespoke rules,
+     for SIM-5's reason: a rule written per-climber is a rule added to one and forgotten in four.
+
+     WHAT THE TUNING COST, because three of the five were wrong first and the corrections are the
+     content of this ticket (ladder at n=2000, floor 5, ceiling 2.2x):
+       Commit  13.3 -> 2.0   banning the burn's RESTS. SIM-9 measured shaking out at +21 points
+                              of session send, so the cost was worth more than 2 Power ever is.
+               13.3 -> 10.6  costing 2 PUMP, spent on turn one.
+               13.3 -> 9.0   costing 2 pump, spent where the Power converts a miss.
+               13.3 -> 13.4  costing the FLOW, which is what Dig In already pays with.
+       Dig In  10.7 -> 15.9  capped at 4: it scales with turns survived and this climber runs
+                              the longest burns in the game, so it scaled with its own signature.
+               10.7 -> 13.1  capped at 2, and the roster spread came back 2.04x -> 1.35x.
+       Read     8.3 -> 7.8   read alone: nothing. A one-off DRAW: also nothing, and structurally
+                              so — `refillAndDraw` tops the hand to a target every turn, so a
+                              card drawn mid-turn is one the refill does not draw. That is why
+                              BAL-16 measured a point of HAND at +15.6 here and a draw at zero.
+                8.3 -> 13.6  a card of HAND for the burn.
+     Roster after: 14.6 / 13.6 / 10.8 / 13.1 / 13.4 — floor 10.8 against 8.3 before, spread
+     1.35x against 1.60x. Every climber gained and the roster got TIGHTER, which is the outcome
+     a roster-wide ability has to have or it is a spread problem wearing a feature's clothes. */
+  for (const a of E.ARCHETYPES) {
+    ok(a.move && a.move.name && a.move.text,
+      `${a.name} has no signature move, so it is a stat block again`)
+    ok(a.move.text.length > 20, `${a.name}'s move does not say what it does: ${a.move.text}`)
+  }
+  const ids = E.ARCHETYPES.map(a => a.move.name)
+  eq(new Set(ids).size, ids.length, `two climbers share a signature move: ${ids.join(', ')}`)
+
+  const stFor = (id, extra = {}) => {
+    const i = E.ARCHETYPES.findIndex(a => a.id === id)
+    const hold = { uid: 70, name: 'crimp', grip: 6, bite: 3, crux: false, clean: false }
+    return { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null, arch: i, phase: 'climb',
+      gear: [], boons: [], mutators: [], pump: 4, turn: 3, beta: [], moveUsed: false,
+      boardH: [hold, { ...hold, uid: 71 }, null], boardP: [null, null, null],
+      holdDeck: [{ ...hold, uid: 72 }, { ...hold, uid: 73 }, { ...hold, uid: 74 }], ...extra }
+  }
+  // once a burn, for everybody
+  for (const a of E.ARCHETYPES) {
+    const once = E.signatureStep(stFor(a.id))
+    ok(once.moveUsed, `${a.name}'s move did not fire at all`)
+    eq(E.signatureStep(once).moveUsed, true, `${a.name} spent its move twice in a burn`)
+    eq(JSON.stringify(E.signatureStep(once)), JSON.stringify(once),
+      `${a.name}'s move fires again once spent — once a burn is the whole shape of it`)
+  }
+  // and each does its own thing
+  const boul = E.signatureStep(stFor('boulderer'))
+  ok(boul.beta.length > 0, 'Work It taught the Boulderer nothing')
+  const comp = E.signatureStep(stFor('comp'))
+  ok(comp.readAhead >= E.ARCH_READ, 'Read The Set read nothing')
+  eq(comp.handBonus, E.ARCH_READ_HAND,
+    'Read The Set no longer keeps a card of HAND — a one-off draw is void against the refill, which is why this is a hand bonus')
+  ok(E.signatureStep(stFor('trad')).bomber, 'Bomber does not hold the placement')
+  const dug = E.signatureStep(stFor('alpine', { pump: 6, turn: 9, flow: 3 }))
+  ok(dug.pump < 6 && 6 - dug.pump <= E.ARCH_DIG_MAX,
+    `Dig In gave back ${6 - dug.pump} against a cap of ${E.ARCH_DIG_MAX} — uncapped it scales with this climber's own longest-burn signature`)
+  eq(dug.flow, 0, 'Dig In no longer costs the flow, so the shed is free')
+  const com = E.signatureStep(stFor('onsight', { flow: 3 }))
+  ok(com.commitPower, 'Commit buys no Power')
+  eq(com.flow, 0, 'Commit no longer costs the flow — and it must not cost pump or rests, which measured at -4.3 and -11.3')
+  eq(com.pump, 4, 'Commit costs pump again, which took this climber to 10.6% and 9.0% against 13.4% on the flow')
+
+  /* THE POLICY SPENDS ALL FIVE, or the whole ticket measures as nothing — ENG-25, which this
+     project has now hit eight times. Asserted at source AND by firing it. */
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const auto = region(eng, 'export function autoPlay', ['const ab = boonMods'],
+    { min: 600, what: 'the policy' })
+  ok(/if \(wantsIt\) st = signatureStep\(st\)/.test(auto),
+    'the policy never spends a signature move, so all five measure at zero')
+  for (const id of ['boulderer', 'comp', 'trad', 'alpine', 'onsight'])
+    ok(new RegExp(`'${id}'`).test(auto), `the policy has no heuristic for ${id}, so that climber's move is dead`)
+
+  // the per-burn flags reset on a fresh go, like savedBlow beside them
+  const spent = E.signatureStep(stFor('trad'))
+  const fresh = E.startBurn({ ...spent, burn: 2 }, new E.RNG(3))
+  ok(!fresh.moveUsed && !fresh.bomber && !fresh.commitPower && !fresh.handBonus,
+    'a fresh burn does not hand the signature move back')
+})
+
+test('INFO-3: you cannot read what nobody has read', () => {
+  /* INFO-2 MADE THE POLICY SEE A SPAN INSTEAD OF THE TRUTH, and this is the other half: the
+     game had uncertainty and the player almost never got to ENGAGE with it. Measured on the
+     v10.79 tree over 60,578 open lanes: 60.0% are span-limited, but the actual gamble — your
+     best card clears the span's LOW edge and not its high one — is only 5.0% of them, and it
+     lands 57.6% of the time. You are either sure, or you are guessing blind.
+
+     TWO CARRIERS OF ONE IDEA. An unclimbed line is unread BY CONSTRUCTION — that is what `fa`
+     means, and until now a first ascent differed from a guidebook route by a grip of dirt and
+     nothing else — and a `Blank` feature is the named version, on the two signatures whose
+     prose already said you could not see (The Mirage, The Whiteout).
+
+     AND IT WAS CHOSEN FOR THE PIN. ARCH-1 left ~0.2 points of band headroom, so a mechanic
+     that PAYS for gambling was unaffordable however well it read. Denying information is
+     band-NEGATIVE by construction, because the uncertainty-limited policy plays a span more
+     conservatively than a number — the one direction the pins could absorb. */
+  const blanks = E.SIGNATURES.filter(s => s.ability === 'Blank')
+  ok(blanks.length >= 1, 'no signature is Blank, so the named half of this is gone')
+  const base = { ...E.freshRun(4, 0, 1), inRun: true, skirmish: null, gear: [], boons: [],
+    mutators: [], assist: false }
+  const plain = { uid: 80, name: 'crimp', grip: 6, bite: 3, crux: false, clean: false }
+  const blank = { ...plain, uid: 81, sig: blanks[0].id }
+
+  // beta makes an ordinary hold exact and does nothing for a blank
+  const withBeta = { ...base, beta: ['crimp'] }
+  ok(E.holdKnown(withBeta, plain), 'beta no longer makes an ordinary hold exact')
+  ok(!E.holdKnown(withBeta, blank), 'a blank feature reads exact once you have beta — it is not blank')
+  ok(!E.gripShown(withBeta, blank).sure && E.gripShown(withBeta, plain).sure,
+    'the board shows a blank as a number, so nothing about it is uncertain where the player looks')
+  // and a read does not open it either
+  ok(!E.holdKnown({ ...base, beta: [] }, { ...blank, read: true }),
+    'reading a blank makes it exact, so the one hold the game says cannot be read can be read')
+
+  /* AN UNCLIMBED LINE IS UNREADABLE WHOLE, which is the half that carries the weight — a
+     signature is one hold and an FA is every hold on it. */
+  const fa = E.faRoute(0, new E.RNG(11))
+  ok(fa && fa.fa === true, 'faRoute no longer marks its line as unclimbed, so nothing below is tested')
+  const onFa = { ...base, skirmish: fa, beta: ['crimp'] }
+  ok(!E.holdKnown(onFa, plain),
+    'a hold on an unclimbed line reads exact from beta — there is no beta on a first ascent, which is what makes it one')
+  ok(!E.gripShown(onFa, plain).sure, 'the board shows an exact number on a line nobody has climbed')
+  // ...and the same hold on a route in the book still reads
+  ok(E.holdKnown({ ...base, skirmish: null, beta: ['crimp'] }, plain),
+    'the rule leaked off the unclimbed line onto every route in the book')
+
+  /* ONE FUNCTION, because certainty is made of two things the player sees — whether the hold
+     reads exact, and what the board prints — and they must not disagree. */
+  const eng = stripComments(readFileSync('src/engine.ts', 'utf8'))
+  const known = region(eng, 'export const holdKnown', ['export function gripShown'],
+    { min: 60, what: 'holdKnown' })
+  ok(/unreadable\(s, h\)/.test(known),
+    'holdKnown no longer asks whether the hold is readable at all, so a blank is exact again')
+  ok(E.KEYWORDS.some(k => k.name === 'Blank' && /first ascent/.test(k.text)),
+    'Blank is not in the glossary, and it is the one rule that takes information AWAY from the player')
+})
+
 test('ROUTE-16: no line is another line wearing a different name', () => {
   /* THE CORNICE AND THE HANGING SLAB WERE THE SAME ROUTE. Identical grade, style, clear,
      crux, feet, roped and pitches — and signatures with identical stats as well
@@ -4898,12 +5966,30 @@ test('ENG-9: content is content, and every caller still sees one engine', () => 
   }
   /* And the re-export is real: a name that moved must still be reachable through E, which
      is the only thing the callers actually rely on. */
-  for (const n of ['ROUTES', 'EVENTS', 'JOURNAL', 'BOONS', 'MUTATORS', 'WEATHER', 'ROCK', 'ASCENT', 'SEQUENCES'])
+  for (const n of ['ROUTES', 'EVENTS', 'JOURNAL', 'BOONS', 'MUTATORS', 'WEATHER', 'ROCK', 'ASCENT', 'SEQUENCES',
+    // ENG-9 third section
+    'HOLD_STATS', 'FEET_STATS', 'CRUX_CHAR', 'SIGNATURES', 'LINES', 'TUTORIAL_STEPS', 'GEAR',
+    'CONSUMABLES', 'PARTNERS', 'BETA_CARDS', 'REWARDS', 'TWEAKS', 'EARNED_CURSES', 'KEYWORDS',
+    'ACT_NAMES'])
     ok(E[n] !== undefined, `${n} moved out and is no longer re-exported, so every caller of it breaks`)
+  /* DECKS, FA_NAMES_A and FA_NAMES_B are not on the sim barrel — only the screens read them —
+     so `E[n]` cannot see them and asserting through it would be asserting nothing. Their
+     re-export is checked on the source instead, which is the actual claim: a name that moved
+     out is still reachable through engine.ts. Widening the barrel to make the check uniform
+     would be adding surface to satisfy a guard, which is backwards. */
+  for (const n of ['DECKS', 'FA_NAMES_A', 'FA_NAMES_B'])
+    ok(new RegExp(`export \\{[^}]*\\b${n}\\b[^}]*\\} from '\\./content'`, 's').test(eng),
+      `${n} moved out and engine.ts does not re-export it, so the screens that read it break`)
 
   // TWO: nothing in the content file is a rule
   ok(!/\bexport function\b/.test(content),
     'a function has moved into the content file, which is how a content file becomes a second engine')
+  /* ENG-9 third section: and no function of ANY shape. The line above only ever caught
+     `export function`, which the factories that killed v6.6 are not — `L` is
+     `export const L = (...pairs) => ...`, and it would have walked straight past. There is not
+     one arrow in this file and there is no reason for there ever to be one. */
+  ok(!/=>/.test(content),
+    'the content file has grown an arrow function, which is how the factories follow the data out')
   ok(!/=>\s*\{[\s\S]{0,400}\bs\.\w+/.test(content) || !/GameState/.test(content),
     'the content file has started reading GameState, so it is no longer content')
   /* Written as `!A || B` first, and the injection walked straight through it: with a value
@@ -4918,6 +6004,20 @@ test('ENG-9: content is content, and every caller still sees one engine', () => 
     'CARDS moved to the content file — it is built by factories, so the factories went with it')
   ok(/export const TALKS/.test(eng),
     'TALKS moved to the content file, and its section is five functions that need GameState')
+  /* ENG-9 third section found two more of exactly CARDS' kind, and it found them by CUTTING
+     them and watching the compiler refuse. Both read as pure literal arrays and both are
+     built by factories that are bare capital identifiers rather than lowercase calls, which
+     is why a screen looking for `name(` let them through. */
+  ok(/export const ARCHETYPES/.test(eng) && /\bL\(\[/.test(eng),
+    'ARCHETYPES moved to the content file — its loadouts are built by the L(...) factory, so the factory went with it')
+  ok(/export const ACT1_MAP/.test(eng),
+    'ACT1_MAP moved to the content file, and its nodes are built by the C / CAMP / EVT / PROJ factories')
+  /* Stated from the OTHER side as well, and this is the half an injection can reach: a
+     98-line move is not a one-line patch, so the four assertions above have no negative test
+     of their own. This one does, and it fails on the same event. */
+  for (const n of ['CARDS', 'TALKS', 'ARCHETYPES', 'ACT1_MAP'])
+    ok(!new RegExp(`^export const ${n}\\b`, 'm').test(content),
+      `${n} is declared in the content file, and it is built by factories — moving it moves them, which is what v6.6 died on`)
   // types.ts stays leaf: no values, no imports at all
   ok(!/export (const|function)/.test(types), 'a value has moved into the leaf types file')
   ok(!/^import/m.test(types), 'the leaf types file has grown an import, so it is no longer a leaf')
@@ -5353,6 +6453,110 @@ test('PERF-2: the bundle is measured, and the size is pinned', () => {
   const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
   eq(pkg.scripts.perf, 'node scripts/perf.mjs', 'npm run perf is gone')
 })
+test('SIM-10: every mechanic is classified, and the near-zero list cannot grow quietly', () => {
+  /* The cheap half of SIM-10; the slow suite does the re-measuring. What this asserts is that
+     the census KNOWS ABOUT EVERY EFFECT — add a mechanic and it must be declared alive or
+     declared dead, which is the decision nine ENG-25s were made by not making.
+
+     THE FLOOR IS A FLOOR, in the ARCH_FLOOR sense: raising it is a dated decision, lowering it
+     is the v9.32 drift BAL-9 exists to forbid. Same for the DEAD list — it may shrink freely
+     (a mechanic coming back to life is the good outcome) and may not grow without a human
+     writing down why, because "this one stopped firing too" is exactly the slide the ticket
+     is about. */
+  const fx = new Set(Object.values(E.CARDS).map(c => c.fx).filter(Boolean))
+  const classified = new Set([...LIVE_BUILT, ...LIVE_ARCH, ...DEAD])
+  for (const f of fx)
+    ok(classified.has(f), `${f} is an effect no card census classifies — declare it live or dead`)
+  for (const f of classified)
+    ok(fx.has(f), `the census classifies ${f}, which no card carries any more`)
+
+  const both = LIVE_BUILT.filter(f => DEAD.includes(f))
+  eq(both.length, 0, `${both.join(', ')} is both live and dead`)
+  ok(!LIVE_ARCH.some(f => LIVE_BUILT.includes(f)),
+    'an effect is listed as arch-only and built-alive at once')
+
+  ok(CENSUS_FLOOR >= 1.0, `the census floor is ${CENSUS_FLOOR} — lowering it is BAL-9's drift`)
+  ok(DEAD.length <= 8, `the near-zero list has grown to ${DEAD.length} (${DEAD.join(', ')}) ` +
+    'without anybody deciding to let it — CARD-24 is the row about the eight already there')
+
+  /* the history has to be history: a row, with the numbers, in the BAL-18 shape. */
+  ok(CENSUS_LOG.length >= 1, 'the census has no recorded history at all')
+  for (const r of CENSUS_LOG) {
+    ok(r.turns > 10_000, `a census row measured only ${r.turns} turns`)
+    for (const f of LIVE_BUILT)
+      ok((r.play[f] ?? 0) >= CENSUS_FLOOR,
+        `census row ${r.version} records ${f} at ${r.play[f]}, under the floor it is meant to clear`)
+  }
+  /* and the mode the guard shells out to has to still be there, or the slow half is checking
+     the exit code of a typo (PERF-3, one release ago). */
+  ok(/mode === 'census'/.test(stripComments(readFileSync('sim/run.mjs', 'utf8'))),
+    'the census mode is gone from the harness')
+})
+
+test('PERF-3: the perf measurement is one that actually runs', () => {
+  /* PERF-2's guard asserts that scripts/perf.mjs EXISTS, throttles at both sites and sweeps
+     both rates. All shape. It never ran the thing, and PERF-2's own note ends "if it fires,
+     re-run `npm run perf`" — an instruction nobody could follow, while `npm run check` stayed
+     green. That is the row's thesis and it is right: a guard protecting an unrunnable
+     measurement is worse than none, because it reads as coverage.
+
+     THE ROW BLAMED THE WRONG CAUSE, AND THE CAUSE IT NAMED WAS ALREADY FIXED. It said the
+     script fails because `playwright-core` is in neither dependency list; GUARD-11 declared it
+     at v10.84 — and the script still could not run. playwright-core ships no browsers by
+     design, 1.62.1 resolves Chromium build 1234, this machine has 1194, so launch died on a
+     path that has never existed here. The prescribed fix shipped under another ticket and the
+     disease survived it, which is the whole reason this guard runs the script instead of
+     reading it.
+
+     WHAT IT REFUSES TO DO IS FIRE ON THE ENVIRONMENT. A box with no chromium is not this
+     repo's defect, so the selftest exits 3 there and that is tolerated — but tolerated
+     NARROWLY, using the same resolver the script launches with: if findBrowser() locates a
+     browser and the script still could not use it, that is the PERF-3 defect itself and it
+     fails. Silence is only allowed where there is genuinely nothing to launch. */
+  let out = '', code = 0
+  try {
+    out = execFileSync('node', ['scripts/perf.mjs', '--selftest'],
+      { encoding: 'utf8', timeout: 120_000, stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch (e) {
+    code = e.status ?? -1
+    out = `${e.stdout ?? ''}${e.stderr ?? ''}`
+  }
+  ok(code === 0 || code === 3,
+    `node scripts/perf.mjs --selftest exited ${code} — the measurement does not run:\n${out.slice(0, 400)}`)
+  /* the half that works everywhere: the build is served and looks like the build. If this
+     stops holding, `npm run perf` is timing a 404. */
+  ok(/selftest: server ok, \d+ KB served/.test(out),
+    `the perf script never served the build:\n${out.slice(0, 400)}`)
+
+  /* WHETHER THIS BOX HAS A BROWSER IS DECIDED WITHOUT ASKING findBrowser(). Using the
+     resolver to decide whether to test the resolver is not a guard: break the scan and both
+     the script and the check go blind together, the selftest reports "no browser", and the
+     guard congratulates it. Found by injecting exactly that. So the presence test is its own
+     two lines, deliberately duplicated, and they are allowed to be dumber than the resolver —
+     they only have to answer "is there something here to launch". */
+  const root = process.env.PLAYWRIGHT_BROWSERS_PATH
+  const hasChromium = !!root && existsSync(root)
+    && readdirSync(root).some(d => /^chromium/.test(d))
+  if (hasChromium) {
+    ok(code === 0 && /selftest: browser ok via/.test(out),
+      `there is a chromium under ${root} and the perf script could not use it — ` +
+      `which is exactly the PERF-3 defect:\n${out.slice(0, 400)}`)
+  } else {
+    /* NOT a silent pass: the assertion that survives here is the server half, above, and this
+       one records why the browser half was skipped rather than quietly dropping it. */
+    ok(code === 3, `no chromium is installed, so the selftest should report 3, not ${code}`)
+  }
+
+  /* and the resolver has to keep looking past PW_EXE. Reading only the env var is how the
+     script spent two releases runnable for whoever set it by hand and broken for everybody
+     else — including for the v10.84 ledger row that claimed it had been proven sound. */
+  const res = readFileSync('scripts/browser.mjs', 'utf8')
+  ok(/PLAYWRIGHT_BROWSERS_PATH/.test(res), 'the resolver no longer looks at the installed browsers')
+  ok(/readdirSync/.test(stripComments(res)), 'the resolver no longer scans for whatever build is present')
+  eq(findBrowser({ PW_EXE: '/tmp/x' }).path, '/tmp/x', 'PW_EXE stopped overriding the scan')
+  eq(findBrowser({}).path, undefined, 'the resolver invents a browser when there is none to find')
+})
+
 test('SKIRM-9: the circuit ending wears its own furniture', () => {
   /* Found while shipping NARR-15 and logged rather than bundled, because that ticket was
      about who SPEAKS. The run-end screen's subtitle was unconditional:
@@ -5507,7 +6711,54 @@ test('SHIP-3: the site is packageable, and the claims about it are true', () => 
   for (const want of ['ship/*.keystore', 'ship/*.jks'])
     ok(rules.includes(want),
       `${want} is not an active gitignore rule, and ship/README.md tells Evan the signing key is ignored`)
+  /* SHIP-3 (v10.76). THE SITE'S ADDRESS IS STATED ONCE, and the packaging derives from it.
+     Found by auditing the account-independent half of this row forty-two releases after it was
+     written: the repository is `RCJLabs/Sandbagged` and `package.json` says the site lives at
+     `.../Sandbagged/`, while every packaging file said `/sandbagged/` — the TWA's startUrl, its
+     fullScopeUrl, both icon URLs, the web manifest URL, the manifest `id` and the checklist.
+     GitHub Pages paths are case-sensitive, so on the reading the repo itself supports that is a
+     TWA that opens a 404 and a scope that covers nothing — and the asset-link check the whole
+     `.nojekyll` note exists to protect is scoped to a URL that is not the site.
+     NOT VERIFIED AGAINST THE LIVE SITE: this environment cannot reach github.io, so the fix
+     follows the repository name and `homepage`, which are the only statements of the address in
+     the project. If the site is really served lower-case, or moves to a custom domain, change
+     `homepage` — everything below follows it, and nothing else needs editing. */
   const rd = readFileSync('ship/README.md', 'utf8')
+  const pkgHome = JSON.parse(readFileSync('package.json', 'utf8')).homepage.replace(/\/?$/, '/')
+  const pagesPath = '/' + pkgHome.split('.io/')[1]
+  for (const [field, val] of [['startUrl', twa.startUrl], ['fullScopeUrl', twa.fullScopeUrl],
+    ['iconUrl', twa.iconUrl], ['maskableIconUrl', twa.maskableIconUrl],
+    ['webManifestUrl', twa.webManifestUrl]]) {
+    const want = field === 'startUrl' ? pagesPath : pkgHome
+    ok(String(val).startsWith(want),
+      `the TWA config's ${field} is "${val}" and the site is "${pkgHome}" — the packaging and the address disagree, `
+      + 'which is a TWA that opens somewhere the site is not')
+  }
+  eq(mf.id, pagesPath,
+    `the web manifest's id is "${mf.id}" and the site is served from "${pagesPath}" — that is the app's identity to Play`)
+  /* THE EMITTED FILE AND THE THING THAT EMITS IT, both — the artifact above is what ships and
+     the source below is what writes the next one, and an injection that edits only the
+     generator passes an artifact-only check (found exactly that way). */
+  ok(/id: PAGES_PATH/.test(gen),
+    'the build types the manifest id instead of deriving it from the address, which is how it came to disagree with the repository name in the first place')
+  /* EVERY address in the checklist, not merely one — `includes` passed while a second, correct
+     URL elsewhere in the file masked a broken one, which the injection caught. */
+  const rdUrls = [...rd.matchAll(/https:\/\/[a-z0-9.-]+\.github\.io\/[^\s`)"']*/gi)].map(x => x[0])
+  ok(rdUrls.length > 0, 'the checklist gives Evan no URL at all')
+  for (const u of rdUrls)
+    ok(u.startsWith(pkgHome), `the checklist gives Evan the URL ${u}, and the site is ${pkgHome}`)
+
+  /* AND THE VERSION Play SHOWS CANNOT ROT. Measured, it had: `appVersionName` sat at 10.48.0
+     against a shipped 10.75.0 — twenty-seven releases — which is SHIP-4's failure one layer out.
+     The build syncs it now. The VALUE is deliberately not asserted here: `npm run ship` runs
+     this suite BEFORE the build that does the syncing, so an equality check would fail every
+     release in the window between the bump and the build waiting on it. The MECHANISM is what
+     is guarded, which is the same shape as the privacy-policy emission check above. */
+  ok(/twa\.appVersionName = VERSION/.test(gen),
+    'the build no longer syncs the packaging version, and it is the one field Play shows that nothing else touches')
+  ok(/appVersionName/.test(readFileSync('ship/twa-manifest.json', 'utf8')),
+    'the TWA config has no version field for the build to sync')
+
   ok(rd.includes(twa.packageId), 'the checklist and the TWA config name different packages')
   ok(rd.includes('privacy.html'), 'the checklist no longer tells Evan the privacy URL Play asks for')
   ok(/\.nojekyll/.test(rd), 'the checklist no longer records why .nojekyll is load-bearing')
@@ -6061,7 +7312,8 @@ test('CARD-18: the four mechanics nobody could meet twice', () => {
     const card = E.spawn(name)
     const out = E.playBonusStep({ ...s0, pump: 8 }, card, 0, new E.RNG(3))
     eq(out.readAhead, Math.min(s0.holdDeck.length, card.read), `${name} read a different depth`)
-    eq(out.pump, 8 + card.cost, `${name} did not cost what it says`)
+    // INFO-2 gave Take It All In a shed body, so the arithmetic reads the whole card
+    eq(out.pump, Math.max(0, 8 + card.cost - card.shed), `${name} did not cost what it says`)
   }
   /* AND READING IS STILL INFORMATION (RUN-9/ENG-24), which is what makes it band-safe and what
      makes `read` situational in the dead-card guard. INFO-1 tried making a read hold worth full
@@ -7093,7 +8345,18 @@ test('GUARD-9: the kept injections still injure something', () => {
          byte-compares them at exit, so anything outside the tree would be restored from
          nothing. `scripts/build-html.mjs` is source by every measure that matters here:
          DEV-2's guard already reads it as the source of truth for the service worker. */
-      ok(/^(src|sim|scripts|ship|docs|\.gitignore|package\.json)/.test(file),
+      /* SHIP-5 added `README.md`. Same test as the others and it passes it: the runner
+         snapshots the files the table touches and byte-compares them at exit, so the only
+         requirement is that the path is a real file in this repo. It is one now in the sense
+         that matters — SHIP-5 asserts its counts against the tables, so the README is a
+         checked claim rather than prose, and a claim with no injection behind it is the thing
+         GUARD-9 exists to complain about. */
+      /* ART-5 added `index.html`. It is the one file carrying palette the player sees BEFORE
+         any of src/ runs — the status-bar colour and the chalk filter the whole board draws
+         through — so a mutant that cannot reach it cannot injure the half of this ticket that
+         happens before React boots. Same test as README.md: a real file in this repo, with a
+         guard asserting its contents against the shipped palette rather than against prose. */
+      ok(/^(src|sim|scripts|ship|docs|README\.md|index\.html|\.gitignore|package\.json)/.test(file),
         `${m.id} patches ${JSON.stringify(file)}, which is not a source path`)
       ok(from !== to, `${m.id} patches ${file} to exactly what it already says`)
       ok(from.length > 12, `${m.id} has an anchor too short to be unique on purpose`)
@@ -7259,8 +8522,13 @@ test('LANE-5: the feet push lives where a deck is assembled, and the climbers sa
   const trad = E.ARCHETYPES.find(a => a.id === 'trad')
   eq(comp.dPower, 3, `the Comp Kid carries ${comp.dPower} Power — LANE-5 bought it to 3 and without `
     + 'that it reads 5.0% against a floor of 5')
-  eq(trad.dContact, 2, `the Trad Dad carries ${trad.dContact} Contact — LANE-5 bought it to 2 and `
-    + 'without that it reads 5.5%, which clears the floor by 0.98 SE')
+  /* ARCH-2 (v10.89) took this one to 3, so it is a FLOOR rather than an equality — and the two
+     directions are different in exactly the way ARCH_FLOOR's own assertion is. LANE-5 exists to
+     stop the buy-back being TAKEN AWAY: below 2 this climber reads 5.5% and clears the floor by
+     0.98 SE, which is the drift that guard was written after. Above it is a later decision with
+     a date on it, and an equality here would fire on the roster getting healthier. */
+  ok(trad.dContact >= 2, `the Trad Dad carries ${trad.dContact} Contact — LANE-5 bought it to 2 and `
+    + 'without that it reads 5.5%, which clears the floor by 0.98 SE. ARCH-2 raised it to 3')
   ok(comp.sigText.includes(`+${comp.dPower} Power`),
     `the Comp Kid grants +${comp.dPower} Power and its signature does not say so: ${comp.sigText}`)
   ok(trad.sigText.includes(`+${trad.dContact} Contact`),
@@ -7330,6 +8598,49 @@ test('QA-1: one scroller, and nothing hides under the fixed bar', () => {
     { min: 20, what: 'what follows the bar spacer', eof: true })
   for (const m of tailAfter.matchAll(/className="(spot|log)"/g))
     ok(false, `a ${m[1]} box renders after the bar spacer, so it can hide under the bar`)
+})
+test('SHIP-5: the README describes the game that is actually in the repo', () => {
+  /* THE FRONT DOOR IS THE ONE PIECE OF DOCUMENTATION A STRANGER READS, and it was wrong in
+     four countable places at v10.88: 227 cards against 250, 30 routes against 37, four
+     climbers against five, 83 tests against 330. Every one of them was true when it was
+     written, which is the whole point — SHIP-4 exists because the version string drifted the
+     same way twice, and a count in prose rots faster than a version does because nothing
+     bumps it.
+
+     COUNTED, NOT SPELLED. The assertion reads the number out of the README and compares it to
+     the table, so it fails when the game grows rather than when somebody rewords a sentence.
+     Deliberately NOT a full-text match: prose has to stay editable or the guard gets deleted
+     the first time somebody improves a paragraph. */
+  const readme = readFileSync('README.md', 'utf8')
+  const num = (label, re) => {
+    const m = re.exec(readme)
+    ok(m, `the README no longer states the ${label} at all`)
+    return m ? Number(m[1]) : NaN
+  }
+  eq(num('card count', /(\d+) cards\b/), Object.keys(E.CARDS).length,
+    `the README states a card count the game does not have (it has ${Object.keys(E.CARDS).length})`)
+  eq(num('route count', /(\d+) named routes/), E.ROUTES.length,
+    `the README states a route count the game does not have (it has ${E.ROUTES.length})`)
+  /* The climbers and the styles are written as WORDS, so they are matched as words — a
+     number here would have read as a typo to whoever wrote the sentence. */
+  const WORDS = { three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 }
+  const word = (label, re) => {
+    const m = re.exec(readme)
+    ok(m, `the README no longer states the ${label}`)
+    return m ? WORDS[m[1]] : NaN
+  }
+  eq(word('climber count', /(\w+) climbers/), E.ARCHETYPES.length,
+    `the README states a climber count the game does not have (it has ${E.ARCHETYPES.length})`)
+  eq(word('ascent styles', /(\w+) ascent styles/), E.ASCENT.length,
+    `the README states an ascent-style count the game does not have (it has ${E.ASCENT.length})`)
+  /* AND THE LINK A STRANGER CLICKS. `homepage` is what `build:html` derives the PWA scope and
+     the TWA package from (SHIP-3), so if these two disagree the README sends people somewhere
+     the service worker does not control. Case matters: the path was lower-case for
+     forty-two releases against a case-sensitive host. */
+  const home = JSON.parse(readFileSync('package.json', 'utf8')).homepage
+  ok(home, 'package.json has no homepage, which is what the PWA scope is derived from')
+  ok(readme.includes(home),
+    `the README sends people somewhere other than ${home}, which is the URL the PWA scope is built for`)
 })
 test('SHIP-4: the version the player is shown is the version that shipped', () => {
   /* THIS FAILED TWICE BEFORE IT WAS WRITTEN. v10.65 and v10.66 both went out with `v10.64 · RCJ
@@ -7427,6 +8738,66 @@ test('BAL-18: the climber ladder cannot move a version at a time either', () => 
     `the reproduction tolerance is ${ARCH_TOL} and the ledger's own widest single step is `
     + `${widest.toFixed(1)} (${widestWho}) — a window that wide cannot tell a stale ladder from a `
     + 'fresh one')
+})
+test('GUARD-11: nothing this repo runs rides an undeclared dependency', () => {
+  /* MEASURED BEFORE THIS WAS WRITTEN, and it was worse than the row that asked for it said.
+     `esbuild` was in neither dependency list, and it is imported by `sim/run.mjs`,
+     `sim/test-core.mjs` and `sim/test.mjs` — so it is not only the band measurement that
+     rides it, it is `npm run check` itself, the gate every release goes through. It resolved
+     only because Vite happens to depend on it: `npm ls esbuild` showed exactly one copy, a
+     child of vite@6.4.3, with no direct edge. `playwright-core` was undeclared the same way
+     and did not resolve at all, which is why `npm run perf` could not be run — PERF-2 pins
+     the build size and tells you to re-measure with a command that threw ERR_MODULE_NOT_FOUND.
+
+     THE FAILURE MODE IS NOT SUBTLE AND THAT IS THE POINT: the day Vite drops esbuild, or a
+     clean checkout resolves a different tree, every number in `band.mjs` becomes unreproducible
+     and the suite stops running — and the first symptom is a module-not-found in a file nobody
+     was editing. This is the stale-instrument class NARR-22 and BAL-18 both had to clean up,
+     one level further down: not a number that went stale, the apparatus that produces them.
+
+     WHAT IS CHECKED is every bare specifier imported anywhere this repo owns, against
+     dependencies + devDependencies + node's own builtin list. Not a curated list of files or
+     of packages — either would be a guard that passes because of what it was pointed away
+     from. `sim/_*.mjs` is excluded and only that: those are gitignored scratch probes, they
+     are not part of a checkout, and a guard that failed on somebody's throwaway file would be
+     turned off within a week. */
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
+  const declared = new Set([...Object.keys(pkg.dependencies ?? {}),
+    ...Object.keys(pkg.devDependencies ?? {}), ...Object.keys(pkg.optionalDependencies ?? {})])
+  const builtin = new Set(builtinModules)
+  const files = []
+  const walk = (dir) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (['node_modules', '.git', 'dist', 'docs', 'ship'].includes(e.name)) continue
+      const p = `${dir}/${e.name}`
+      if (e.isDirectory()) walk(p)
+      // sim/_*.mjs are gitignored scratch probes and are not part of a checkout
+      else if (/\.(mjs|js|ts|tsx)$/.test(e.name) && !e.name.startsWith('_')) files.push(p)
+    }
+  }
+  walk('.')
+  ok(files.length > 8, `only ${files.length} source files found, so this guard is checking almost nothing`)
+  /* The package a specifier belongs to, which is NOT the specifier: `react-dom/client` is
+     `react-dom`, and a scope keeps two segments. Getting this wrong makes the guard fail on
+     every deep import, which is how it would end up loosened into uselessness. */
+  const pkgOf = (spec) => spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0]
+  const missing = []
+  for (const f of files) {
+    const src = stripComments(readFileSync(f, 'utf8'))
+    for (const m of src.matchAll(/(?:^|\n)\s*(?:import[^'"\n]*?from\s*|import\s*)['"]([^'"]+)['"]/g)) {
+      const spec = m[1]
+      if (spec.startsWith('.') || spec.startsWith('/')) continue
+      const bare = spec.startsWith('node:') ? spec.slice(5) : spec
+      if (builtin.has(bare) || builtin.has(spec)) continue
+      if (!declared.has(pkgOf(spec))) missing.push(`${pkgOf(spec)} (imported by ${f})`)
+    }
+  }
+  eq(missing.length, 0,
+    `imported but not in package.json, so a clean checkout resolves it by luck or not at all: ${[...new Set(missing)].join(', ')}`)
+  /* AND THE TWO THAT STARTED THIS ARE NAMED, because the check above passes on an empty repo
+     and this project has shipped a guard that passed for the wrong reason before. */
+  for (const n of ['esbuild', 'playwright-core'])
+    ok(declared.has(n), `${n} is undeclared again — it is imported by ${n === 'esbuild' ? 'the suite you are reading' : 'scripts/perf.mjs'}`)
 })
 test('GUARD-8: no guard reads a window it cannot prove is the right one', () => {
   /* This is the ticket. GUARD-3 found and fixed unchecked-anchor windows; GUARD-8 found

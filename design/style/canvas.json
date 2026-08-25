@@ -1,0 +1,27 @@
+{
+  "artboards": [
+    { "file": "Ascent.dc.html", "x": -620, "y": 0, "w": 390, "h": 844, "title": "F · Vertical Ascent (reference)" },
+    { "file": "Main.dc.html",   "x": 0,    "y": 0, "w": 390, "h": 844, "title": "K · Profile" },
+    { "file": "Beta.dc.html",   "x": 510,  "y": 0, "w": 390, "h": 844, "title": "L · Beta" },
+    { "file": "Route.dc.html",  "x": 1020, "y": 0, "w": 390, "h": 844, "title": "M · Route" },
+    { "file": "Dusk.dc.html",   "x": 1530, "y": 0, "w": 390, "h": 844, "title": "N · Dusk" },
+    { "file": "Macro.dc.html",  "x": 2040, "y": 0, "w": 390, "h": 844, "title": "O · Macro" }
+  ],
+  "annotations": [
+    { "id": "brief", "x": 0, "y": -206, "w": 580,
+      "text": "F was the pick, so all five of these keep F's thesis: no stacked panels, the screen IS the wall, holds sit where they physically are.\nWhat changes between them is the CAMERA and the RENDERING — and each one takes a different run at F's actual weakness, which is that every number ends up sitting on drawn rock.\nSame turn throughout (The Fridge V3, sloper / the blank / smear edge, Open Hand / Lock Off / Smear, pump 7 of 11, flow 2, preview WORKS IT · 2 grip left · +1 pump)." },
+    { "id": "note-ref", "x": -620, "y": 892, "w": 390,
+      "text": "F · VERTICAL ASCENT — the one you picked, unchanged, here to compare against.\nFace-on drawn rock, holds as translucent tags pinned in place, climber mid-move, pump down the left edge, hand fanned at the bottom." },
+    { "id": "note-k", "x": 0, "y": 892, "w": 390,
+      "text": "K · PROFILE — F with the camera turned 90°, in daylight.\nYou see the wall edge-on: rock down the right, open air and valley down the left. Holds jut off the arete as ledges and their labels live in the SKY on dotted leader lines, so no number ever sits on rock. Pump becomes an altimeter tape. Preview is a callout pinned to the hold being played.\nTrade: fixes F's legibility problem outright and sells exposure better than any of them — but it spends half the screen on empty air, and a fourth or fifth lane has nowhere to go." },
+    { "id": "note-l", "x": 510, "y": 892, "w": 390,
+      "text": "L · BETA — the wall as a photograph with the beta chalked onto it.\nLit rock, grain, real depth; the holds are circled in a chalk hand with dashed movement arrows between them, and the annotations are handwriting, not labels. The only hard-edged UI on the screen is the pump bar, because that one has to be exact.\nTrade: the most convincingly a real place, and the annotation layer is a genuinely different way to show state — the handwriting caps how much you can ever say, and photographic rock is the most expensive art to produce 37 routes of." },
+    { "id": "note-m", "x": 1020, "y": 892, "w": 390,
+      "text": "M · ROUTE — F with the camera pulled all the way back.\nYou see the whole climb at once: the anchor above, the two holds still to come, the three live ones (sized by how close they are to your hands), a YOU marker, and everything already sent ghosted below with the start 14 minutes ago. The wall is a continuous line from ground to anchor.\nTrade: the only one that shows PROGRESS — how far in, how far left, what it cost — which no version of the game has ever shown. Cost: the hand shrinks to a rail, and the moment-to-moment climb feels less physical than in F." },
+    { "id": "note-n", "x": 1530, "y": 892, "w": 390,
+      "text": "N · DUSK — F stripped to two shapes.\nOne flat black wall silhouette against a full-height dusk gradient. No texture, no cracks, no shading, no climber. Holds are small glowing marks with thin leader lines out to type set in the open sky; pump is a single line on the horizon; the hand is three lines of type with no card frames at all.\nTrade: the most confident and by far the cheapest to build and to keep consistent across 37 routes — and the coolest, in both senses. Nothing here communicates effort or texture, and every route would have to be distinguished by silhouette alone." },
+    { "id": "note-o", "x": 2040, "y": 892, "w": 390,
+      "text": "O · MACRO — F with the camera pushed all the way in.\nThe hold you are choosing fills the top half at the scale your hand meets it: texture, chalk smears, a hand entering frame reaching for it. The other two holds dock small and blurred at the edge — depth of field does the ranking instead of a list. Bite and Grip are 30px numerals; the ability gets a full sentence because there is finally room.\nTrade: the most tactile, and the best of the five at teaching a rule, since one hold owns the screen. It also hides the route — you cannot see what you are climbing, only what you are touching." }
+  ],
+  "launch": { "view": "canvas" }
+}

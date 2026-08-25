@@ -12,9 +12,69 @@ await build({
 const E = await import('../' + out)
 unlinkSync(out)
 
+/* SIM-9: REST_AT overrides the policy's shake-out threshold — 99 never fires, which is the
+   pre-SIM-9 policy exactly. Kept the way SHARP_AT is: so old measurements can be reproduced,
+   and so the SIM-9 guard can measure the same game through both policies. */
+const REST_AT = process.env.REST_AT
+/* INFO-2: KNOW=all plays the clairvoyant policy — exact grip on every hold, reads unplayable —
+   which is every measurement before v10.74. Kept the way REST_AT and SHARP_AT are. */
+const KNOW = process.env.KNOW === 'all'
+const PLAY = (REST_AT === undefined && !KNOW) ? E.autoPlay
+  : (s, rng) => E.autoPlay(s, rng, REST_AT === undefined ? E.SHAKE_AT : Number(REST_AT), KNOW)
 const N = Number(process.argv[3] ?? 1200)
 const mode = process.argv[2] ?? 'ladder'
 
+let SHAKES = 0   // SIM-9: hand-lane rests the policy placed, read by the `policy` mode
+
+/* SIM-10: the firing-rate census, as an instrument instead of a throwaway script.
+ *
+ * CARD-23, CARD-24, HOLD-4 and INFO-4 every one came out of a script written for one audit
+ * and deleted after it, and the same class of finding has been tripped over nine times as
+ * ENG-25 — a mechanic the policy cannot use measures as dead — rather than looked for. This
+ * is that measurement kept.
+ *
+ * TWO COLUMNS, AND THEY ANSWER DIFFERENT QUESTIONS. CARD-24's row is explicit that "a card
+ * the drafter never offers and a card the policy never takes are different diseases":
+ *   PLAY  — the share of turns a card carrying this fx reached the committed board. Complete
+ *           and unambiguous for all eighteen. This is the one that catches a mechanic going
+ *           undraftable or unplayable.
+ *   FIRE  — the share of turns the fx changed a number the engine computes. Measured by
+ *           DIFFERING THE ENGINE AGAINST ITSELF: total power and bite across the board, then
+ *           again with that one card's fx blanked. No rule is restated here, which is the
+ *           whole point — a census that reimplements the conditions it measures drifts away
+ *           from the game the first time a rule moves (ENG-19), and would then report the
+ *           rate of its own copy.
+ * FIRE ONLY SEES THE POWER/BITE FAMILY and that is stated rather than hidden: setup, echo,
+ * cycle, peel, snap, settle2, tough and commit act inside resolve, not on those two numbers,
+ * so they read 0.0 FIRE by construction and their PLAY column is the live one.
+ */
+let CENSUS = null
+function censusTurn(s) {
+  if (!CENSUS) return
+  CENSUS.turns++
+  const total = st => {
+    let t = 0
+    for (let i = 0; i < 3; i++) {
+      const c = st.boardP[i], h = st.boardH[i]
+      if (!c || !h) continue
+      t += E.powerAgainst(st, c, h, i) * 31 + E.biteAgainst(st, c, h, i)
+    }
+    return t
+  }
+  const base = total(s)
+  const seen = new Set()
+  for (let lane = 0; lane < 3; lane++) {
+    const card = s.boardP[lane]
+    if (!card) continue
+    const fx = card.fx || '(plain)'
+    if (!seen.has(fx)) { CENSUS.play[fx] = (CENSUS.play[fx] ?? 0) + 1; seen.add(fx) }
+    if (!card.fx || CENSUS.fired.has(fx + lane)) continue
+    const bp = s.boardP.slice(); bp[lane] = { ...card, fx: '' }
+    if (total({ ...s, boardP: bp }) !== base && !seen.has('!' + fx)) {
+      CENSUS.fire[fx] = (CENSUS.fire[fx] ?? 0) + 1; seen.add('!' + fx)
+    }
+  }
+}
 function session(routeIdx, tier, seed, force) {
   const rng = new E.RNG(seed)
   let s = E.freshRun(routeIdx, tier, seed)
@@ -23,7 +83,9 @@ function session(routeIdx, tier, seed, force) {
   let turns = 0
   for (let burn = 1; burn <= E.ATTEMPTS; burn++) {
     for (let guard = 0; guard < 40; guard++) {
-      s = E.autoPlay(s, rng)
+      const preP = s.boardP
+      s = PLAY(s, rng)
+      for (const i of [0, 1]) if (!preP[i] && (s.boardP[i]?.shed ?? 0) > 0) SHAKES++
       s = E.resolve(s, rng)
       turns++
       if (s.phase === 'burnEnd') break
@@ -127,6 +189,22 @@ if (mode === 'costing') {
   for (const c of cs) { const d = Math.abs(g['2:' + c] - tgt); if (d < bd) { bd = d; best = c } }
   console.log(`\nP2/C6 ${base.toFixed(0)}%  ·  P3/C6 ${tgt.toFixed(0)}%  ·  closest P2 match C${best} (${g['2:' + best].toFixed(0)}%)`)
   console.log(`=> 1 Power ~ ${best - 6} Contact` + (g['2:10'] < tgt ? '   (still unreachable at C10)' : ''))
+}
+
+/* SIM-9: the A/B the guard reads. Four mid-ladder routes, mid-tier deck, and the number of
+   shake-outs the policy actually placed — so the guard asserts the MECHANISM as well as its
+   worth (GUARD-1's rule: report the thing, not just its shadow). `REST_AT=99` is the arm
+   with the plan disabled. n=300 is 1,200 sessions an arm, ~30s. */
+if (mode === 'policy') {
+  const probe = [3, 4, 6, 8]
+  SHAKES = 0
+  let sent = 0, n = 0
+  const rng = new E.RNG(99)
+  for (const r of probe) for (let k = 0; k < N; k++) {
+    if (session(r, 1, Math.floor(rng.next() * 2 ** 31)).sent) sent++
+    n++
+  }
+  console.log(`policy: send ${(100 * sent / n).toFixed(1)}%   shakeouts/session ${(SHAKES / n).toFixed(2)}`)
 }
 
 const EVENT_BIAS = process.argv[4] === 'events'
@@ -349,7 +427,8 @@ function runOnce(seed, carry) {
         climbs++; continue
       }
       if (s.phase === 'climb') {
-        s = E.autoPlay(s, rng)
+        s = PLAY(s, rng)
+        censusTurn(s)                        // SIM-10: after the policy commits, before resolve
         // on a rope, get a piece in when the runout is getting long
         const spec = E.ROUTES[s.routeIdx]
         if (spec?.roped && (s.runout >= 3 || s.lastPiece < 0)) {
@@ -464,21 +543,58 @@ if (mode === 'cards') {
      which is why nobody ran it. CARDS_ONLY='A|B' probes just the ones you are
      asking about, so pricing one keyword costs seconds instead. */
   const only = process.env.CARDS_ONLY ? process.env.CARDS_ONLY.split('|') : null
+  /* CARD-22. THIS PROBE WAS WRONG IN TWO INDEPENDENT WAYS AND BOTH ARE FIXED HERE.
+
+     ONE: IT ADDED THREE COPIES OF EVERYTHING. `copyLimit` is 1 for a rare and 2 for an
+     uncommon, so every rare and uncommon in the table was priced on a deck no player can
+     hold — SIM-8's failure exactly, which this project has already paid for once when the
+     band pin was set on a deck carrying six illegal beta cards. It fabricated outliers:
+     Quiet Feet and Second Skin read -11.3 each at three copies and +1.4 and +10.9 at one.
+     Copies are `copyLimit(rarity)` now.
+
+     TWO: IT ADDED RATHER THAN REPLACED. A shell of 14 plus 3 copies is a 17-card deck, so
+     every delta carried a dilution term that scaled with how good the shell already was —
+     the same card read -11.3 against a 70.2% shell and -24.6 against an 81.4% one. Swapping
+     holds the deck size fixed, so what is measured is the card against the card it replaced.
+     It is not a small correction: Sidepull reads -11.3 added and -28.5 swapped on the SAME
+     shell, and swapped it is the worst card measured here — a common the additive table never
+     flagged, while three of the six it did flag were legality artefacts.
+
+     CARDS_ADD=1 reproduces the old additive three-copy probe, kept the way REST_AT and
+     SHARP_AT are: so every number measured before this can be reproduced rather than argued
+     about. Curses and beta cards are priced at 3 because that is their copy limit, but
+     `buildable()` refuses both from a loadout — for those two the number is "what carrying it
+     would cost you", not a draft choice. */
+  const ADD = process.env.CARDS_ADD === '1'
+  const swapIn = (deck, name, k) => {
+    const d = deck.slice()
+    const step = Math.floor(d.length / k)
+    for (let i = 0; i < k; i++) d[i * step] = E.spawn(name)
+    return d
+  }
   for (const name of Object.keys(E.CARDS)) {
     const c = E.CARDS[name]
     if (only && !only.includes(name)) continue
     if (c.rarity === 'starter') continue
-    const d = base(); for (let k = 0; k < 3; k++) d.push(E.spawn(name))
+    const k = ADD ? 3 : E.copyLimit(c.rarity)
+    const d = ADD ? [...base(), ...Array(3).fill(name).map(E.spawn)] : swapIn(base(), name, k)
     rows.push({ name, r: c.rarity, d: score(d) - ctrl })
   }
   rows.sort((a, b) => b.d - a.d)
-  console.log(`control ${ctrl.toFixed(1)}% · delta from adding 3 copies\n`)
+  console.log(`control ${ctrl.toFixed(1)}% · delta from ${ADD
+    ? 'ADDING 3 copies (CARD-22: illegal for rares and uncommons, kept for reproducing old numbers)'
+    : 'SWAPPING IN copyLimit() copies — deck size held fixed'}\n`)
   console.log('STRONGEST'); rows.slice(0, 8).forEach(r => console.log(`  ${(r.d >= 0 ? '+' : '') + r.d.toFixed(1)}pt  ${r.name} (${r.r})`))
   console.log('\nWEAKEST'); rows.slice(-8).forEach(r => console.log(`  ${(r.d >= 0 ? '+' : '') + r.d.toFixed(1)}pt  ${r.name} (${r.r})`))
   // absolute deltas are dominated by shell weakness, so compare WITHIN rarity
   const byR = {}
   for (const r of rows) (byR[r.r] ??= []).push(r)
-  console.log('\nmean delta by rarity (the shell is weak, so absolutes run high):')
+  /* CARD-22: the caveat changed with the instrument. Added, absolutes ran high because the
+     shell was weak. SWAPPED, a card is measured against the shell card it replaced — and the
+     shell is built out of strong COMMONS, so the common row is "against the best commons in
+     the game", not "against nothing". Compare within a rarity; across rarities the number is
+     still relative to what it displaced. */
+  console.log('\nmean delta by rarity (swapped in, so each is against the shell card it replaced):')
   const stats = {}
   for (const k of Object.keys(byR)) {
     const v = byR[k].map(x => x.d)
@@ -590,6 +706,27 @@ if (mode === 'campaign') {
    "cannot go wrong" and "rarely kills" are different claims and only the first is the
    complaint. If every run leaves act 1 in the same shape, act 1 has no consequences at
    all — and that is a sharper problem than a low death rate, with different fixes. */
+/* SIM-10: `node sim/run.mjs census 400 [built|arch]` — per-fx PLAY and FIRE rates over
+   drafted campaigns. SEED lets a second sample be drawn from a different stream, which is
+   how the stability question the row asks gets answered rather than assumed. */
+if (mode === 'census') {
+  const pop = process.argv[4] ?? 'built'
+  LOADOUT = pop === 'built' ? buildBest() : undefined
+  const seed = Number(process.env.SEED ?? 777)
+  CENSUS = { turns: 0, play: {}, fire: {}, fired: new Set() }
+  const rng = new E.RNG(seed)
+  for (let i = 0; i < N; i++) runOnce(Math.floor(rng.next() * 2 ** 31))
+  const { turns, play, fire } = CENSUS
+  console.log(`Firing-rate census — ${pop} loadout, ${N} campaigns, seed ${seed}, ${turns} turns\n`)
+  console.log('  fx           PLAY %   FIRE %   (FIRE reads power/bite only)')
+  const all = [...new Set([...Object.keys(play), ...Object.keys(fire)])]
+    .sort((a, b) => (play[b] ?? 0) - (play[a] ?? 0))
+  for (const fx of all)
+    console.log(`  ${fx.padEnd(12)} ${(100 * (play[fx] ?? 0) / turns).toFixed(2).padStart(6)}   ` +
+      `${(100 * (fire[fx] ?? 0) / turns).toFixed(2).padStart(6)}`)
+  CENSUS = null
+}
+
 if (mode === 'acts') {
   LOADOUT = buildBest()
   console.log('What each act costs — state on the way OUT of it\n')

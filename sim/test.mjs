@@ -20,7 +20,8 @@
 import { build } from 'esbuild'
 import { readFileSync, unlinkSync } from 'node:fs'
 import { execSync } from 'node:child_process'
-import { BAND_PIN, ARCH_N, ARCH_FLOOR, ARCH_TOL, BAND_LOG } from './band.mjs'
+import { BAND_PIN, ENDING_N, ARCH_N, ARCH_FLOOR, ARCH_TOL, BAND_LOG } from './band.mjs'
+import { CENSUS_FLOOR, CENSUS_N, LIVE_BUILT, LIVE_ARCH, DEAD } from './census.mjs'
 
 const SLOW = process.argv.includes('slow')
 const HISTORY_CAP_TEST = 35
@@ -1232,13 +1233,18 @@ test('INFO-1: a hold you read arrives known, and that is all it arrives with', (
   const known = region(eng, 'export const holdKnown', ['export function gripShown'],
     { min: 40, what: 'holdKnown' })
   ok(/h\.read/.test(known), 'a hold you read no longer reads as known, so reading does nothing at all')
-  /* and the valuation must not price a read while reading buys information: a term there with no
-     mechanical effect behind it is the ENG-25 failure inverted — the policy told a card is worth
-     something it cannot spend. This is what the retracted half added, so it is what a
-     re-addition would put back first. */
+  /* INFO-2 INVERTED THIS ASSERTION, and the reason is the same principle pointing the other
+     way. It used to forbid a read term in the valuation, because a greedy clairvoyant policy
+     cannot spend information and pricing it would be ENG-25 run backwards. The policy is
+     uncertainty-limited now — autoPlay scores a hold at the span `gripShown` shows and spends
+     reads to collapse it — so the term is OWED, and what is forbidden is pricing it by DEPTH:
+     measured, reading is worth ~3 points whether it reads 2 or 4 (+0.1 between them), because
+     refill brings up two holds a turn and a read tops up when it empties. Flat term only. */
   const bv = region(eng, 'function bonusValue', ['function seqValue'], { min: 200, what: 'bonusValue' })
-  ok(!/c\.read/.test(bv),
-    'the valuation prices a read again, though a read buys information a greedy policy cannot spend')
+  ok(/c\.read > 0 \?/.test(bv),
+    'the valuation no longer prices a read, though the policy can spend one now — ENG-25, forwards this time')
+  ok(!/c\.read \*/.test(bv),
+    'the valuation prices a read by its depth, which measures worthless — the term must be flat')
 
   /* the board says it, because the pips silently stopping being a span is otherwise the game
      looking inconsistent (A11Y-8: the same fact in the accessibility tree). */
@@ -2380,25 +2386,28 @@ test('the pool does not fill up with cards nobody would take', () => {
      asserted there, in the SEQ-2 guard, against such a deck. */
   ok(dead.length / vals.length < 0.05,
     `${dead.length} of ${vals.length} cards would never be taken`)
-  /* INFO-1 TOOK `read` OUT OF THE EXCUSED SET AND PUT IT BACK. Making a read grant beta on the
-     holds it covered did lift both cards out of the dead set — `Sight the Line` 5.2 to 12.9 and
-     `Take It All In` −3.0 to 12.4 — and it also put the pinned band up 1.8 points in a way four
-     separate dials could not touch, because a read covers whatever arrives next and so amounts to
-     a flat discount on the whole wall. That half is retracted; see `effGrip` in engine.ts for the
-     numbers. `read` is situational again, and for exactly CARD-18's reason. */
-  const filler = dead.filter(([n]) => !E.CARDS[n].read && !E.CARDS[n].seq && !E.CARDS[n].clip)
+  /* INFO-1 TOOK `read` OUT OF THE EXCUSED SET, PUT IT BACK, AND INFO-2 TOOK IT OUT FOR GOOD —
+     from the other side. INFO-1 tried to make reads priceable by giving them a mechanical
+     effect and retracted it (+1.8 band no dial could touch; see `effGrip`). INFO-2 made the
+     POLICY able to spend information instead: autoPlay is uncertainty-limited now, scoring a
+     hold at the span `gripShown` shows, so a read's holds arriving known is worth real play
+     and `read` carries a measured, depth-flat term in `bonusValue`. The excuse is gone from
+     the filler filter below. What that states honestly: `Sight the Line` prices out of the
+     dead set on its merits, and `Take It All In` does NOT — its only effect past read 2 is
+     depth, and depth measures worthless (+0.1 between read 2 and read 4), so it sits in the
+     dead set as a true statement about the card rather than an excuse about the policy. The
+     INFO-2 row records it for a card ticket. */
+  const filler = dead.filter(([n]) => !E.CARDS[n].seq && !E.CARDS[n].clip)
   ok(filler.length <= 6,
     `${filler.length} dead cards the valuation CAN price and still would not take: ${filler.map(([n]) => n).join(', ')}`)
-  // the derivation behind counting `read` as situational: the policy cannot spend it
+  // the derivation, inverted by INFO-2: the policy CAN spend a read now, so the term is owed
   const eng = readFileSync('src/engine.ts', 'utf8')
-  /* comments stripped: INFO-1's note inside `autoPlay` explains why the policy does NOT spend a
-     read, and the un-stripped window matched the word in that explanation — ART-4's class. */
   const auto = stripComments(region(eng, 'export function autoPlay', ['export function coach',
     '\nexport function ', '\nexport const '], { min: 600, what: 'autoPlay' }))
-  ok(!/readAhead/.test(auto),
-    'the policy reads ahead now, so `read` is priceable and must not be excused as situational')
+  ok(/readAhead/.test(auto),
+    'the policy no longer consults readAhead, so the read term in bonusValue prices something the sim cannot spend — ENG-25 run backwards')
   ok(E.CARDS['Sight the Line'].read > 0 && E.CARDS['Take It All In'].read > 0,
-    'the read cards are gone, so this exclusion covers nothing')
+    'the read cards are gone, so nothing above tests the pricing')
 })
 test('a technique card is worth a deck slot', () => {
   // measured: two of fifteen moves swapped for techniques took a mid Act 1
@@ -2966,6 +2975,35 @@ test('the sim barrel re-exports nothing that does not exist', () => {
    ======================================================================= */
 if (SLOW) {
   group('balance')
+  test('SIM-10: the rules that carry the game still fire', () => {
+    /* The tripwire SIM-10 was written for: a mechanic that stops firing fails HERE, at ship
+       time, instead of surfacing in an audit two years later. Nine of those have been found
+       as ENG-25 by accident.
+
+       IT RE-MEASURES RATHER THAN READING A NUMBER. Running the documented command is half the
+       point — it is what keeps the census from rotting back into the throwaway script it was,
+       and it is the PERF-3 lesson one release old: a guard that reads a measurement instead of
+       taking one is checking its own filing.
+
+       THE BAR IS ONLY WHERE A BAR CAN MEAN SOMETHING. See sim/census.mjs for the stability
+       measurement: above 2.6% the rates move at most 1.3x between seeds, below 0.3% they move
+       2x to infinity, and no sample fixes the second half. So the floor is asserted on the
+       nine effects that carry the game and the near-zero eight are recorded, not gated. */
+    const out = execSync(`node sim/run.mjs census ${CENSUS_N} built`, { encoding: 'utf8' })
+    const rate = {}
+    for (const m of out.matchAll(/^ {2}(\S+)\s+([\d.]+)\s+([\d.]+)$/gm)) rate[m[1]] = Number(m[2])
+    ok(Object.keys(rate).length >= 8, `the census reported nothing usable:\n${out.slice(0, 400)}`)
+    for (const fx of LIVE_BUILT)
+      ok((rate[fx] ?? 0) >= CENSUS_FLOOR,
+        `${fx} fires on ${(rate[fx] ?? 0).toFixed(2)}% of turns, under the ${CENSUS_FLOOR}% floor` +
+        ` — a rule that carries the game has stopped carrying it`)
+    /* and the split by deck is real, not a note: weight is the built deck's and friction is
+       the archetypes'. If they ever read the same way, CARD-23's finding has been undone. */
+    ok((rate.weight ?? 0) > (rate.friction ?? 0) * 4,
+      `weight ${rate.weight} and friction ${rate.friction} on the BUILT deck — CARD-23 measured` +
+      ` these inverted by population, and the census now says otherwise`)
+  })
+
   test('no climber is twice as good as another', () => {
     // the spread reached 9x (Comp Kid 3.3% against Alpinist 29.8%) before
     // anyone noticed, because nothing was watching it
@@ -3224,7 +3262,7 @@ if (SLOW) {
       ok(rows.length >= 8, `read ${rows.length} expedition rows, not the eight asked for`)
       return { ending: Number(ck[1]), stranger: Number(ep[3]), pages: rows[rows.length - 1] }
     }
-    const reads = career('reads', 240)
+    const reads = career('reads', ENDING_N)
     /* THE BAND, with a date on it, in the shape BAL-14 established and GUARD-10 sharpened:
        what gets defended is the band, and the number here is what somebody last chose.
        Set 2026-08-20 at 62.9% of careers / 11.0 pages, at 240 careers x 8 expeditions, and
@@ -3233,7 +3271,32 @@ if (SLOW) {
        breath with Evan rather than one of them going stale. A player who reads the trail node
        now finishes the story in five careers out of six.
        Re-pinning is allowed and expected — moving the number without saying so is not. */
-    const PIN = 82.5, TOL = 6
+    /* CARD-20 RE-PINNED AND RE-SAMPLED THIS (2026-08-22), and the lesson cost six measurements.
+       At n=240 the CARD-20 tree read 76.3 against the 82.5 pin — 0.2 outside the window — and
+       the "damage" was chased through the launch's drafter term (innocent: 76.0 against 77.1
+       at n=1440, a draw), the rules term at half size (76.3 — whatever it was, it did not
+       scale), a bite-side redesign (78.3, and worth nothing anywhere else), and a carrier buff
+       (80.4 at n=240 that melted to 76.5 at n=720 — noise, the handoff's own warning). The
+       finding: THE FIXED 240-CAREER SLICE DIVERGES +-6 BETWEEN NEARLY-IDENTICAL ENGINES. Same
+       seed, same careers — but an engine change re-deals every climb after its first
+       divergence, and at 240 careers that resampling is as wide as the tolerance policing real
+       damage: strip-only read 82.5 at 240 and 78.2 at 720, and v10.71 itself reads 77.6 at 720
+       against the 82.1 it recorded at 240. The launch's real ending cost is 0.9 against
+       v10.71 at n=720 — a draw — so the guard was firing on the slice, not the game.
+       The resolution is BOUGHT, which is this guard's own precedent (it moved 60 -> 240 once,
+       for exactly this): the sample now reads from band.mjs's ENDING_N (720, ~4 minutes), so
+       the ledger and this guard cannot quietly disagree, and the pin is the shipped tree's own
+       reading at that sample. TOL 5 is ~2.3 SE of a cross-engine comparison at n=720 — tighter
+       as a claim than the old +-6 at 240 ever was — and still catches RUN-14's nine-point
+       step with four points to spare. */
+    /* RE-PINNED 76.7 -> 81 on 2026-08-22, with Evan, IN THE SAME BREATH as the campaign band
+       (60 -> 62 in band.mjs). These two share a lever — anything that makes the campaign easier
+       lands more expeditions, and more expeditions carry more pages — so moving one and not the
+       other is exactly the stale copy NARR-22 was written after and BAL-18 and SIM-8 both had
+       to repair. LANE-4 and LANE-5 each moved this pair together for the same reason.
+       WHAT MOVED IT: ARCH-1 (v10.79), five signature moves, +3.3 on this measure and +3.0 on
+       the band. The three tickets around it measured neutral here. */
+    const PIN = 81, TOL = 5
     ok(Math.abs(reads.ending - PIN) <= TOL,
       `an informed player's story lands ${reads.ending}% of careers against a pin of ${PIN} — ` +
       `re-measure, pay it back, or re-pin here on purpose`)
@@ -3687,9 +3750,19 @@ if (SLOW) {
        so it now also runs `dClear +1` (the long way is longer), a real
        endurance-vs-power trade. The band the drift guard pins is the GUIDE line
        (default `line:0`), untouched by any of this. */
+    /* RUN-15: THE ARMS ARE n=1500 NOW, AND THE CEILING IS WHY. This guard's own comment has
+       said since SIM-8 that n=500 resolves the -8 floor and NOT the +3 ceiling — and at
+       v10.73 the ceiling finally fired on exactly that under-resolution: the traverse read
+       +4.4 over the guide at n=500 while the n=1500 truth is -0.6 (guide 57.3, traverse 56.7,
+       direct 58.2). Route pooling had not moved the crux density the traverse trades against
+       (offers read 1.27 / 1.31 / 3.00 cruxes per climb against 1.15 / 1.33 / 3.00 static) —
+       the n=500 slice had simply resampled. A guard that fires on a draw gets its resolution
+       bought, not its bar widened: 4,500 runs an act instead of 1,500, ~+9 minutes of slow
+       suite (GUARD-6 says state the cost), and the difference SE drops ~3.1 to ~1.8, which
+       resolves the ceiling the floor never needed help with. */
     const full = line => {
       // GUARD-6: one band, not three — this guard reads only the full journal
-      const out = execSync(`PAGES=14 LINE=${line} SHARP_AT=99 node sim/run.mjs campaign 500`, { encoding: 'utf8' })
+      const out = execSync(`PAGES=14 LINE=${line} SHARP_AT=99 node sim/run.mjs campaign 1500`, { encoding: 'utf8' })
       const pcts = [...out.matchAll(/completion\s+([\d.]+)%/g)].map(m => Number(m[1]))
       return pcts[pcts.length - 1]
     }
@@ -3742,6 +3815,58 @@ if (SLOW) {
       `a bought-and-spent Second Wind moved completion ${lift.toFixed(1)} pts — it is not helping at all`)
     ok(lift < 4,
       `a Second Wind is worth ${lift.toFixed(1)} pts of completion (${base.pct}% → ${wind.pct}%) — an extra burn is buying the campaign, not a leg-up`)
+  })
+  test('SIM-9: the policy can spend a turn on the plan, and the plan pays', () => {
+    /* THE POLICY IS THE INSTRUMENT EVERY NUMBER IN THIS FILE IS MEASURED THROUGH, and until
+       this ticket it could not spend a turn on anything but the best card for this turn.
+       What that cost was measured before anything was designed: 74.6% of failed burns die of
+       pump while the 30-turn clock binds on 0.0% of 2,780 — the binding resource spent as if
+       it were the free one. The fix is ONE CLAUSE in `autoPlay` (rest a lane nothing in hand
+       clears, above SHAKE_AT pump); the sweep and the three smarter rules that measured WORSE
+       are on the constant in the engine.
+
+       WHAT THIS GUARD HOLDS. The same four mid-ladder routes on the same seeds, once with the
+       shipping policy and once with `REST_AT=99` — the knob run.mjs keeps, which never fires
+       the branch and is the pre-SIM-9 policy exactly. Three claims, in the order they fail:
+         · the policy actually shakes out — the MECHANISM, GUARD-1's rule, because a lift
+           whose mechanism is invisible is measuring something else;
+         · the knob still disables it — or the two arms below compare a thing to itself,
+           which is the instrument failure CARD-9 spent GUARD-1 escaping;
+         · the plan is worth DOUBLE DIGITS of session send rate. Measured 79.9% against 58.8%
+           (+21.1); the ticket's probes read +8.2 on V8-V9 and +13.6 on roped lines. The bar
+           is 10: room for content drift, while a dead branch reads ~0.
+
+       WHAT THIS GUARD DELIBERATELY DOES NOT HOLD: the campaign band. The built deck's two
+       rests are FEET cards (Knee Bar, No-Hands Rest), so a hand rest is in hand on 6 of
+       7,610 no-clear lane decisions and the band cannot feel this rule — measured 59.8%
+       against 59.9% at paired n=900. The LADDER can feel it (every climber loadout carries
+       Shake Out x2); the v10.71 ledger row records what moved, and the fine pass above
+       re-measures it. Cost: two arms x 1,200 sessions, ~1 minute (GUARD-6). */
+    const arm = env => {
+      const out = execSync(`${env} node sim/run.mjs policy 300`, { encoding: 'utf8' })
+      const m = /policy: send ([\d.]+)%\s+shakeouts\/session ([\d.]+)/.exec(out)
+      ok(m, 'the harness stopped reporting the policy A/B')
+      return { send: Number(m[1]), shakes: Number(m[2]) }
+    }
+    const plan = arm(''), greedy = arm('REST_AT=99')
+    /* THE LIFT COMES FIRST, and the order is load-bearing. Injections found that asserting the
+       instrument before the claim SHIELDS the claim: any mutation that equalises the two arms
+       (a dead branch, a severed knob, an inverted gate that drags REST_AT=99 along with it)
+       tripped the shake-out comparison below and the lift assertion had never once failed — the
+       LANE-3 shape, one failure guarded twice with one copy in front of the other. So the claim
+       is asserted first, where every arms-level failure lands, and the two assertions behind it
+       exist to say WHY a lift died: the mechanism went invisible, or the knob stopped severing. */
+    const lift = plan.send - greedy.send
+    ok(lift > 10,
+      `a policy that can shake out sends ${plan.send}% against ${greedy.send}% for one that cannot — `
+      + `+${lift.toFixed(1)} points against a measured +21.1; the plan is dead, fires at the wrong time, `
+      + 'or the greedy arm is not greedy')
+    ok(plan.shakes > 4,
+      `the policy reports ${plan.shakes} shake-outs a session against a measured 6.9 — the plan is `
+      + 'invisible to the instrument, so the lift above is not known to be the plan paying')
+    ok(greedy.shakes < plan.shakes * 0.6,
+      `REST_AT=99 still shakes out ${greedy.shakes}/session against the plan's ${plan.shakes} — `
+      + 'the knob no longer disables the plan')
   })
 }
 

@@ -1,0 +1,145 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body{margin:0;font-family:'Inter','Segoe UI',system-ui,sans-serif}
+    .rt .node{position:absolute;left:50%;transform:translateX(-50%);text-align:center}
+    .rt .pill{display:inline-block;border-radius:14px;padding:7px 13px;white-space:nowrap}
+    .rt .done{opacity:.34}
+  </style>
+</helmet>
+
+<div class="rt" style="width:390px;height:844px;box-sizing:border-box;position:relative;overflow:hidden;
+  background:linear-gradient(180deg,#1a2b33 0%,#20272c 26%,#191d21 62%,#101315 100%);color:#e9eef1">
+
+  <svg viewBox="0 0 390 844" style="position:absolute;inset:0;width:390px;height:844px" aria-hidden="true">
+    <!-- the whole face, pulled back: you can see the anchor and the ground at once -->
+    <path d="M0 74 L52 60 L118 82 L190 54 L258 78 L322 58 L390 80 L390 844 L0 844 Z" fill="#232a2e" opacity=".85"/>
+    <g stroke="#12161a" stroke-width="1.2" fill="none" opacity=".5">
+      <path d="M52 100 C 76 220, 44 330, 82 460 S 48 660, 88 812"/>
+      <path d="M330 96 C 310 210, 348 320, 318 452 S 344 664, 310 816"/>
+    </g>
+    <!-- the line of the route, from the ground to the anchor -->
+    <path d="M195 122 L195 812" stroke="#2f3941" stroke-width="2"/>
+    <path d="M195 470 L195 812" stroke="#4f7f66" stroke-width="2"/>
+  </svg>
+
+  <div style="position:absolute;top:16px;left:16px;right:16px;display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <div style="font-size:18px;font-weight:600">The Fridge</div>
+      <div style="font-size:9px;letter-spacing:2.2px;color:#7f929c;margin-top:2px">V3 &middot; NORTH FACE</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:8.5px;letter-spacing:1.8px;color:#7f929c">PUMP</div>
+      <div style="font-size:17px;font-weight:600">7<span style="color:#5c6f7a;font-size:12px">/11</span></div>
+      <div style="font-size:8.5px;letter-spacing:1.6px;color:#5fbf90;margin-top:2px">FLOW 2</div>
+    </div>
+  </div>
+
+  <!-- above you: the anchor, and what is still to come -->
+  <div class="node" style="top:96px">
+    <div class="pill" style="border:1px dashed #4a5a64;color:#8fa3ad;font-size:10px;letter-spacing:2px">ANCHOR</div>
+  </div>
+  <div class="node" style="top:150px;opacity:.3">
+    <div class="pill" style="background:#232c32;font-size:11px;color:#8fa3ad">2 more holds above</div>
+  </div>
+
+  <!-- the three live holds: bigger the closer they are to your hands -->
+  <div class="node" style="top:214px;width:330px">
+    <div style="background:#242e34;border:1px solid #35424a;border-radius:9px;padding:9px 12px;display:flex;align-items:center;gap:10px">
+      <div style="width:9px;height:9px;border-radius:50%;background:#8a6bd8;flex:none"></div>
+      <div style="flex:1;text-align:left">
+        <div style="font-size:14px;font-weight:600">sloper</div>
+        <div style="font-size:8.5px;letter-spacing:1.8px;color:#8a6bd8;margin-top:1px">GREASY</div>
+      </div>
+      <div style="text-align:right;line-height:1.15">
+        <div style="font-size:15px;font-weight:700"><span style="color:#e07a5f">2</span>
+          <span style="color:#3b474e">/</span><span style="color:#5fbf90">6</span></div>
+        <div style="font-size:7.5px;letter-spacing:1.4px;color:#6e828d">BITE / GRIP</div>
+      </div>
+    </div>
+    <div style="margin-top:6px;background:rgba(95,191,144,.13);border-radius:7px;padding:6px 11px;text-align:left;
+      border-left:3px solid #5fbf90">
+      <span style="font-size:12px;font-weight:700;color:#5fbf90;letter-spacing:.3px">WORKS IT</span>
+      <span style="font-size:10px;color:#9fb2bc;margin-left:8px">2 grip left &middot; +1 pump</span>
+    </div>
+  </div>
+
+  <div class="node" style="top:352px;width:300px">
+    <div style="background:#212a30;border:1px solid #2e3940;border-radius:9px;padding:8px 12px;display:flex;align-items:center;gap:10px">
+      <div style="width:9px;height:9px;border-radius:50%;background:#e07a5f;flex:none"></div>
+      <div style="flex:1;text-align:left">
+        <div style="font-size:13px;font-weight:600">the blank</div>
+        <div style="font-size:8.5px;letter-spacing:1.8px;color:#e07a5f;margin-top:1px">COMMITTING</div>
+      </div>
+      <div style="font-size:14px;font-weight:700"><span style="color:#e07a5f">4</span>
+        <span style="color:#3b474e">/</span><span style="color:#5fbf90">8</span></div>
+    </div>
+  </div>
+  <div class="node" style="top:424px;width:272px">
+    <div style="background:#1e262b;border:1px solid #2a343a;border-radius:9px;padding:8px 12px;display:flex;align-items:center;gap:10px">
+      <div style="width:9px;height:9px;border-radius:50%;background:#4a5a64;flex:none"></div>
+      <div style="flex:1;text-align:left"><div style="font-size:13px;font-weight:600">smear edge</div></div>
+      <div style="font-size:14px;font-weight:700"><span style="color:#e07a5f">1</span>
+        <span style="color:#3b474e">/</span><span style="color:#5fbf90">3</span></div>
+    </div>
+  </div>
+
+  <!-- you -->
+  <div class="node" style="top:486px">
+    <div class="pill" style="background:#e9eef1;color:#141a1e;font-size:10.5px;font-weight:700;letter-spacing:2px">YOU &middot; HOLD 3</div>
+  </div>
+
+  <!-- below you: what you already climbed, chalked and spent -->
+  <div class="node done" style="top:542px;width:250px">
+    <div style="border:1px solid #2a343a;border-radius:9px;padding:7px 12px;display:flex;align-items:center;gap:10px">
+      <div style="flex:1;text-align:left;font-size:12px">crimp rail</div>
+      <div style="font-size:9px;letter-spacing:1.6px;color:#5fbf90">SENT</div>
+    </div>
+  </div>
+  <div class="node done" style="top:594px;width:228px">
+    <div style="border:1px solid #2a343a;border-radius:9px;padding:7px 12px;display:flex;align-items:center;gap:10px">
+      <div style="flex:1;text-align:left;font-size:12px">jug ledge</div>
+      <div style="font-size:9px;letter-spacing:1.6px;color:#5fbf90">SENT</div>
+    </div>
+  </div>
+  <div class="node" style="top:648px;opacity:.22">
+    <div style="font-size:9.5px;letter-spacing:2px;color:#8fa3ad">START &middot; 14 MIN AGO</div>
+  </div>
+
+  <!-- hand: a thin rail, because the route is the subject here -->
+  <div style="position:absolute;left:0;right:0;bottom:0;height:158px;background:linear-gradient(180deg,rgba(16,19,21,0),#0d1012 30%);
+    padding:26px 12px 14px;box-sizing:border-box">
+    <div style="display:flex;gap:7px;align-items:stretch">
+      <div style="flex:1;background:#1b2227;border:1px solid #2b353c;border-radius:8px;padding:8px 9px">
+        <div style="font-size:11.5px;font-weight:600">Open Hand</div>
+        <div style="font-size:7.5px;color:#7f929c;margin-top:3px;line-height:1.3">ignores Greasy</div>
+        <div style="margin-top:6px;font-size:12px;font-weight:700"><span style="color:#e07a5f">2</span>
+          <span style="color:#3b474e">/</span><span style="color:#5fbf90">7</span></div>
+      </div>
+      <div style="flex:1;background:#2a3640;border:1px solid #5fbf90;border-radius:8px;padding:8px 9px">
+        <div style="font-size:11.5px;font-weight:600;color:#e9eef1">Lock Off</div>
+        <div style="font-size:7.5px;color:#a8c4b6;margin-top:3px;line-height:1.3">1 less Bite</div>
+        <div style="margin-top:6px;font-size:12px;font-weight:700"><span style="color:#e07a5f">3</span>
+          <span style="color:#3b474e">/</span><span style="color:#5fbf90">6</span></div>
+      </div>
+      <div style="flex:1;background:#1b2227;border:1px solid #2b353c;border-radius:8px;padding:8px 9px">
+        <div style="font-size:11.5px;font-weight:600">Smear</div>
+        <div style="font-size:7.5px;color:#7f929c;margin-top:3px;line-height:1.3">Support 1</div>
+        <div style="margin-top:6px;font-size:12px;font-weight:700"><span style="color:#e07a5f">1</span>
+          <span style="color:#3b474e">/</span><span style="color:#5fbf90">6</span></div>
+      </div>
+      <button style="width:74px;border:0;border-radius:8px;background:#5fbf90;color:#0d1012;
+        font-family:inherit;font-size:11px;font-weight:700;letter-spacing:1.4px">CLIMB</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

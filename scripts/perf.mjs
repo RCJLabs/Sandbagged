@@ -11,6 +11,7 @@ import { chromium } from 'playwright-core'
 import { createServer } from 'node:http'
 import { readFileSync } from 'node:fs'
 import { extname, join } from 'node:path'
+import { findBrowser } from './browser.mjs'
 
 /* Serves docs/ itself rather than expecting one to be running: over file:// the service
    worker never registers and the numbers would be measuring a different app. */
@@ -26,7 +27,59 @@ const srv = createServer((req, res) => {
 })
 await new Promise(r => srv.listen(0, '127.0.0.1', r))
 const URL = `http://127.0.0.1:${srv.address().port}/index.html`
-const b = await chromium.launch({ executablePath: process.env.PW_EXE || undefined })
+
+const found = findBrowser()
+/* ONE launch site, and the reason is an injection that got through. The selftest and the
+ * real run each opened their own browser with the resolved path, so a mutant could point
+ * the REAL run at nothing, leave the selftest passing, and npm run perf would still die
+ * with a green suite behind it — a guard proving one of two copies proves nothing about
+ * the other (ENG-19, and this is the shape it takes in a script rather than in the engine). */
+const launch = () => chromium.launch({ executablePath: found.path })
+/* --selftest proves this script EXECUTES, which is the whole of PERF-3: the guard that
+ * protects it could only ever check its shape, so `npm run check` stayed green against a
+ * measurement nobody could run. It does everything the real run does except the throttled
+ * sweeps — resolves the browser, serves docs/, launches, loads the page and waits for the
+ * app to paint — and it is the browser half that is worth proving, because that is the half
+ * that was broken. Exit 0 means the whole pipeline is sound; exit 3 means everything but
+ * the browser is, which is the honest answer on a box with no chromium and is reported
+ * rather than swallowed, so the guard can say which half it got. */
+if (process.argv.includes('--selftest')) {
+  const page = await fetch(URL).then(r => r.text())
+  if (!/<script|<div id="root"/.test(page) || page.length < 200_000) {
+    console.error(`selftest: docs/index.html served ${page.length} bytes and does not look like the build`)
+    srv.close(); process.exit(1)
+  }
+  console.log(`selftest: server ok, ${(page.length / 1024).toFixed(0)} KB served`)
+  if (!found.path && !process.env.PLAYWRIGHT_BROWSERS_PATH) {
+    console.log('selftest: NO BROWSER — everything but the launch is sound')
+    srv.close(); process.exit(3)
+  }
+  try {
+    const t = await launch()
+    const pg = await (await t.newContext({ viewport: { width: 402, height: 874 } })).newPage()
+    await pg.goto(URL, { waitUntil: 'load' })
+    await pg.locator('.splash').waitFor({ state: 'visible', timeout: 30000 })
+    await t.close()
+    console.log(`selftest: browser ok via ${found.how}, app painted`)
+    srv.close(); process.exit(0)
+  } catch (e) {
+    console.log(`selftest: NO BROWSER (${found.how}) — ${String(e.message).split('\n')[0]}`)
+    srv.close(); process.exit(3)
+  }
+}
+
+let b
+try {
+  b = await launch()
+} catch (e) {
+  console.error(`\n  npm run perf needs a chromium and could not find one.`)
+  console.error(`  looked at: ${found.how}`)
+  console.error(`  ${String(e.message).split('\n')[0]}`)
+  console.error(`  set PW_EXE=/path/to/chrome, or point PLAYWRIGHT_BROWSERS_PATH at a`)
+  console.error(`  directory holding a chromium-<build> folder.\n`)
+  srv.close()
+  process.exit(3)
+}
 
 async function boot(rate) {
   const ctx = await b.newContext({ viewport: { width: 402, height: 874 } })
@@ -93,7 +146,14 @@ async function turn(rate) {
   return times
 }
 
-console.log('PERF-2 — boot cost by CPU throttle (402x874, cold context each time)\n')
+/* PERF-3: SAY WHICH BROWSER, because the numbers are not comparable without it. Measured
+ * three times on one box the 6x load reads 573 / 732 / 761 ms — a 14% spread run to run —
+ * and a run against a different chromium on the SAME box read 419, outside that spread
+ * entirely. So a figure from this script is only comparable to another figure from the same
+ * binary, and printing medians to the millisecond without naming it is false precision.
+ * This is a tripwire for a dependency arriving (PERF-2's own words), not a stopwatch. */
+console.log(`PERF-2 — boot cost by CPU throttle (402x874, cold context each time)`)
+console.log(`browser: ${found.how}  ·  3 runs per rate, median; expect ~15% spread between runs\n`)
 console.log('throttle   domInteractive   DCL     load    FCP    tap-to-menu')
 for (const rate of [1, 4, 6]) {
   const runs = []

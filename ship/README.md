@@ -45,7 +45,7 @@ said so since v6.7.
 4. **Build the APK/AAB:**
    ```
    npm i -g @bubblewrap/cli
-   cd ship && bubblewrap init --manifest https://rcjlabs.github.io/sandbagged/manifest.webmanifest
+   cd ship && bubblewrap init --manifest https://rcjlabs.github.io/Sandbagged/manifest.webmanifest
    # it will offer to use the twa-manifest.json already here — accept it
    bubblewrap build
    ```
@@ -67,7 +67,7 @@ said so since v6.7.
 8. **Content rating questionnaire**, **Data safety form** (answer: no data collected — see
    `docs/privacy.html`, which was written against the built file and not from memory), and
    **target audience**.
-9. **Privacy policy URL:** `https://rcjlabs.github.io/sandbagged/privacy.html`
+9. **Privacy policy URL:** `https://rcjlabs.github.io/Sandbagged/privacy.html`
 
 ## itch.io
 
