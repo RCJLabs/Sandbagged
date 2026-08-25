@@ -1,0 +1,24 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html",      "x": 0,    "y": 0, "w": 390, "h": 844, "title": "A · Field Guide (shipping)" },
+    { "file": "TopoDark.dc.html",  "x": 510,  "y": 0, "w": 390, "h": 844, "title": "B · Topo Dark" },
+    { "file": "ChalkSlate.dc.html","x": 1020, "y": 0, "w": 390, "h": 844, "title": "C · Chalk & Slate" },
+    { "file": "Archive.dc.html",   "x": 1530, "y": 0, "w": 390, "h": 844, "title": "D · Expedition Archive" },
+    { "file": "Granite.dc.html",   "x": 2040, "y": 0, "w": 390, "h": 844, "title": "E · Granite" }
+  ],
+  "annotations": [
+    { "id": "brief", "x": 0, "y": -168, "w": 500,
+      "text": "Five directions, same turn on The Fridge — sloper + crux + smear edge, Open Hand / Lock Off / Smear in hand, pump 7 of 11.\nSame content everywhere so the STYLE is the only variable." },
+    { "id": "note-a", "x": 0, "y": 892, "w": 390,
+      "text": "A · FIELD GUIDE — what ships today, tightened.\nA guidebook you are annotating: ruled cream paper, oxide red, Georgia. Exact shipping values (#e8e1d0 / #26221e / #8c3124, stone wall vs paper hand, tan margin stripe).\nTrade: warmest and most literate; also the quietest — low contrast outdoors, reads more book than game." },
+    { "id": "note-b", "x": 510, "y": 892, "w": 390,
+      "text": "B · TOPO DARK — the route as a technical drawing.\nNight slate, contour header with the crux ringed, monospace figures, cyan/amber channel. Bite and Grip become big readable numerals.\nTrade: best legibility of the five and a real night mode; colder — an instrument, not a story." },
+    { "id": "note-c", "x": 1020, "y": 892, "w": 390,
+      "text": "C · CHALK & SLATE — the material the sport is made of.\nRock ground, chalk-white condensed caps (Oswald), your hand printed as chalk blocks on dark stone. Highest contrast between wall and hand.\nTrade: the most physical and the most striking; heavy, and 9px serif detail is working hard on a phone." },
+    { "id": "note-d", "x": 1530, "y": 892, "w": 390,
+      "text": "D · EXPEDITION ARCHIVE — leans hardest into the fiction.\nHalloway's field book: manila, typewriter, tape, a rotated ACT II stamp, oxblood rules. The screen becomes a page of the dead man's records.\nTrade: most characterful and most on-theme for The Lost Line; busiest, and the texture fights a fast turn loop." },
+    { "id": "note-e", "x": 2040, "y": 892, "w": 390,
+      "text": "E · GRANITE — the store-screenshot direction.\nStone greys, one safety-orange accent, Space Grotesk, soft tiles, 44px+ targets. Cleanest and most modern; scales to tablet without redrawing.\nTrade: legible and familiar — and it could be any app. Loses the handmade character the game has now." }
+  ],
+  "launch": { "view": "canvas" }
+}
