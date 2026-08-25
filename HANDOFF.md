@@ -3,7 +3,7 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.91.** `npm run check` is 213/213 core + 119/119 kept;
+**State at the time of writing: v10.92.** `npm run check` is 214/214 core + 119/119 kept;
 `npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
@@ -175,6 +175,32 @@ deck every player had built, because `loadouts` was kept only on an exact length
 padded per climber now and SAVE-8 guards it — but the lesson generalises: **anything sized by a
 content table is a migration.** `archWins` and `owned` are membership lists and safe; `loadouts`
 was the one indexed by position.
+
+## `npm run perf` runs now, and the guard proves it rather than reading it
+
+Until v10.92 the perf guard asserted that `scripts/perf.mjs` **exists**, throttles at both
+sites and sweeps both rates. All shape. `npm run check` was green against a script that could
+not launch a browser, and PERF-2's own note ends *"if it fires, re-run `npm run perf`"* — an
+instruction nobody could follow. **PERF-3's row blamed the undeclared `playwright-core`;
+GUARD-11 declared it at v10.84 and the script still did not run.** `playwright-core` ships no
+browsers by design, so the version it wants (build 1234) and the one on disk (1194) never met.
+
+- `scripts/browser.mjs` is the only place that finds a chromium. `PW_EXE` first, then whatever
+  build is actually under `PLAYWRIGHT_BROWSERS_PATH`, then playwright's default. **Do not run
+  `npx playwright install`** — this environment documents that, and it is why the resolver
+  takes what is there instead of what playwright wants.
+- `node scripts/perf.mjs --selftest` runs the whole pipeline bar the throttled sweeps in 1.1s.
+  **0** = sound, **3** = everything but the browser. The guard executes it in the fast suite.
+- The guard tolerates a browserless box but **decides that without asking `findBrowser()`** —
+  using the resolver to decide whether to test the resolver blinds both at once. An injection
+  proved it. Keep those two lines duplicated; that is the point of them.
+
+**The numbers are softer than they read, and that is now printed.** The same build on the same
+box measures **573 / 732 / 761 ms** at 6x — 14% run to run — and a *different* chromium on that
+box read 419, outside the spread entirely. A figure from this script is comparable only to
+another figure from the same binary, so the script names the binary now. It is a tripwire for a
+dependency arriving, which is what PERF-2 always said it was; it is not a stopwatch. ART-5's
+*"no cost"* line is corrected in the ROADMAP on exactly these grounds.
 
 ## The palette is measured now, and it had never been
 

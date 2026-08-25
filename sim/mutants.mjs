@@ -2509,6 +2509,42 @@ export const MUTANTS = [
     why: 'the status bar and the splash keep the old cream, so the app paints cream for as long as it takes React to boot and then snaps to rock — the one part of the palette a player sees BEFORE any of this code runs, and the one nothing in src/ would ever catch',
     catches: 'theme-color is not',
     patch: [['index.html', '<meta name="theme-color" content="#221d18" />', '<meta name="theme-color" content="#e8e1d0" />']] },
+
+  // ---- PERF-3: the perf measurement is one that actually runs ----
+  { id: 'PERF-3/resolver-reads-only-the-env-var', suite: 'core',
+    why: 'the resolver goes back to PW_EXE or nothing, which is the state that made npm run perf unrunnable for two releases — playwright-core ships no browsers, so the fallback resolves a build number that is not on the machine. It stayed hidden because it WORKS for whoever exports PW_EXE by hand, which is how the v10.84 ledger row came to claim the script had been proven sound',
+    catches: 'the perf script could not use it',
+    patch: [['scripts/browser.mjs',
+      "  const root = env.PLAYWRIGHT_BROWSERS_PATH\n  if (root && existsSync(root)) {",
+      "  const root = undefined\n  if (root && existsSync(root)) {"]] },
+
+  { id: 'PERF-3/selftest-never-launches', suite: 'core',
+    why: 'the selftest returns as soon as the server answers, so it proves the half that was never broken and skips the half that was — a check that runs the script but not the part the ticket is about is the same disease as a check that only reads it',
+    catches: 'could not use it',
+    patch: [['scripts/perf.mjs',
+      "  if (!found.path && !process.env.PLAYWRIGHT_BROWSERS_PATH) {",
+      "  if (true) {"]] },
+
+  { id: 'PERF-3/selftest-serves-nothing', suite: 'core',
+    why: 'the server hands back something that is not the build, so npm run perf would time a 404 and report a boot of nothing at all — the numbers would still be numbers, which is why this is asserted on the CONTENT rather than on the request succeeding',
+    catches: 'the measurement does not run',
+    patch: [['scripts/perf.mjs',
+      "  const page = await fetch(URL).then(r => r.text())",
+      "  const page = await fetch(URL + '.missing').then(r => r.text())"]] },
+
+  { id: 'PERF-3/launch-ignores-the-browser-it-found', suite: 'core',
+    why: 'the real run resolves a browser and then launches without it, so the selftest passes and npm run perf still dies — the two paths have to use the same answer or proving one proves nothing about the other',
+    catches: 'could not use it',
+    patch: [['scripts/perf.mjs',
+      "const launch = () => chromium.launch({ executablePath: found.path })",
+      "const launch = () => chromium.launch({ executablePath: undefined })"]] },
+
+  { id: 'PERF-3/resolver-invents-a-browser', suite: 'core',
+    why: 'the resolver returns a path when it found nothing, so a box with no chromium reports one and the failure moves from a clear "no browser here" to a launch error against a path that was made up',
+    catches: 'invents a browser',
+    patch: [['scripts/browser.mjs',
+      "  return { path: undefined, how: \"playwright's own default\" }",
+      "  return { path: join(root ?? '/opt', 'chromium/chrome-linux/chrome'), how: 'guess' }"]] },
 ]
 
 

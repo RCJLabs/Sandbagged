@@ -9,6 +9,8 @@
  *   node sim/test-core.mjs
  */
 import { build } from 'esbuild'
+import { execFileSync } from 'node:child_process'
+import { findBrowser } from '../scripts/browser.mjs'
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { builtinModules } from 'node:module'
 import { gzipSync } from 'node:zlib'
@@ -6450,6 +6452,70 @@ test('PERF-2: the bundle is measured, and the size is pinned', () => {
   const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
   eq(pkg.scripts.perf, 'node scripts/perf.mjs', 'npm run perf is gone')
 })
+test('PERF-3: the perf measurement is one that actually runs', () => {
+  /* PERF-2's guard asserts that scripts/perf.mjs EXISTS, throttles at both sites and sweeps
+     both rates. All shape. It never ran the thing, and PERF-2's own note ends "if it fires,
+     re-run `npm run perf`" — an instruction nobody could follow, while `npm run check` stayed
+     green. That is the row's thesis and it is right: a guard protecting an unrunnable
+     measurement is worse than none, because it reads as coverage.
+
+     THE ROW BLAMED THE WRONG CAUSE, AND THE CAUSE IT NAMED WAS ALREADY FIXED. It said the
+     script fails because `playwright-core` is in neither dependency list; GUARD-11 declared it
+     at v10.84 — and the script still could not run. playwright-core ships no browsers by
+     design, 1.62.1 resolves Chromium build 1234, this machine has 1194, so launch died on a
+     path that has never existed here. The prescribed fix shipped under another ticket and the
+     disease survived it, which is the whole reason this guard runs the script instead of
+     reading it.
+
+     WHAT IT REFUSES TO DO IS FIRE ON THE ENVIRONMENT. A box with no chromium is not this
+     repo's defect, so the selftest exits 3 there and that is tolerated — but tolerated
+     NARROWLY, using the same resolver the script launches with: if findBrowser() locates a
+     browser and the script still could not use it, that is the PERF-3 defect itself and it
+     fails. Silence is only allowed where there is genuinely nothing to launch. */
+  let out = '', code = 0
+  try {
+    out = execFileSync('node', ['scripts/perf.mjs', '--selftest'],
+      { encoding: 'utf8', timeout: 120_000, stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch (e) {
+    code = e.status ?? -1
+    out = `${e.stdout ?? ''}${e.stderr ?? ''}`
+  }
+  ok(code === 0 || code === 3,
+    `node scripts/perf.mjs --selftest exited ${code} — the measurement does not run:\n${out.slice(0, 400)}`)
+  /* the half that works everywhere: the build is served and looks like the build. If this
+     stops holding, `npm run perf` is timing a 404. */
+  ok(/selftest: server ok, \d+ KB served/.test(out),
+    `the perf script never served the build:\n${out.slice(0, 400)}`)
+
+  /* WHETHER THIS BOX HAS A BROWSER IS DECIDED WITHOUT ASKING findBrowser(). Using the
+     resolver to decide whether to test the resolver is not a guard: break the scan and both
+     the script and the check go blind together, the selftest reports "no browser", and the
+     guard congratulates it. Found by injecting exactly that. So the presence test is its own
+     two lines, deliberately duplicated, and they are allowed to be dumber than the resolver —
+     they only have to answer "is there something here to launch". */
+  const root = process.env.PLAYWRIGHT_BROWSERS_PATH
+  const hasChromium = !!root && existsSync(root)
+    && readdirSync(root).some(d => /^chromium/.test(d))
+  if (hasChromium) {
+    ok(code === 0 && /selftest: browser ok via/.test(out),
+      `there is a chromium under ${root} and the perf script could not use it — ` +
+      `which is exactly the PERF-3 defect:\n${out.slice(0, 400)}`)
+  } else {
+    /* NOT a silent pass: the assertion that survives here is the server half, above, and this
+       one records why the browser half was skipped rather than quietly dropping it. */
+    ok(code === 3, `no chromium is installed, so the selftest should report 3, not ${code}`)
+  }
+
+  /* and the resolver has to keep looking past PW_EXE. Reading only the env var is how the
+     script spent two releases runnable for whoever set it by hand and broken for everybody
+     else — including for the v10.84 ledger row that claimed it had been proven sound. */
+  const res = readFileSync('scripts/browser.mjs', 'utf8')
+  ok(/PLAYWRIGHT_BROWSERS_PATH/.test(res), 'the resolver no longer looks at the installed browsers')
+  ok(/readdirSync/.test(stripComments(res)), 'the resolver no longer scans for whatever build is present')
+  eq(findBrowser({ PW_EXE: '/tmp/x' }).path, '/tmp/x', 'PW_EXE stopped overriding the scan')
+  eq(findBrowser({}).path, undefined, 'the resolver invents a browser when there is none to find')
+})
+
 test('SKIRM-9: the circuit ending wears its own furniture', () => {
   /* Found while shipping NARR-15 and logged rather than bundled, because that ticket was
      about who SPEAKS. The run-end screen's subtitle was unconditional:
