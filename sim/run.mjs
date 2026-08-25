@@ -25,6 +25,56 @@ const N = Number(process.argv[3] ?? 1200)
 const mode = process.argv[2] ?? 'ladder'
 
 let SHAKES = 0   // SIM-9: hand-lane rests the policy placed, read by the `policy` mode
+
+/* SIM-10: the firing-rate census, as an instrument instead of a throwaway script.
+ *
+ * CARD-23, CARD-24, HOLD-4 and INFO-4 every one came out of a script written for one audit
+ * and deleted after it, and the same class of finding has been tripped over nine times as
+ * ENG-25 — a mechanic the policy cannot use measures as dead — rather than looked for. This
+ * is that measurement kept.
+ *
+ * TWO COLUMNS, AND THEY ANSWER DIFFERENT QUESTIONS. CARD-24's row is explicit that "a card
+ * the drafter never offers and a card the policy never takes are different diseases":
+ *   PLAY  — the share of turns a card carrying this fx reached the committed board. Complete
+ *           and unambiguous for all eighteen. This is the one that catches a mechanic going
+ *           undraftable or unplayable.
+ *   FIRE  — the share of turns the fx changed a number the engine computes. Measured by
+ *           DIFFERING THE ENGINE AGAINST ITSELF: total power and bite across the board, then
+ *           again with that one card's fx blanked. No rule is restated here, which is the
+ *           whole point — a census that reimplements the conditions it measures drifts away
+ *           from the game the first time a rule moves (ENG-19), and would then report the
+ *           rate of its own copy.
+ * FIRE ONLY SEES THE POWER/BITE FAMILY and that is stated rather than hidden: setup, echo,
+ * cycle, peel, snap, settle2, tough and commit act inside resolve, not on those two numbers,
+ * so they read 0.0 FIRE by construction and their PLAY column is the live one.
+ */
+let CENSUS = null
+function censusTurn(s) {
+  if (!CENSUS) return
+  CENSUS.turns++
+  const total = st => {
+    let t = 0
+    for (let i = 0; i < 3; i++) {
+      const c = st.boardP[i], h = st.boardH[i]
+      if (!c || !h) continue
+      t += E.powerAgainst(st, c, h, i) * 31 + E.biteAgainst(st, c, h, i)
+    }
+    return t
+  }
+  const base = total(s)
+  const seen = new Set()
+  for (let lane = 0; lane < 3; lane++) {
+    const card = s.boardP[lane]
+    if (!card) continue
+    const fx = card.fx || '(plain)'
+    if (!seen.has(fx)) { CENSUS.play[fx] = (CENSUS.play[fx] ?? 0) + 1; seen.add(fx) }
+    if (!card.fx || CENSUS.fired.has(fx + lane)) continue
+    const bp = s.boardP.slice(); bp[lane] = { ...card, fx: '' }
+    if (total({ ...s, boardP: bp }) !== base && !seen.has('!' + fx)) {
+      CENSUS.fire[fx] = (CENSUS.fire[fx] ?? 0) + 1; seen.add('!' + fx)
+    }
+  }
+}
 function session(routeIdx, tier, seed, force) {
   const rng = new E.RNG(seed)
   let s = E.freshRun(routeIdx, tier, seed)
@@ -378,6 +428,7 @@ function runOnce(seed, carry) {
       }
       if (s.phase === 'climb') {
         s = PLAY(s, rng)
+        censusTurn(s)                        // SIM-10: after the policy commits, before resolve
         // on a rope, get a piece in when the runout is getting long
         const spec = E.ROUTES[s.routeIdx]
         if (spec?.roped && (s.runout >= 3 || s.lastPiece < 0)) {
@@ -655,6 +706,27 @@ if (mode === 'campaign') {
    "cannot go wrong" and "rarely kills" are different claims and only the first is the
    complaint. If every run leaves act 1 in the same shape, act 1 has no consequences at
    all — and that is a sharper problem than a low death rate, with different fixes. */
+/* SIM-10: `node sim/run.mjs census 400 [built|arch]` — per-fx PLAY and FIRE rates over
+   drafted campaigns. SEED lets a second sample be drawn from a different stream, which is
+   how the stability question the row asks gets answered rather than assumed. */
+if (mode === 'census') {
+  const pop = process.argv[4] ?? 'built'
+  LOADOUT = pop === 'built' ? buildBest() : undefined
+  const seed = Number(process.env.SEED ?? 777)
+  CENSUS = { turns: 0, play: {}, fire: {}, fired: new Set() }
+  const rng = new E.RNG(seed)
+  for (let i = 0; i < N; i++) runOnce(Math.floor(rng.next() * 2 ** 31))
+  const { turns, play, fire } = CENSUS
+  console.log(`Firing-rate census — ${pop} loadout, ${N} campaigns, seed ${seed}, ${turns} turns\n`)
+  console.log('  fx           PLAY %   FIRE %   (FIRE reads power/bite only)')
+  const all = [...new Set([...Object.keys(play), ...Object.keys(fire)])]
+    .sort((a, b) => (play[b] ?? 0) - (play[a] ?? 0))
+  for (const fx of all)
+    console.log(`  ${fx.padEnd(12)} ${(100 * (play[fx] ?? 0) / turns).toFixed(2).padStart(6)}   ` +
+      `${(100 * (fire[fx] ?? 0) / turns).toFixed(2).padStart(6)}`)
+  CENSUS = null
+}
+
 if (mode === 'acts') {
   LOADOUT = buildBest()
   console.log('What each act costs — state on the way OUT of it\n')

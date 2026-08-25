@@ -21,6 +21,7 @@ import { build } from 'esbuild'
 import { readFileSync, unlinkSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import { BAND_PIN, ENDING_N, ARCH_N, ARCH_FLOOR, ARCH_TOL, BAND_LOG } from './band.mjs'
+import { CENSUS_FLOOR, CENSUS_N, LIVE_BUILT, LIVE_ARCH, DEAD } from './census.mjs'
 
 const SLOW = process.argv.includes('slow')
 const HISTORY_CAP_TEST = 35
@@ -2974,6 +2975,35 @@ test('the sim barrel re-exports nothing that does not exist', () => {
    ======================================================================= */
 if (SLOW) {
   group('balance')
+  test('SIM-10: the rules that carry the game still fire', () => {
+    /* The tripwire SIM-10 was written for: a mechanic that stops firing fails HERE, at ship
+       time, instead of surfacing in an audit two years later. Nine of those have been found
+       as ENG-25 by accident.
+
+       IT RE-MEASURES RATHER THAN READING A NUMBER. Running the documented command is half the
+       point — it is what keeps the census from rotting back into the throwaway script it was,
+       and it is the PERF-3 lesson one release old: a guard that reads a measurement instead of
+       taking one is checking its own filing.
+
+       THE BAR IS ONLY WHERE A BAR CAN MEAN SOMETHING. See sim/census.mjs for the stability
+       measurement: above 2.6% the rates move at most 1.3x between seeds, below 0.3% they move
+       2x to infinity, and no sample fixes the second half. So the floor is asserted on the
+       nine effects that carry the game and the near-zero eight are recorded, not gated. */
+    const out = execSync(`node sim/run.mjs census ${CENSUS_N} built`, { encoding: 'utf8' })
+    const rate = {}
+    for (const m of out.matchAll(/^ {2}(\S+)\s+([\d.]+)\s+([\d.]+)$/gm)) rate[m[1]] = Number(m[2])
+    ok(Object.keys(rate).length >= 8, `the census reported nothing usable:\n${out.slice(0, 400)}`)
+    for (const fx of LIVE_BUILT)
+      ok((rate[fx] ?? 0) >= CENSUS_FLOOR,
+        `${fx} fires on ${(rate[fx] ?? 0).toFixed(2)}% of turns, under the ${CENSUS_FLOOR}% floor` +
+        ` — a rule that carries the game has stopped carrying it`)
+    /* and the split by deck is real, not a note: weight is the built deck's and friction is
+       the archetypes'. If they ever read the same way, CARD-23's finding has been undone. */
+    ok((rate.weight ?? 0) > (rate.friction ?? 0) * 4,
+      `weight ${rate.weight} and friction ${rate.friction} on the BUILT deck — CARD-23 measured` +
+      ` these inverted by population, and the census now says otherwise`)
+  })
+
   test('no climber is twice as good as another', () => {
     // the spread reached 9x (Comp Kid 3.3% against Alpinist 29.8%) before
     // anyone noticed, because nothing was watching it

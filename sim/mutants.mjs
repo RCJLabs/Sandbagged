@@ -2545,6 +2545,44 @@ export const MUTANTS = [
     patch: [['scripts/browser.mjs',
       "  return { path: undefined, how: \"playwright's own default\" }",
       "  return { path: join(root ?? '/opt', 'chromium/chrome-linux/chrome'), how: 'guess' }"]] },
+
+  // ---- SIM-10: the firing-rate census, as an instrument ----
+  { id: 'SIM-10/a-new-mechanic-goes-unclassified', suite: 'core',
+    why: 'an effect exists on a card and the census has never heard of it, which is how all nine ENG-25s happened — nobody decided whether the thing fires, so nobody found out that it does not. Modelled by removing one from the live list rather than by inventing a card, because the check that matters is that the SET is complete',
+    catches: 'declare it live or dead',
+    patch: [['sim/census.mjs',
+      "export const LIVE_BUILT = ['static', 'tough', 'setup', 'precise', 'weight', 'balance',",
+      "export const LIVE_BUILT = ['tough', 'setup', 'precise', 'weight', 'balance',"]] },
+
+  { id: 'SIM-10/near-zero-list-grows-quietly', suite: 'core',
+    why: 'a tenth effect joins the dead list without anybody deciding to let it — one more line in an array is exactly how "this one stopped firing too" becomes the state of the game, and CARD-24 is the open row about the eight already there',
+    catches: 'without anybody deciding to let it',
+    patch: [['sim/census.mjs',
+      "export const DEAD = ['greedy', 'guard', 'momentum', 'snap', 'echo', 'cycle', 'peel', 'settle2']",
+      "export const DEAD = ['greedy', 'guard', 'momentum', 'snap', 'echo', 'cycle', 'peel', 'settle2', 'commit', 'launch']"]] },
+
+  { id: 'SIM-10/floor-lowered-to-pass', suite: 'core',
+    why: 'the census floor drops under 1%, which puts it among the rates the stability measurement says are unguardable — a bar set where the noise is 2x to infinity fires on a seed and gets deleted, and reads as coverage until it does. Lowering a floor to accommodate a slide is the v9.32 move BAL-9 exists to forbid',
+    catches: 'lowering it is',
+    patch: [['sim/census.mjs', 'export const CENSUS_FLOOR = 1.0', 'export const CENSUS_FLOOR = 0.02']] },
+
+  { id: 'SIM-10/history-records-a-dead-rule-as-live', suite: 'core',
+    why: 'a recorded row carries a live effect below the floor it is supposed to clear, so the history says the game was already broken at a version that shipped green — history that is not checked against its own bar is the BAL-18 shape with the useful half removed',
+    catches: 'under the floor it is meant to clear',
+    patch: [['sim/census.mjs', 'balance: 14.15, hooked: 13.77, launch: 7.32, commit: 2.65,',
+      'balance: 14.15, hooked: 13.77, launch: 7.32, commit: 0.65,']] },
+
+  { id: 'SIM-10/census-mode-deleted', suite: 'core',
+    why: 'the harness loses the census mode while both guards keep referring to it — the slow half would then be asserting the exit code of a typo, which is the PERF-3 defect one release old and the exact way this census rots back into the throwaway script it started as',
+    catches: 'census mode is gone',
+    patch: [['sim/run.mjs', "if (mode === 'census') {", "if (mode === 'censusDISABLED') {"]] },
+
+  { id: 'SIM-10/the-census-stops-counting-fires', suite: 'slow',
+    why: 'the census counts a play as a fire, so an effect that reaches the board but changes nothing measures as healthy — the whole difference between "the drafter offers it" and "the game does something with it", which CARD-24 says are different diseases',
+    catches: 'CARD-23 measured',
+    patch: [['sim/run.mjs',
+      "    if (total({ ...s, boardP: bp }) !== base && !seen.has('!' + fx)) {",
+      "    if (true && !seen.has('!' + fx)) {"]] },
 ]
 
 

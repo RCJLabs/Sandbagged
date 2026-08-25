@@ -3,7 +3,7 @@
 A climbing card battler. The route is the opponent. Single-file React 19 + TypeScript + Vite,
 shipped as one self-contained HTML file.
 
-**State at the time of writing: v10.92.** `npm run check` is 214/214 core + 119/119 kept;
+**State at the time of writing: v10.93.** `npm run check` is 215/215 core + 119/119 kept;
 `npm run check:slow` adds 13 balance guardrails for 132/132. Everything below is measured, and
 where a number appears it is reproducible with the command next to it.
 
@@ -175,6 +175,51 @@ deck every player had built, because `loadouts` was kept only on an exact length
 padded per climber now and SAVE-8 guards it — but the lesson generalises: **anything sized by a
 content table is a migration.** `archWins` and `owned` are membership lists and safe; `loadouts`
 was the one indexed by position.
+
+## Never run anything else while a mutant sweep is in flight
+
+`sim/mutants.mjs` edits the working tree in place and restores it at exit. So while it runs,
+**every file it patches is wrong**, and anything else reading them gets garbage:
+
+- Running `npm run check:slow` beside a sweep cost a full ten-minute run this session — the
+  slow census guard read a `run.mjs` whose fire detector the sweep had replaced with `true`,
+  reported `tough` firing on 34.76% of turns, and failed for a reason that did not exist.
+- **Editing** beside a sweep is worse: the restore writes the pre-sweep bytes back over your
+  change. That has eaten a version bump twice now, once this session.
+- **Killing** a sweep is worse again. A `SIGTERM` mid-run leaves the tree mutated with no
+  restore — `git status` looked clean because the mutated file was one this session had
+  already modified. Check the actual line, not the file list.
+
+A sweep containing a `slow` mutant takes roughly ten minutes **per mutant**, because each one
+re-runs the whole slow suite. Give it a long timeout and let it finish alone.
+
+## There is a firing-rate census now, and a rule that goes dead fails at ship time
+
+`node sim/run.mjs census 150 built` (or `arch`; `SEED=n` draws another stream) prints, per
+effect, the share of turns a card carrying it reached the board (**PLAY**) and the share on
+which it changed a number the engine computes (**FIRE**). `sim/census.mjs` holds the floor,
+the classification and the recorded history. The slow suite re-runs it at n=60 every release.
+
+**FIRE differs the engine against itself** — total power and bite across the board, then again
+with one card's `fx` blanked. Nothing about the rules is restated, deliberately: a census that
+reimplements the conditions it measures reports the rate of its own copy the first time a rule
+moves (ENG-19). The cost is that it only sees the power/bite family; `tough`, `setup`,
+`hooked`, `commit` and four others act inside `resolve` and read **0.00 FIRE by construction**.
+The slow guard asserts exactly that, because an injection walked past an earlier version by
+making every play count as a fire.
+
+**Why there is no bar on the rare effects.** Measured over three seeds, anything above 2.6%
+moves by at most 1.3×; anything below 0.3% moves by 2× to ∞ (momentum 0.01 → 0.11). That is
+not the game changing — 0.05% of 21,500 turns is about ten events. **No sample fixes it**:
+±20% on 0.05% needs ~10,000 occurrences, or twenty million turns. So the floor sits on the
+nine effects that carry the game and the near-zero eight are history, not a gate — BAL-18's
+shape. A bar on momentum would fire on a seed and get deleted, and read as coverage until it
+did.
+
+**What the core guard actually buys**: every `fx` any card carries must be declared live or
+dead. A new mechanic cannot arrive unclassified, and the dead list cannot grow without someone
+writing down why. That is the decision nine ENG-25s were made by not making — and `CARD-24` is
+the open row about the eight already on it.
 
 ## `npm run perf` runs now, and the guard proves it rather than reading it
 

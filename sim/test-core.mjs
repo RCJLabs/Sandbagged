@@ -30,6 +30,7 @@ function test(name, fn) {
 import { ok, eq, region, declBody, appFn, cssRule, tail, guardScan, stripComments,
   contrast, lum, palette } from './guard.mjs'
 import { BAND_PIN, BAND_TOL, BAND_N, ENDING_N, ARCH_N, ARCH_FLOOR, ARCH_TOL, BAND_LOG } from './band.mjs'
+import { CENSUS_FLOOR, CENSUS_LOG, LIVE_BUILT, LIVE_ARCH, DEAD } from './census.mjs'
 /* GUARD-9: the kept injections. The table is data; the guard below checks it has not
    rotted. `node sim/mutants.mjs` is what actually runs them. */
 import { MUTANTS, applyPatch, touched } from './mutants.mjs'
@@ -6452,6 +6453,46 @@ test('PERF-2: the bundle is measured, and the size is pinned', () => {
   const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
   eq(pkg.scripts.perf, 'node scripts/perf.mjs', 'npm run perf is gone')
 })
+test('SIM-10: every mechanic is classified, and the near-zero list cannot grow quietly', () => {
+  /* The cheap half of SIM-10; the slow suite does the re-measuring. What this asserts is that
+     the census KNOWS ABOUT EVERY EFFECT — add a mechanic and it must be declared alive or
+     declared dead, which is the decision nine ENG-25s were made by not making.
+
+     THE FLOOR IS A FLOOR, in the ARCH_FLOOR sense: raising it is a dated decision, lowering it
+     is the v9.32 drift BAL-9 exists to forbid. Same for the DEAD list — it may shrink freely
+     (a mechanic coming back to life is the good outcome) and may not grow without a human
+     writing down why, because "this one stopped firing too" is exactly the slide the ticket
+     is about. */
+  const fx = new Set(Object.values(E.CARDS).map(c => c.fx).filter(Boolean))
+  const classified = new Set([...LIVE_BUILT, ...LIVE_ARCH, ...DEAD])
+  for (const f of fx)
+    ok(classified.has(f), `${f} is an effect no card census classifies — declare it live or dead`)
+  for (const f of classified)
+    ok(fx.has(f), `the census classifies ${f}, which no card carries any more`)
+
+  const both = LIVE_BUILT.filter(f => DEAD.includes(f))
+  eq(both.length, 0, `${both.join(', ')} is both live and dead`)
+  ok(!LIVE_ARCH.some(f => LIVE_BUILT.includes(f)),
+    'an effect is listed as arch-only and built-alive at once')
+
+  ok(CENSUS_FLOOR >= 1.0, `the census floor is ${CENSUS_FLOOR} — lowering it is BAL-9's drift`)
+  ok(DEAD.length <= 8, `the near-zero list has grown to ${DEAD.length} (${DEAD.join(', ')}) ` +
+    'without anybody deciding to let it — CARD-24 is the row about the eight already there')
+
+  /* the history has to be history: a row, with the numbers, in the BAL-18 shape. */
+  ok(CENSUS_LOG.length >= 1, 'the census has no recorded history at all')
+  for (const r of CENSUS_LOG) {
+    ok(r.turns > 10_000, `a census row measured only ${r.turns} turns`)
+    for (const f of LIVE_BUILT)
+      ok((r.play[f] ?? 0) >= CENSUS_FLOOR,
+        `census row ${r.version} records ${f} at ${r.play[f]}, under the floor it is meant to clear`)
+  }
+  /* and the mode the guard shells out to has to still be there, or the slow half is checking
+     the exit code of a typo (PERF-3, one release ago). */
+  ok(/mode === 'census'/.test(stripComments(readFileSync('sim/run.mjs', 'utf8'))),
+    'the census mode is gone from the harness')
+})
+
 test('PERF-3: the perf measurement is one that actually runs', () => {
   /* PERF-2's guard asserts that scripts/perf.mjs EXISTS, throttles at both sites and sweeps
      both rates. All shape. It never ran the thing, and PERF-2's own note ends "if it fires,
