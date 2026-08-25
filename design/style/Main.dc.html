@@ -8,153 +8,117 @@
 <x-dc>
 <helmet>
   <style>
-    body{margin:0;font-family:ui-serif,Georgia,'Times New Roman',serif}
-    a{color:#8c3124}a:hover{color:#6d251b}
-    .fg{--paper:#e8e1d0;--ink:#26221e;--red:#8c3124;--green:#3f5438;--tan:#b8873f;
-        --fade:#5f584a;--card:#f3ede1;--stone:#c8c5bb}
-    .fg .sect{display:flex;align-items:center;gap:7px;margin:11px 0 4px;
-      font-size:9px;letter-spacing:1.4px;font-weight:800;color:var(--fade)}
-    .fg .sect::after{content:'';flex:1;height:0;border-top:1px solid var(--fade);opacity:.35}
-    .fg .pip{min-width:20px;height:20px;box-sizing:border-box;border-radius:50%;
-      display:grid;place-items:center;font-size:10.5px;font-weight:700;
-      border:1.5px solid;background:var(--paper)}
+    body{margin:0;font-family:'Avenir Next','Segoe UI',system-ui,sans-serif}
+    a{color:#d8a24a}a:hover{color:#f0bd68}
+    .va .tag{position:absolute;background:rgba(12,14,16,.82);backdrop-filter:blur(3px);
+      border:1px solid rgba(216,162,74,.45);border-radius:3px;padding:5px 7px;color:#efe7d8;
+      box-shadow:0 6px 18px -8px rgba(0,0,0,.9)}
+    .va .tag b{display:block;font-size:12px;font-weight:600;letter-spacing:.2px}
+    .va .tag .s{font-size:8.5px;letter-spacing:1.5px;color:#d8a24a;margin-top:2px}
+    .va .tag .n{display:flex;gap:9px;margin-top:4px;font-size:11px;font-weight:600}
   </style>
 </helmet>
 
-<div class="fg" style="width:390px;height:844px;box-sizing:border-box;padding:14px 12px;color:#26221e;
-  background-color:#e8e1d0;
-  background-image:repeating-linear-gradient(to bottom,transparent 0 27px,rgba(96,84,60,.05) 27px 28px),
-    radial-gradient(ellipse at 50% 40%,rgba(255,255,255,.34) 0%,rgba(120,104,74,.075) 100%);
-  display:flex;flex-direction:column;gap:0">
+<div class="va" style="width:390px;height:844px;box-sizing:border-box;position:relative;overflow:hidden;
+  background:#0e1113;color:#efe7d8">
 
-  <div style="display:flex;justify-content:space-between;align-items:baseline">
-    <div style="font-size:19px;font-weight:700">The Fridge</div>
-    <div style="font-size:11px;color:#5f584a">V3 · act two</div>
-  </div>
-  <div style="display:flex;gap:5px;margin-top:5px">
-    <span style="font-size:10px;border:1px solid #5f584a;border-radius:2px;padding:3px 6px;letter-spacing:.4px">crisp</span>
-    <span style="font-size:10px;border:1px solid #5f584a;border-radius:2px;padding:3px 6px;letter-spacing:.4px">north face</span>
-  </div>
-  <div style="display:flex;gap:3px;align-items:center;margin:9px 0 2px">
-    <div style="flex:1;height:9px;border:1.5px solid #3f5438;background:#3f5438;border-radius:1px"></div>
-    <div style="flex:1;height:9px;border:1.5px solid #3f5438;background:#3f5438;border-radius:1px"></div>
-    <div style="flex:1;height:9px;border:1.5px solid #3f5438;background:#3f5438;border-radius:1px"></div>
-    <div style="flex:1;height:9px;border:1.5px solid #26221e;border-radius:1px"></div>
-    <div style="flex:1;height:9px;border:1.5px solid #26221e;border-radius:1px"></div>
-    <div style="flex:1;height:9px;border:1.5px solid #26221e;border-radius:1px"></div>
-    <div style="flex:1;height:9px;border:1.5px solid #26221e;border-radius:1px"></div>
-  </div>
+  <svg viewBox="0 0 390 844" style="position:absolute;inset:0;width:390px;height:844px" aria-hidden="true">
+    <defs>
+      <linearGradient id="rock" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#3b3a36"/><stop offset="52%" stop-color="#2a2b2b"/><stop offset="100%" stop-color="#17191b"/>
+      </linearGradient>
+      <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#5b6f7d"/><stop offset="100%" stop-color="#2e3a42"/>
+      </linearGradient>
+    </defs>
+    <rect width="390" height="844" fill="url(#sky)"/>
+    <path d="M0 96 L58 78 L120 104 L186 70 L250 96 L318 74 L390 100 L390 844 L0 844 Z" fill="url(#rock)"/>
+    <g stroke="#0d0f10" stroke-width="1.4" fill="none" opacity=".55">
+      <path d="M42 120 C 66 210, 40 300, 74 392 S 52 560, 88 690"/>
+      <path d="M198 108 C 214 190, 186 268, 214 352 S 190 520, 224 668"/>
+      <path d="M312 116 C 296 204, 330 288, 304 372 S 330 540, 300 700"/>
+      <path d="M96 168 L166 196 M232 240 L296 214 M120 452 L188 470 M244 560 L308 536"/>
+    </g>
+    <g fill="#0d0f10" opacity=".38">
+      <ellipse cx="150" cy="300" rx="46" ry="10"/><ellipse cx="286" cy="452" rx="38" ry="9"/>
+      <ellipse cx="86" cy="596" rx="42" ry="11"/>
+    </g>
+  </svg>
 
-  <div class="sect">THE WALL</div>
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
-    <div style="position:relative;height:132px;border-radius:2px;padding:6px;box-sizing:border-box;
-      background:#c8c5bb;box-shadow:inset 0 3px 6px -4px rgba(38,34,30,.55);
-      display:flex;flex-direction:column;justify-content:space-between">
-      <div>
-        <div style="font-size:11.5px;font-weight:700;line-height:1.08">sloper</div>
-        <div style="font-size:9.5px;font-weight:700;color:#8c3124;letter-spacing:.3px;margin-top:2px">GREASY</div>
-        <div style="font-size:8px;color:#5f584a;line-height:1.15;margin-top:3px">−1 Power without feet. Sweats up if you leave it.</div>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div class="pip" style="width:20px;color:#8c3124;border-color:#8c3124;border-radius:3px;transform:rotate(45deg)"><span style="display:block;transform:rotate(-45deg)">2</span></div>
-        <div class="pip" style="color:#3f5438;border-color:#3f5438;border-radius:10px;padding:0 4px">6</div>
-      </div>
+  <div style="position:absolute;top:16px;left:16px;right:16px;display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <div style="font-size:19px;font-weight:600;letter-spacing:.3px;text-shadow:0 2px 8px rgba(0,0,0,.8)">The Fridge</div>
+      <div style="font-size:10px;letter-spacing:2px;color:#9fb0ba;margin-top:2px">V3 · NORTH FACE · CRISP</div>
     </div>
-
-    <div style="position:relative;height:132px;border-radius:2px;padding:6px;box-sizing:border-box;
-      background:#c8c5bb;box-shadow:inset 0 3px 6px -4px rgba(38,34,30,.55);
-      display:flex;flex-direction:column;justify-content:space-between">
-      <div>
-        <div style="font-size:11.5px;font-weight:700;line-height:1.08">the blank</div>
-        <div style="font-size:9.5px;font-weight:700;color:#8c3124;letter-spacing:.3px;margin-top:2px">COMMITTING</div>
-        <div style="font-size:8px;color:#5f584a;line-height:1.15;margin-top:3px">Needs Power 2+. +1 hang tax.</div>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div class="pip" style="width:20px;color:#8c3124;border-color:#8c3124;border-radius:3px;transform:rotate(45deg)"><span style="display:block;transform:rotate(-45deg)">4</span></div>
-        <div class="pip" style="color:#3f5438;border-color:#3f5438;border-radius:10px;padding:0 4px">8</div>
-      </div>
-    </div>
-
-    <div style="position:relative;height:132px;border-radius:2px;padding:6px;box-sizing:border-box;
-      background:#c8c5bb;box-shadow:inset 0 3px 6px -4px rgba(38,34,30,.55);
-      display:flex;flex-direction:column;justify-content:space-between">
-      <div>
-        <div style="font-size:11.5px;font-weight:700;line-height:1.08">smear edge</div>
-        <div style="font-size:8px;color:#5f584a;line-height:1.15;margin-top:3px">A settled foot pays +1 Support.</div>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div class="pip" style="width:20px;color:#8c3124;border-color:#8c3124;border-radius:3px;transform:rotate(45deg)"><span style="display:block;transform:rotate(-45deg)">1</span></div>
-        <div class="pip" style="color:#3f5438;border-color:#3f5438;border-radius:10px;padding:0 4px">3</div>
-      </div>
+    <div style="text-align:right">
+      <div style="font-size:9px;letter-spacing:1.6px;color:#9fb0ba">HOLDS</div>
+      <div style="font-size:17px;font-weight:600">3<span style="color:#7d8d97;font-size:12px"> / 7</span></div>
     </div>
   </div>
 
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:4px;text-align:center">
-    <div style="font-size:10px;font-weight:700;color:#3f5438;letter-spacing:.6px">WORKS IT</div>
-    <div style="font-size:10px;font-weight:700;color:#5f584a;letter-spacing:.6px">2 GRIP LEFT</div>
-    <div style="font-size:10px;font-weight:700;color:#8c3124;letter-spacing:.6px">+1 PUMP</div>
+  <div style="position:absolute;left:14px;top:150px;bottom:210px;width:9px;border-radius:5px;
+    background:rgba(0,0,0,.45);border:1px solid rgba(239,231,216,.14);overflow:hidden;display:flex;flex-direction:column-reverse">
+    <div style="height:64%;background:linear-gradient(180deg,#d8a24a,#b06a2c)"></div>
+  </div>
+  <div style="position:absolute;left:9px;bottom:186px;font-size:8.5px;letter-spacing:1.4px;color:#d8a24a">PUMP 7</div>
+
+  <div class="tag" style="left:56px;top:222px;width:150px">
+    <b>sloper</b><div class="s">GREASY</div>
+    <div class="n"><span style="color:#e0705c">2</span><span style="color:#8fd0a8">6</span>
+      <span style="margin-left:auto;font-size:9px;color:#8fd0a8;letter-spacing:1px">WORKS IT</span></div>
+  </div>
+  <div class="tag" style="right:22px;top:374px;width:150px;border-color:rgba(224,112,92,.6)">
+    <b>the blank</b><div class="s" style="color:#e0705c">COMMITTING</div>
+    <div class="n"><span style="color:#e0705c">4</span><span style="color:#8fd0a8">8</span>
+      <span style="margin-left:auto;font-size:9px;color:#c3b9a6;letter-spacing:1px">2 LEFT</span></div>
+  </div>
+  <div class="tag" style="left:34px;top:518px;width:150px">
+    <b>smear edge</b>
+    <div class="n"><span style="color:#e0705c">1</span><span style="color:#8fd0a8">3</span>
+      <span style="margin-left:auto;font-size:9px;color:#e0705c;letter-spacing:1px">+1 PUMP</span></div>
   </div>
 
-  <div class="sect">YOUR MOVES</div>
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center;margin-bottom:3px">
-    <div style="font-size:9px;letter-spacing:1.1px;color:#5f584a;font-weight:700">LEFT HAND</div>
-    <div style="font-size:9px;letter-spacing:1.1px;color:#5f584a;font-weight:700">RIGHT HAND</div>
-    <div style="font-size:9px;letter-spacing:1.1px;color:#5f584a;font-weight:700">FEET</div>
-  </div>
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
-    <div style="height:112px;border-radius:2px;padding:6px;box-sizing:border-box;background:#f3ede1;
-      box-shadow:inset 3px 0 0 rgba(184,135,63,.6);display:flex;flex-direction:column;justify-content:space-between">
-      <div>
-        <div style="font-size:11.5px;font-weight:700;line-height:1.08">Open Hand</div>
-        <div style="font-size:8px;color:#5f584a;line-height:1.15;margin-top:4px">Friction · ignores Greasy.</div>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:10.5px;font-weight:700">
-        <span>2<span style="font-size:8px;color:#5f584a;font-weight:400"> pow</span></span>
-        <span>7<span style="font-size:8px;color:#5f584a;font-weight:400"> con</span></span>
-      </div>
+  <svg viewBox="0 0 60 96" style="position:absolute;left:158px;top:352px;width:60px;height:96px" aria-hidden="true">
+    <g fill="#0b0d0e" opacity=".92">
+      <circle cx="30" cy="13" r="8"/>
+      <path d="M30 21 L24 52 L36 52 Z"/>
+      <path d="M26 24 L6 6 L11 2 L30 22 Z"/><path d="M34 24 L55 12 L58 17 L36 28 Z"/>
+      <path d="M26 52 L14 88 L20 90 L31 58 Z"/><path d="M34 52 L46 84 L40 87 L30 58 Z"/>
+    </g>
+  </svg>
+
+  <div style="position:absolute;left:0;right:0;bottom:0;height:196px;
+    background:linear-gradient(180deg,transparent,rgba(9,11,12,.86) 32%,#090b0c 62%)"></div>
+
+  <div style="position:absolute;left:0;right:0;bottom:78px;height:110px">
+    <div style="position:absolute;left:24px;bottom:0;width:104px;height:104px;transform:rotate(-9deg);
+      background:#efe7d8;color:#1a1c1e;border-radius:6px;padding:9px 8px;box-sizing:border-box;
+      box-shadow:0 12px 26px -12px rgba(0,0,0,.95)">
+      <div style="font-size:12px;font-weight:600;line-height:1.1">Open Hand</div>
+      <div style="font-size:8.5px;color:#5e6367;line-height:1.3;margin-top:4px">Friction · ignores Greasy.</div>
+      <div style="position:absolute;left:8px;bottom:7px;font-size:13px;font-weight:700">2</div>
+      <div style="position:absolute;right:8px;bottom:7px;font-size:13px;font-weight:700;color:#5e6367">7</div>
     </div>
-    <div style="height:112px;border-radius:2px;padding:6px;box-sizing:border-box;background:#f3ede1;
-      box-shadow:inset 3px 0 0 rgba(184,135,63,.6);display:flex;flex-direction:column;justify-content:space-between">
-      <div>
-        <div style="font-size:11.5px;font-weight:700;line-height:1.08">Lock Off</div>
-        <div style="font-size:8px;color:#5f584a;line-height:1.15;margin-top:4px">Static · takes 1 less Bite.</div>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:10.5px;font-weight:700">
-        <span>3<span style="font-size:8px;color:#5f584a;font-weight:400"> pow</span></span>
-        <span>6<span style="font-size:8px;color:#5f584a;font-weight:400"> con</span></span>
-      </div>
+    <div style="position:absolute;left:143px;bottom:8px;width:104px;height:104px;
+      background:#efe7d8;color:#1a1c1e;border-radius:6px;padding:9px 8px;box-sizing:border-box;
+      box-shadow:0 12px 26px -12px rgba(0,0,0,.95);outline:2px solid #d8a24a">
+      <div style="font-size:12px;font-weight:600;line-height:1.1">Lock Off</div>
+      <div style="font-size:8.5px;color:#5e6367;line-height:1.3;margin-top:4px">Static · takes 1 less Bite.</div>
+      <div style="position:absolute;left:8px;bottom:7px;font-size:13px;font-weight:700">3</div>
+      <div style="position:absolute;right:8px;bottom:7px;font-size:13px;font-weight:700;color:#5e6367">6</div>
     </div>
-    <div style="height:112px;border-radius:2px;padding:6px;box-sizing:border-box;background:#f3ede1;
-      box-shadow:inset 3px 0 0 rgba(184,135,63,.6);display:flex;flex-direction:column;justify-content:space-between">
-      <div>
-        <div style="font-size:11.5px;font-weight:700;line-height:1.08">Smear</div>
-        <div style="font-size:8px;color:#5f584a;line-height:1.15;margin-top:4px">Support 1.</div>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:10.5px;font-weight:700">
-        <span>1<span style="font-size:8px;color:#5f584a;font-weight:400"> pow</span></span>
-        <span>6<span style="font-size:8px;color:#5f584a;font-weight:400"> con</span></span>
-      </div>
+    <div style="position:absolute;right:24px;bottom:0;width:104px;height:104px;transform:rotate(9deg);
+      background:#efe7d8;color:#1a1c1e;border-radius:6px;padding:9px 8px;box-sizing:border-box;
+      box-shadow:0 12px 26px -12px rgba(0,0,0,.95)">
+      <div style="font-size:12px;font-weight:600;line-height:1.1">Smear</div>
+      <div style="font-size:8.5px;color:#5e6367;line-height:1.3;margin-top:4px">Support 1.</div>
+      <div style="position:absolute;left:8px;bottom:7px;font-size:13px;font-weight:700">1</div>
+      <div style="position:absolute;right:8px;bottom:7px;font-size:13px;font-weight:700;color:#5e6367">6</div>
     </div>
   </div>
 
-  <div class="sect">PUMP</div>
-  <div style="height:22px;border:1.5px solid #26221e;border-radius:3px;display:flex;overflow:hidden;background:rgba(38,34,30,.05)">
-    <div style="flex:7;background:#b8873f"></div>
-    <div style="flex:2;background:rgba(140,49,36,.32);border-top:2px dashed #8c3124"></div>
-    <div style="flex:2"></div>
-  </div>
-  <div style="display:flex;justify-content:space-between;font-size:10px;color:#5f584a;margin-top:3px">
-    <span>7 of 11 — two more and you are off</span><span>flow 2</span>
-  </div>
-
-  <div style="font-size:11px;line-height:1.45;margin-top:11px;padding:7px 9px;border-left:3px solid #8c3124;background:rgba(184,135,63,.10)">
-    <b style="font-size:9px;letter-spacing:1px;color:#8c3124;display:block;margin-bottom:2px">SPOT</b>
-    The sloper sweats while you leave it. Open Hand ignores that.
-  </div>
-
-  <div style="flex:1"></div>
-  <button style="border:1.5px solid #26221e;background:#26221e;color:#e8e1d0;border-radius:2px;
-    padding:13px 12px;font-family:inherit;font-size:13px;font-weight:700;letter-spacing:1px;width:100%">COMMIT</button>
+  <button style="position:absolute;left:16px;right:16px;bottom:20px;height:50px;border:0;border-radius:25px;
+    background:#d8a24a;color:#141618;font-family:inherit;font-size:14px;font-weight:700;letter-spacing:2.4px">CLIMB</button>
 </div>
 </x-dc>
 </body>

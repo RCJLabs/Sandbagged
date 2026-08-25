@@ -1,0 +1,126 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body{margin:0;font-family:'Courier New',Courier,monospace}
+    .zn{--ink:#141414;--paper:#e8e4dc}
+    .zn .cut{background:var(--paper);border:2px solid var(--ink);box-shadow:3px 3px 0 var(--ink)}
+    .zn .ransom span{display:inline-block;background:var(--ink);color:var(--paper);padding:0 4px;margin-right:2px}
+    .zn .halftone{background-image:radial-gradient(var(--ink) 1px,transparent 1.2px);background-size:4px 4px}
+    .zn .stamp{border:2px solid var(--ink);font-weight:700;letter-spacing:1.5px;padding:2px 6px;
+      font-size:10px;display:inline-block}
+  </style>
+</helmet>
+
+<div class="zn" style="width:390px;height:844px;box-sizing:border-box;position:relative;overflow:hidden;
+  background:#e8e4dc;color:#141414">
+
+  <div class="halftone" style="position:absolute;inset:0;opacity:.13"></div>
+  <div style="position:absolute;inset:0;opacity:.06;background:
+    repeating-linear-gradient(93deg,#000 0 1px,transparent 1px 7px)"></div>
+
+  <!-- ransom-note masthead, glued on crooked -->
+  <div style="position:absolute;left:14px;top:16px;transform:rotate(-2.2deg)">
+    <div class="ransom" style="font-size:31px;font-weight:700;line-height:1.05;font-family:'Impact','Haettenschweiler',sans-serif;letter-spacing:.5px">
+      <span style="transform:rotate(1.5deg)">THE</span><span style="font-family:'Courier New',monospace;font-size:26px">FRIDGE</span>
+    </div>
+    <div style="margin-top:5px;font-size:11px;letter-spacing:2px;font-weight:700">V3 // NORTH FACE // 4 HOLDS LEFT</div>
+  </div>
+  <div class="stamp" style="position:absolute;right:14px;top:22px;transform:rotate(6deg);background:#141414;color:#e8e4dc;border-color:#141414">
+    HOLD 3/7
+  </div>
+
+  <!-- pump: a hand-drawn scale, not a bar -->
+  <div style="position:absolute;left:14px;right:14px;top:104px">
+    <div style="font-size:10px;letter-spacing:2.5px;font-weight:700">PUMP</div>
+    <div style="display:flex;gap:3px;margin-top:5px;align-items:flex-end">
+      <div style="width:24px;height:16px;background:#141414"></div>
+      <div style="width:24px;height:18px;background:#141414"></div>
+      <div style="width:24px;height:20px;background:#141414"></div>
+      <div style="width:24px;height:22px;background:#141414"></div>
+      <div style="width:24px;height:24px;background:#141414"></div>
+      <div style="width:24px;height:26px;background:#141414"></div>
+      <div style="width:24px;height:28px;background:#141414"></div>
+      <div style="width:24px;height:30px;border:2px solid #141414;box-sizing:border-box"></div>
+      <div style="width:24px;height:32px;border:2px solid #141414;box-sizing:border-box"></div>
+      <div style="width:24px;height:34px;border:2px solid #141414;box-sizing:border-box"></div>
+      <div style="width:24px;height:36px;border:2px solid #141414;box-sizing:border-box"></div>
+      <div style="margin-left:6px;font-size:11px;font-weight:700;transform:rotate(-4deg)">7/11</div>
+    </div>
+  </div>
+
+  <!-- the holds: three clippings taped down the page -->
+  <div class="cut" style="position:absolute;left:16px;top:182px;width:250px;padding:9px 11px;transform:rotate(-1.3deg)">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <div style="font-size:16px;font-weight:700;letter-spacing:.5px">SLOPER</div>
+      <div style="font-size:15px;font-weight:700">2 &middot; 6</div>
+    </div>
+    <div style="margin-top:5px"><span class="stamp" style="background:#141414;color:#e8e4dc">GREASY</span></div>
+    <div style="margin-top:7px;font-size:10.5px;line-height:1.35;border-top:1px dashed #141414;padding-top:6px">
+      "you will not hold this in the sun."
+    </div>
+  </div>
+  <div class="cut halftone" style="position:absolute;right:14px;top:352px;width:236px;padding:9px 11px;transform:rotate(1.8deg)">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <div style="font-size:16px;font-weight:700;letter-spacing:.5px">THE BLANK</div>
+      <div style="font-size:15px;font-weight:700">4 &middot; 8</div>
+    </div>
+    <div style="margin-top:5px"><span class="stamp">COMMITTING</span></div>
+    <div style="margin-top:7px;font-size:10.5px;line-height:1.35;border-top:1px dashed #141414;padding-top:6px">
+      no way back once you leave the ground.
+    </div>
+  </div>
+  <div class="cut" style="position:absolute;left:22px;top:508px;width:212px;padding:9px 11px;transform:rotate(-2.6deg)">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <div style="font-size:16px;font-weight:700;letter-spacing:.5px">SMEAR EDGE</div>
+      <div style="font-size:15px;font-weight:700">1 &middot; 3</div>
+    </div>
+    <div style="margin-top:7px;font-size:10.5px;line-height:1.35;border-top:1px dashed #141414;padding-top:6px">
+      barely a hold. counts anyway.
+    </div>
+  </div>
+
+  <!-- the verdict, scrawled over the collage -->
+  <div style="position:absolute;right:16px;top:612px;transform:rotate(-7deg);text-align:right">
+    <div style="font-family:'Impact','Haettenschweiler',sans-serif;font-size:34px;line-height:.95;letter-spacing:.5px">WORKS<br>IT</div>
+    <div style="font-size:10px;font-weight:700;letter-spacing:1.6px;margin-top:4px">2 GRIP LEFT / +1 PUMP</div>
+  </div>
+
+  <!-- hand: three cards taped along the bottom edge, overlapping -->
+  <div style="position:absolute;left:0;right:0;bottom:0;height:212px;border-top:2px solid #141414;background:#e8e4dc">
+    <div style="position:absolute;left:10px;top:8px;font-size:9.5px;letter-spacing:2.5px;font-weight:700">YOUR MOVES &mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;</div>
+    <div class="cut" style="position:absolute;left:10px;bottom:16px;width:112px;height:140px;padding:9px 8px;
+      box-sizing:border-box;transform:rotate(-4deg)">
+      <div style="font-size:13px;font-weight:700;line-height:1.05">OPEN<br>HAND</div>
+      <div style="margin-top:6px;font-size:9.5px;line-height:1.3;border-top:1px solid #141414;padding-top:5px">
+        FRICTION.<br>ignores Greasy.</div>
+      <div style="position:absolute;left:8px;bottom:6px;font-size:15px;font-weight:700">2</div>
+      <div style="position:absolute;right:8px;bottom:6px;font-size:15px;font-weight:700">7</div>
+    </div>
+    <div class="cut" style="position:absolute;left:136px;bottom:26px;width:114px;height:146px;padding:9px 8px;
+      box-sizing:border-box;background:#141414;color:#e8e4dc;box-shadow:3px 3px 0 #7a766e">
+      <div style="font-size:13px;font-weight:700;line-height:1.05">LOCK<br>OFF</div>
+      <div style="margin-top:6px;font-size:9.5px;line-height:1.3;border-top:1px solid #e8e4dc;padding-top:5px">
+        STATIC.<br>takes 1 less Bite.</div>
+      <div style="position:absolute;left:8px;bottom:6px;font-size:15px;font-weight:700">3</div>
+      <div style="position:absolute;right:8px;bottom:6px;font-size:15px;font-weight:700">6</div>
+    </div>
+    <div class="cut" style="position:absolute;right:10px;bottom:16px;width:112px;height:140px;padding:9px 8px;
+      box-sizing:border-box;transform:rotate(3.5deg)">
+      <div style="font-size:13px;font-weight:700;line-height:1.05">SMEAR</div>
+      <div style="margin-top:6px;font-size:9.5px;line-height:1.3;border-top:1px solid #141414;padding-top:5px">
+        SUPPORT 1.</div>
+      <div style="position:absolute;left:8px;bottom:6px;font-size:15px;font-weight:700">1</div>
+      <div style="position:absolute;right:8px;bottom:6px;font-size:15px;font-weight:700">6</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

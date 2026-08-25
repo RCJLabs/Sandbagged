@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body{margin:0;font-family:'IBM Plex Mono','SF Mono',Menlo,Consolas,monospace}
+    .tm{--g:#4ade9b;--dim:#1f6b4a;--amber:#e8b64c;--red:#f2685e}
+    .tm pre{margin:0;font:inherit;white-space:pre;letter-spacing:0}
+    .tm .row{font-size:12px;line-height:16px}
+    .tm .sel{background:var(--g);color:#04150e}
+  </style>
+</helmet>
+
+<div class="tm" style="width:390px;height:844px;box-sizing:border-box;position:relative;overflow:hidden;
+  background:#04150e;color:#4ade9b;padding:16px 14px;font-size:12px;line-height:16px">
+
+  <div style="position:absolute;inset:0;pointer-events:none;opacity:.35;background:
+    repeating-linear-gradient(0deg,rgba(0,0,0,.5) 0 1px,transparent 1px 3px)"></div>
+  <div style="position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(120% 80% at 50% 42%,transparent 40%,rgba(0,0,0,.6) 100%)"></div>
+
+  <pre class="row" style="color:#1f6b4a">SANDBAGGED v10.90  ::  session 41  ::  crisp</pre>
+  <pre class="row" style="color:#1f6b4a">======================================</pre>
+  <pre class="row">&nbsp;</pre>
+
+  <pre class="row" style="color:#e8b64c">ROUTE  the fridge                  V3</pre>
+  <pre class="row" style="color:#1f6b4a">       north face / 7 holds / 4 left</pre>
+  <pre class="row">&nbsp;</pre>
+
+  <pre class="row">PUMP   <span style="color:#e8b64c">[#######</span><span style="color:#1f6b4a">....]</span>  7/11</pre>
+  <pre class="row">FLOW   <span style="color:#4ade9b">[##</span><span style="color:#1f6b4a">.........]</span>  2</pre>
+  <pre class="row">&nbsp;</pre>
+  <pre class="row" style="color:#1f6b4a">--- holds ----------------------------</pre>
+  <pre class="row">&nbsp;</pre>
+
+  <pre class="row"><span style="color:#1f6b4a">[1]</span> sloper          bite <span style="color:#f2685e">2</span>  grip <span style="color:#4ade9b">6</span></pre>
+  <pre class="row" style="color:#8a6bd8">    &gt; greasy: -2 grip unless friction</pre>
+  <pre class="row">&nbsp;</pre>
+  <pre class="row"><span style="color:#1f6b4a">[2]</span> the blank       bite <span style="color:#f2685e">4</span>  grip <span style="color:#4ade9b">8</span></pre>
+  <pre class="row" style="color:#f2685e">    &gt; committing: no take-back</pre>
+  <pre class="row">&nbsp;</pre>
+  <pre class="row"><span style="color:#1f6b4a">[3]</span> smear edge      bite <span style="color:#f2685e">1</span>  grip <span style="color:#4ade9b">3</span></pre>
+  <pre class="row">&nbsp;</pre>
+  <pre class="row" style="color:#1f6b4a">--- hand -----------------------------</pre>
+  <pre class="row">&nbsp;</pre>
+
+  <pre class="row"><span style="color:#1f6b4a">a)</span> open hand       <span style="color:#f2685e">2</span> / <span style="color:#4ade9b">7</span></pre>
+  <pre class="row" style="color:#1f6b4a">   friction. ignores greasy.</pre>
+  <pre class="row">&nbsp;</pre>
+  <pre class="row"><span class="sel">b) lock off         3 / 6</span></pre>
+  <pre class="row" style="color:#1f6b4a">   static. takes 1 less bite.</pre>
+  <pre class="row">&nbsp;</pre>
+  <pre class="row"><span style="color:#1f6b4a">c)</span> smear           <span style="color:#f2685e">1</span> / <span style="color:#4ade9b">6</span></pre>
+  <pre class="row" style="color:#1f6b4a">   support 1.</pre>
+  <pre class="row">&nbsp;</pre>
+  <pre class="row" style="color:#1f6b4a">--------------------------------------</pre>
+  <pre class="row">&nbsp;</pre>
+
+  <pre class="row" style="color:#1f6b4a">DRY RUN  b -&gt; 1</pre>
+  <pre class="row">  result  <span style="color:#4ade9b">WORKS IT</span></pre>
+  <pre class="row">  grip    <span style="color:#4ade9b">2 left</span>  <span style="color:#1f6b4a">(6 - 4)</span></pre>
+  <pre class="row">  pump    <span style="color:#f2685e">+1</span>      <span style="color:#1f6b4a">(2 bite - 1 static)</span></pre>
+  <pre class="row">&nbsp;</pre>
+
+  <div style="position:absolute;left:14px;right:14px;bottom:56px">
+    <pre class="row" style="color:#1f6b4a">--------------------------------------</pre>
+    <pre class="row" style="color:#1f6b4a">  play &lt;card&gt; &lt;hold&gt;   rest   look   quit</pre>
+  </div>
+
+  <div style="position:absolute;left:14px;right:14px;bottom:22px">
+    <pre class="row" style="font-size:13px">&gt; play b 1<span style="background:#4ade9b;color:#04150e">&nbsp;</span></pre>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
