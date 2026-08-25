@@ -1,24 +1,27 @@
 {
   "artboards": [
-    { "file": "Main.dc.html",     "x": 0,    "y": 0, "w": 390, "h": 844, "title": "F · Vertical Ascent" },
-    { "file": "Ring.dc.html",     "x": 510,  "y": 0, "w": 390, "h": 844, "title": "G · Ring" },
-    { "file": "Arcade.dc.html",   "x": 1020, "y": 0, "w": 390, "h": 844, "title": "H · Arcade" },
-    { "file": "Zine.dc.html",     "x": 1530, "y": 0, "w": 390, "h": 844, "title": "I · Zine" },
-    { "file": "Terminal.dc.html", "x": 2040, "y": 0, "w": 390, "h": 844, "title": "J · Terminal" }
+    { "file": "Ascent.dc.html", "x": -620, "y": 0, "w": 390, "h": 844, "title": "F · Vertical Ascent (reference)" },
+    { "file": "Main.dc.html",   "x": 0,    "y": 0, "w": 390, "h": 844, "title": "K · Profile" },
+    { "file": "Beta.dc.html",   "x": 510,  "y": 0, "w": 390, "h": 844, "title": "L · Beta" },
+    { "file": "Route.dc.html",  "x": 1020, "y": 0, "w": 390, "h": 844, "title": "M · Route" },
+    { "file": "Dusk.dc.html",   "x": 1530, "y": 0, "w": 390, "h": 844, "title": "N · Dusk" },
+    { "file": "Macro.dc.html",  "x": 2040, "y": 0, "w": 390, "h": 844, "title": "O · Macro" }
   ],
   "annotations": [
-    { "id": "brief", "x": 0, "y": -196, "w": 560,
-      "text": "Round two. The first five were one layout in five palettes — three stacked panels, wall on top, hand at the bottom — so they were not really a choice.\nThese five change the LAYOUT first and the palette second. Same turn in all of them (The Fridge V3, sloper / the blank / smear edge, Open Hand / Lock Off / Smear, pump 7 of 11, preview WORKS IT · 2 grip left · +1 pump) so the structure is the only variable." },
-    { "id": "note-f", "x": 0, "y": 892, "w": 390,
-      "text": "F · VERTICAL ASCENT — no panels at all: the screen IS the wall.\nA full-bleed rock face with sky at the top, holds placed where they physically are, a climber silhouette mid-move between them, pump as a gauge down the left edge, hand fanned as three overlapping cards over the bottom.\nTrade: the only one where height and progress are felt rather than read — and the hardest to keep legible, since every number sits on drawn rock." },
-    { "id": "note-g", "x": 510, "y": 892, "w": 390,
-      "text": "G · RING — radial, built around the thumb.\nPump becomes the arc of a dial with the number in its centre; the three holds are spokes off it; the hand curves along the bottom edge where a thumb actually reaches, one card raised as the held one. Play is a drag from the arc to a spoke.\nTrade: genuinely one-handed and unlike any card game on the store — but the ring costs a lot of screen for three holds, and a fourth lane would crowd it." },
-    { "id": "note-h", "x": 1020, "y": 892, "w": 390,
-      "text": "H · ARCADE — the route is an opponent, not a document.\nVS header with two health bars (your pump vs the route's remaining holds), skewed neon plates, a round/flow banner, and the preview shouting as a hit confirm. Cards are a move list.\nTrade: the most energy and the clearest stakes of the five; also the furthest from the sport — this is a fighting game wearing climbing, and Halloway's fiction has nowhere to live in it." },
-    { "id": "note-i", "x": 1530, "y": 892, "w": 390,
-      "text": "I · ZINE — photocopied black-and-white, everything hand-cut.\nRansom-note masthead, holds as clippings taped down the page at angles, pump as a row of hand-inked blocks, the verdict scrawled across the collage, hand taped along the bottom. Two inks, no gradients.\nTrade: the strongest personality here and cheap to produce forever — the rotations and dashed rules cost some scanability, and it is a loud voice to commit a whole game to." },
-    { "id": "note-j", "x": 2040, "y": 892, "w": 390,
-      "text": "J · TERMINAL — the whole game as one text readout.\nCRT green on black, scanlines, everything in one monospace column: route, gauges as ASCII bars, holds and hand as an indexed list, the preview as a labelled DRY RUN block showing its own arithmetic (6 - 4, 2 bite - 1 static), and a command line at the foot.\nTrade: it explains its own maths better than anything we have shipped, and it is the only layout that would survive twelve holds. It is also a deliberate wall — no image of climbing at all." }
+    { "id": "brief", "x": 0, "y": -206, "w": 580,
+      "text": "F was the pick, so all five of these keep F's thesis: no stacked panels, the screen IS the wall, holds sit where they physically are.\nWhat changes between them is the CAMERA and the RENDERING — and each one takes a different run at F's actual weakness, which is that every number ends up sitting on drawn rock.\nSame turn throughout (The Fridge V3, sloper / the blank / smear edge, Open Hand / Lock Off / Smear, pump 7 of 11, flow 2, preview WORKS IT · 2 grip left · +1 pump)." },
+    { "id": "note-ref", "x": -620, "y": 892, "w": 390,
+      "text": "F · VERTICAL ASCENT — the one you picked, unchanged, here to compare against.\nFace-on drawn rock, holds as translucent tags pinned in place, climber mid-move, pump down the left edge, hand fanned at the bottom." },
+    { "id": "note-k", "x": 0, "y": 892, "w": 390,
+      "text": "K · PROFILE — F with the camera turned 90°, in daylight.\nYou see the wall edge-on: rock down the right, open air and valley down the left. Holds jut off the arete as ledges and their labels live in the SKY on dotted leader lines, so no number ever sits on rock. Pump becomes an altimeter tape. Preview is a callout pinned to the hold being played.\nTrade: fixes F's legibility problem outright and sells exposure better than any of them — but it spends half the screen on empty air, and a fourth or fifth lane has nowhere to go." },
+    { "id": "note-l", "x": 510, "y": 892, "w": 390,
+      "text": "L · BETA — the wall as a photograph with the beta chalked onto it.\nLit rock, grain, real depth; the holds are circled in a chalk hand with dashed movement arrows between them, and the annotations are handwriting, not labels. The only hard-edged UI on the screen is the pump bar, because that one has to be exact.\nTrade: the most convincingly a real place, and the annotation layer is a genuinely different way to show state — the handwriting caps how much you can ever say, and photographic rock is the most expensive art to produce 37 routes of." },
+    { "id": "note-m", "x": 1020, "y": 892, "w": 390,
+      "text": "M · ROUTE — F with the camera pulled all the way back.\nYou see the whole climb at once: the anchor above, the two holds still to come, the three live ones (sized by how close they are to your hands), a YOU marker, and everything already sent ghosted below with the start 14 minutes ago. The wall is a continuous line from ground to anchor.\nTrade: the only one that shows PROGRESS — how far in, how far left, what it cost — which no version of the game has ever shown. Cost: the hand shrinks to a rail, and the moment-to-moment climb feels less physical than in F." },
+    { "id": "note-n", "x": 1530, "y": 892, "w": 390,
+      "text": "N · DUSK — F stripped to two shapes.\nOne flat black wall silhouette against a full-height dusk gradient. No texture, no cracks, no shading, no climber. Holds are small glowing marks with thin leader lines out to type set in the open sky; pump is a single line on the horizon; the hand is three lines of type with no card frames at all.\nTrade: the most confident and by far the cheapest to build and to keep consistent across 37 routes — and the coolest, in both senses. Nothing here communicates effort or texture, and every route would have to be distinguished by silhouette alone." },
+    { "id": "note-o", "x": 2040, "y": 892, "w": 390,
+      "text": "O · MACRO — F with the camera pushed all the way in.\nThe hold you are choosing fills the top half at the scale your hand meets it: texture, chalk smears, a hand entering frame reaching for it. The other two holds dock small and blurred at the edge — depth of field does the ranking instead of a list. Bite and Grip are 30px numerals; the ability gets a full sentence because there is finally room.\nTrade: the most tactile, and the best of the five at teaching a rule, since one hold owns the screen. It also hides the route — you cannot see what you are climbing, only what you are touching." }
   ],
   "launch": { "view": "canvas" }
 }

@@ -1,0 +1,123 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body{margin:0;font-family:'Caveat','Bradley Hand','Segoe Script',cursive}
+    .bt .ui{font-family:'Inter','Segoe UI',system-ui,sans-serif}
+    .bt .chalk{color:#f6f4ee;text-shadow:0 1px 4px rgba(0,0,0,.9)}
+    .bt .num{font-family:'Inter',system-ui,sans-serif;font-weight:700;letter-spacing:-.2px}
+  </style>
+</helmet>
+
+<div class="bt" style="width:390px;height:844px;box-sizing:border-box;position:relative;overflow:hidden;background:#0a0a0b">
+
+  <svg viewBox="0 0 390 844" style="position:absolute;inset:0;width:390px;height:844px" aria-hidden="true">
+    <defs>
+      <radialGradient id="l-lit" cx="46%" cy="38%" r="70%">
+        <stop offset="0%" stop-color="#6d6357"/><stop offset="45%" stop-color="#40392f"/>
+        <stop offset="100%" stop-color="#14130f"/>
+      </radialGradient>
+      <filter id="l-grain"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3"/>
+        <feColorMatrix type="saturate" values="0"/></filter>
+    </defs>
+    <rect width="390" height="844" fill="url(#l-lit)"/>
+    <!-- the rock, as photographic mass rather than drawn line -->
+    <g opacity=".5">
+      <path d="M0 0 L390 0 L390 844 L0 844 Z" fill="none"/>
+      <path d="M64 0 C 92 140, 44 250, 86 372 S 40 610, 92 844" stroke="#0c0b09" stroke-width="18" fill="none" opacity=".55"/>
+      <path d="M268 0 C 246 160, 296 268, 258 400 S 300 640, 254 844" stroke="#0c0b09" stroke-width="14" fill="none" opacity=".5"/>
+      <ellipse cx="140" cy="300" rx="92" ry="26" fill="#0c0b09" opacity=".45"/>
+      <ellipse cx="292" cy="486" rx="76" ry="22" fill="#0c0b09" opacity=".4"/>
+      <ellipse cx="104" cy="612" rx="84" ry="24" fill="#0c0b09" opacity=".42"/>
+    </g>
+    <rect width="390" height="844" filter="url(#l-grain)" opacity=".07"/>
+    <rect width="390" height="844" fill="url(#l-lit)" opacity=".18"/>
+
+    <!-- the beta, chalked straight onto the photo -->
+    <g fill="none" stroke="#f6f4ee" stroke-width="2.4" stroke-linecap="round" opacity=".9">
+      <ellipse cx="118" cy="268" rx="40" ry="30" transform="rotate(-14 118 268)"/>
+      <ellipse cx="286" cy="428" rx="36" ry="28" transform="rotate(10 286 428)"/>
+      <ellipse cx="112" cy="586" rx="30" ry="23" transform="rotate(-8 112 586)"/>
+    </g>
+    <g fill="none" stroke="#f6f4ee" stroke-width="1.8" stroke-linecap="round" stroke-dasharray="7 6" opacity=".5">
+      <path d="M150 288 C 200 320, 232 372, 256 410"/>
+      <path d="M262 452 C 216 500, 168 542, 138 570"/>
+    </g>
+    <path d="M247 398 L258 412 L241 416" fill="none" stroke="#f6f4ee" stroke-width="2.2" opacity=".65"/>
+  </svg>
+
+  <div class="ui" style="position:absolute;top:18px;left:16px;right:16px;display:flex;justify-content:space-between;align-items:flex-start">
+    <div class="chalk">
+      <div style="font-size:19px;font-weight:600;letter-spacing:.2px">The Fridge</div>
+      <div style="font-size:9px;letter-spacing:2.2px;opacity:.6;margin-top:2px">V3 &middot; NORTH FACE &middot; CRISP</div>
+    </div>
+    <div class="chalk" style="text-align:right">
+      <div style="font-size:8.5px;letter-spacing:1.8px;opacity:.6">HOLD</div>
+      <div style="font-size:17px;font-weight:600">3<span style="opacity:.5;font-size:12px"> / 7</span></div>
+    </div>
+  </div>
+
+  <!-- annotations in the same chalk hand as the circles -->
+  <div class="chalk" style="position:absolute;left:24px;top:186px;font-size:23px;line-height:1;transform:rotate(-4deg)">
+    sloper &mdash; greasy!
+    <div class="num" style="font-size:13px;margin-top:3px;letter-spacing:1px">2 bite &nbsp;/&nbsp; 6 grip</div>
+  </div>
+  <div class="chalk" style="position:absolute;right:20px;top:472px;font-size:23px;line-height:1;text-align:right;transform:rotate(3deg)">
+    the blank &mdash; no going back
+    <div class="num" style="font-size:13px;margin-top:3px;letter-spacing:1px">4 bite &nbsp;/&nbsp; 8 grip</div>
+  </div>
+  <div class="chalk" style="position:absolute;left:22px;top:628px;font-size:22px;line-height:1;transform:rotate(-2deg)">
+    smear edge
+    <div class="num" style="font-size:13px;margin-top:3px;letter-spacing:1px">1 bite &nbsp;/&nbsp; 3 grip</div>
+  </div>
+
+  <div class="chalk" style="position:absolute;left:172px;top:300px;font-size:26px;transform:rotate(-9deg);color:#9ff0c0">
+    works it!
+    <div class="num" style="font-size:11px;letter-spacing:.6px;margin-top:1px;color:#9ff0c0">2 grip left &middot; +1 pump</div>
+  </div>
+
+  <!-- the only hard-edged UI on the screen: pump, because it must be exact -->
+  <div class="ui" style="position:absolute;left:16px;top:96px;right:16px;display:flex;align-items:center;gap:9px">
+    <div style="font-size:8.5px;letter-spacing:1.8px;color:#f6f4ee;opacity:.62">PUMP</div>
+    <div style="flex:1;height:4px;border-radius:2px;background:rgba(246,244,238,.18);overflow:hidden">
+      <div style="width:63.6%;height:100%;background:#ffb347"></div>
+    </div>
+    <div style="font-size:11px;font-weight:700;color:#f6f4ee">7<span style="opacity:.45">/11</span></div>
+    <div style="font-size:8.5px;letter-spacing:1.6px;color:#9ff0c0">FLOW 2</div>
+  </div>
+
+  <!-- hand: a translucent tray so the photograph is never fully covered -->
+  <div class="ui" style="position:absolute;left:0;right:0;bottom:0;padding:12px 12px 16px;box-sizing:border-box;
+    background:linear-gradient(180deg,rgba(10,10,11,0),rgba(10,10,11,.9) 34%);backdrop-filter:blur(2px)">
+    <div style="display:flex;gap:8px">
+      <div style="flex:1;border:1px solid rgba(246,244,238,.22);border-radius:4px;padding:9px 8px;position:relative;height:112px;box-sizing:border-box;background:rgba(246,244,238,.05)">
+        <div class="chalk" style="font-size:19px;line-height:1">Open Hand</div>
+        <div style="font-size:8px;color:#b9b3a6;margin-top:4px;line-height:1.35">Friction &middot; ignores Greasy.</div>
+        <div class="num" style="position:absolute;left:8px;bottom:7px;font-size:13px;color:#ffb347">2</div>
+        <div class="num" style="position:absolute;right:8px;bottom:7px;font-size:13px;color:#9ff0c0">7</div>
+      </div>
+      <div style="flex:1;border:1px solid #f6f4ee;border-radius:4px;padding:9px 8px;position:relative;height:112px;box-sizing:border-box;background:rgba(246,244,238,.14)">
+        <div class="chalk" style="font-size:19px;line-height:1;color:#fff">Lock Off</div>
+        <div style="font-size:8px;color:#ded9cd;margin-top:4px;line-height:1.35">Static &middot; takes 1 less Bite.</div>
+        <div class="num" style="position:absolute;left:8px;bottom:7px;font-size:13px;color:#ffb347">3</div>
+        <div class="num" style="position:absolute;right:8px;bottom:7px;font-size:13px;color:#9ff0c0">6</div>
+      </div>
+      <div style="flex:1;border:1px solid rgba(246,244,238,.22);border-radius:4px;padding:9px 8px;position:relative;height:112px;box-sizing:border-box;background:rgba(246,244,238,.05)">
+        <div class="chalk" style="font-size:19px;line-height:1">Smear</div>
+        <div style="font-size:8px;color:#b9b3a6;margin-top:4px;line-height:1.35">Support 1.</div>
+        <div class="num" style="position:absolute;left:8px;bottom:7px;font-size:13px;color:#ffb347">1</div>
+        <div class="num" style="position:absolute;right:8px;bottom:7px;font-size:13px;color:#9ff0c0">6</div>
+      </div>
+    </div>
+    <div class="chalk" style="text-align:center;margin-top:11px;font-size:22px;letter-spacing:1px;opacity:.85">go on then</div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

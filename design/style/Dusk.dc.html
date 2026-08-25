@@ -1,0 +1,110 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body{margin:0;font-family:'Inter','Helvetica Neue',system-ui,sans-serif}
+    .dk{--ink:#f2e9df;--dim:#9a8478}
+    .dk .mark{position:absolute;width:10px;height:10px;border-radius:50%;background:#ffd9a0;
+      box-shadow:0 0 0 5px rgba(255,217,160,.14),0 0 16px 3px rgba(255,217,160,.45)}
+    .dk .lead{position:absolute;height:1px;background:rgba(242,233,223,.3)}
+    .dk .cap{position:absolute;font-size:12.5px;font-weight:500;letter-spacing:.2px;color:#f2e9df}
+    .dk .cap em{display:block;font-style:normal;font-size:8px;letter-spacing:2px;margin-top:2px}
+    .dk .cap b{display:block;font-size:11px;font-weight:600;margin-top:3px;color:#c9b6a6}
+  </style>
+</helmet>
+
+<div class="dk" style="width:390px;height:844px;box-sizing:border-box;position:relative;overflow:hidden;background:#120e14">
+
+  <svg viewBox="0 0 390 844" style="position:absolute;inset:0;width:390px;height:844px" aria-hidden="true">
+    <defs>
+      <linearGradient id="n-dusk" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#2b2140"/><stop offset="34%" stop-color="#6b3c52"/>
+        <stop offset="62%" stop-color="#c26a4a"/><stop offset="82%" stop-color="#e8a15e"/>
+        <stop offset="100%" stop-color="#f3c887"/>
+      </linearGradient>
+    </defs>
+    <rect width="390" height="844" fill="url(#n-dusk)"/>
+    <!-- one flat shape. no texture, no cracks, no shading. -->
+    <path d="M390 0 L390 844 L96 844 L118 700 L86 552 L128 406 L92 262 L146 128 L118 0 Z" fill="#120e14"/>
+    <path d="M0 844 L0 786 L54 812 L96 844 Z" fill="#120e14" opacity=".55"/>
+  </svg>
+
+  <div style="position:absolute;top:22px;left:20px">
+    <div style="font-size:17px;font-weight:500;letter-spacing:.4px;color:#f2e9df">The Fridge</div>
+    <div style="font-size:8.5px;letter-spacing:2.6px;color:rgba(242,233,223,.55);margin-top:3px">V3 &middot; HOLD 3 OF 7</div>
+  </div>
+
+  <!-- three marks on the wall, three captions in the air. that is the whole screen. -->
+  <div class="mark" style="left:126px;top:238px"></div>
+  <div class="lead" style="left:40px;top:243px;width:86px"></div>
+  <div class="cap" style="left:20px;top:196px;width:104px;text-align:right;right:auto">
+    <span style="display:block">sloper</span>
+    <em style="color:#c9a3ff">GREASY</em>
+    <b>2 &middot; 6</b>
+  </div>
+
+  <div class="mark" style="left:168px;top:452px;background:#ff9f7a;box-shadow:0 0 0 5px rgba(255,159,122,.14),0 0 16px 3px rgba(255,159,122,.45)"></div>
+  <div class="lead" style="left:62px;top:457px;width:106px"></div>
+  <div class="cap" style="left:20px;top:410px;width:126px;text-align:right">
+    <span style="display:block">the blank</span>
+    <em style="color:#ff9f7a">COMMITTING</em>
+    <b>4 &middot; 8</b>
+  </div>
+
+  <div class="mark" style="left:112px;top:640px"></div>
+  <div class="lead" style="left:34px;top:645px;width:78px"></div>
+  <div class="cap" style="left:20px;top:598px;width:96px;text-align:right">
+    <span style="display:block">smear edge</span>
+    <b>1 &middot; 3</b>
+  </div>
+
+  <!-- pump: a single line along the horizon, no chrome -->
+  <div style="position:absolute;left:20px;right:20px;top:110px">
+    <div style="display:flex;justify-content:space-between;font-size:8px;letter-spacing:2.4px;color:rgba(242,233,223,.5)">
+      <span>PUMP</span><span>7 / 11 &nbsp;&middot;&nbsp; FLOW 2</span>
+    </div>
+    <div style="height:1px;background:rgba(242,233,223,.22);margin-top:6px;position:relative">
+      <div style="position:absolute;left:0;top:-1px;height:3px;width:63.6%;background:#ffd9a0"></div>
+    </div>
+  </div>
+
+  <div style="position:absolute;left:20px;top:288px;font-size:19px;font-weight:300;letter-spacing:.5px;color:#f2e9df">
+    Works it.
+    <div style="font-size:10.5px;color:rgba(242,233,223,.6);margin-top:3px;font-weight:400">2 grip left &middot; +1 pump</div>
+  </div>
+
+  <!-- hand: three lines of type on the sky, nothing drawn around them -->
+  <div style="position:absolute;left:20px;right:20px;bottom:26px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 0;
+      border-top:1px solid rgba(242,233,223,.16)">
+      <div><div style="font-size:14px;font-weight:500;color:#f2e9df">Open Hand</div>
+        <div style="font-size:9px;color:rgba(242,233,223,.5);margin-top:2px">Friction &middot; ignores Greasy</div></div>
+      <div style="font-size:13px;font-weight:600;color:rgba(242,233,223,.75)">2 &middot; 7</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 0;
+      border-top:1px solid rgba(242,233,223,.16);border-bottom:1px solid rgba(242,233,223,.16);
+      margin:0 -20px;padding-left:20px;padding-right:20px;background:rgba(242,233,223,.07)">
+      <div><div style="font-size:15px;font-weight:600;color:#fff">Lock Off</div>
+        <div style="font-size:9px;color:rgba(242,233,223,.62);margin-top:2px">Static &middot; takes 1 less Bite</div></div>
+      <div style="font-size:14px;font-weight:700;color:#ffd9a0">3 &middot; 6</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 0;
+      border-bottom:1px solid rgba(242,233,223,.16)">
+      <div><div style="font-size:14px;font-weight:500;color:#f2e9df">Smear</div>
+        <div style="font-size:9px;color:rgba(242,233,223,.5);margin-top:2px">Support 1</div></div>
+      <div style="font-size:13px;font-weight:600;color:rgba(242,233,223,.75)">1 &middot; 6</div>
+    </div>
+    <div style="text-align:center;margin-top:18px;font-size:9px;letter-spacing:3.4px;color:rgba(242,233,223,.45)">
+      TAP A HOLD
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body{margin:0;font-family:'Inter','Segoe UI',system-ui,sans-serif}
+    .mc .peek{position:absolute;border-radius:10px;padding:8px 10px;box-sizing:border-box;
+      background:rgba(18,17,16,.72);backdrop-filter:blur(6px);border:1px solid rgba(240,232,220,.14)}
+    .mc .peek b{display:block;font-size:11.5px;font-weight:600;color:#f0e8dc}
+    .mc .peek .n{margin-top:3px;font-size:11px;font-weight:700}
+  </style>
+</helmet>
+
+<div class="mc" style="width:390px;height:844px;box-sizing:border-box;position:relative;overflow:hidden;background:#100f0e">
+
+  <svg viewBox="0 0 390 844" style="position:absolute;inset:0;width:390px;height:844px" aria-hidden="true">
+    <defs>
+      <radialGradient id="o-hold" cx="42%" cy="34%" r="72%">
+        <stop offset="0%" stop-color="#8e8172"/><stop offset="52%" stop-color="#5a5147"/>
+        <stop offset="100%" stop-color="#2c2823"/>
+      </radialGradient>
+      <linearGradient id="o-far" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#3a352e"/><stop offset="100%" stop-color="#17150f"/>
+      </linearGradient>
+      <filter id="o-blur"><feGaussianBlur stdDeviation="7"/></filter>
+      <filter id="o-soft"><feGaussianBlur stdDeviation="1.6"/></filter>
+    </defs>
+    <rect width="390" height="844" fill="url(#o-far)"/>
+    <!-- everything but the chosen hold is out of focus: depth does the ranking -->
+    <g filter="url(#o-blur)" opacity=".8">
+      <ellipse cx="44" cy="622" rx="86" ry="52" fill="#4a443a"/>
+      <ellipse cx="352" cy="700" rx="72" ry="44" fill="#443e35"/>
+      <path d="M0 780 L390 748 L390 844 L0 844 Z" fill="#0e0d0b"/>
+    </g>
+    <!-- the sloper, at the scale your hand actually meets it -->
+    <path d="M28 372 C 74 252, 214 208, 300 262 C 372 308, 366 402, 316 452 C 250 518, 96 502, 44 448 C 20 424, 16 396, 28 372 Z"
+      fill="url(#o-hold)"/>
+    <g opacity=".5" filter="url(#o-soft)">
+      <path d="M78 330 C 132 292, 214 288, 268 318" stroke="#241f1a" stroke-width="3" fill="none"/>
+      <path d="M62 396 C 130 372, 226 380, 296 412" stroke="#241f1a" stroke-width="2.2" fill="none"/>
+      <ellipse cx="128" cy="300" rx="34" ry="12" fill="#a1937f" opacity=".45"/>
+    </g>
+    <!-- chalk, sitting in the texture -->
+    <g fill="#efe9dd" opacity=".3" filter="url(#o-soft)">
+      <ellipse cx="150" cy="322" rx="46" ry="18"/><ellipse cx="238" cy="356" rx="30" ry="13"/>
+      <ellipse cx="104" cy="378" rx="24" ry="10"/>
+    </g>
+    <!-- a hand entering frame, reaching for it -->
+    <g fill="#0b0a09" opacity=".9">
+      <path d="M188 844 L172 700 C 168 668, 190 650, 206 668 L216 690 L214 612 C 214 588, 244 586, 246 610
+        L250 688 L258 620 C 260 596, 288 598, 288 622 L286 700 L300 648 C 306 626, 332 632, 328 656
+        L306 762 C 298 806, 282 828, 262 844 Z"/>
+    </g>
+  </svg>
+
+  <div style="position:absolute;top:18px;left:16px;right:16px;display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <div style="font-size:9px;letter-spacing:2.4px;color:#9a8f7f">THE FRIDGE V3 &middot; HOLD 3 / 7</div>
+      <div style="font-size:26px;font-weight:600;letter-spacing:-.3px;color:#f0e8dc;margin-top:4px">sloper</div>
+      <div style="display:inline-block;margin-top:5px;font-size:8.5px;letter-spacing:2px;color:#0f0e0d;
+        background:#b79bef;border-radius:3px;padding:2px 7px;font-weight:700">GREASY</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:30px;font-weight:700;line-height:1;color:#e8825f">2</div>
+      <div style="font-size:7.5px;letter-spacing:1.8px;color:#9a8f7f">BITE</div>
+      <div style="font-size:30px;font-weight:700;line-height:1;color:#7fce9f;margin-top:10px">6</div>
+      <div style="font-size:7.5px;letter-spacing:1.8px;color:#9a8f7f">GRIP</div>
+    </div>
+  </div>
+
+  <div style="position:absolute;left:16px;top:170px;font-size:11px;line-height:1.45;color:#c4b8a6;width:196px">
+    Greasy takes 2 off your grip unless the move has Friction.
+  </div>
+
+  <!-- the two holds you are not looking at, docked small at the edge -->
+  <div class="peek" style="right:12px;top:470px;width:112px">
+    <b>the blank</b>
+    <div style="font-size:7.5px;letter-spacing:1.6px;color:#e8825f;margin-top:2px">COMMITTING</div>
+    <div class="n"><span style="color:#e8825f">4</span><span style="color:#4c463d"> / </span><span style="color:#7fce9f">8</span></div>
+  </div>
+  <div class="peek" style="right:12px;top:552px;width:112px">
+    <b>smear edge</b>
+    <div class="n"><span style="color:#e8825f">1</span><span style="color:#4c463d"> / </span><span style="color:#7fce9f">3</span></div>
+  </div>
+
+  <div style="position:absolute;left:16px;right:16px;bottom:196px;display:flex;align-items:center;gap:10px">
+    <div style="font-size:8px;letter-spacing:2px;color:#9a8f7f">PUMP</div>
+    <div style="flex:1;height:5px;border-radius:3px;background:rgba(240,232,220,.14);overflow:hidden">
+      <div style="width:63.6%;height:100%;background:linear-gradient(90deg,#d9a75c,#e8825f)"></div>
+    </div>
+    <div style="font-size:11px;font-weight:700;color:#f0e8dc">7<span style="color:#7d7365">/11</span></div>
+    <div style="font-size:8px;letter-spacing:1.6px;color:#7fce9f">FLOW 2</div>
+  </div>
+
+  <!-- the decision, at the size of the decision -->
+  <div style="position:absolute;left:16px;right:16px;bottom:126px;display:flex;align-items:flex-end;justify-content:space-between">
+    <div>
+      <div style="font-size:8px;letter-spacing:2.2px;color:#9a8f7f">LOCK OFF &rarr; SLOPER</div>
+      <div style="font-size:27px;font-weight:700;letter-spacing:-.4px;color:#7fce9f;line-height:1.1">Works it</div>
+    </div>
+    <div style="text-align:right;font-size:10.5px;color:#c4b8a6;line-height:1.5">
+      2 grip left<br><span style="color:#e8825f">+1 pump</span>
+    </div>
+  </div>
+
+  <!-- hand: a swipeable strip, one card at a time, because the hold owns the screen -->
+  <div style="position:absolute;left:0;right:0;bottom:0;height:114px;background:linear-gradient(180deg,rgba(16,15,14,0),#0a0a09 22%);
+    padding:22px 12px 14px;box-sizing:border-box;display:flex;gap:8px;align-items:center">
+    <div style="width:54px;height:66px;border-radius:8px;background:#1b1917;border:1px solid #2c2823;
+      padding:7px 6px;box-sizing:border-box;opacity:.55">
+      <div style="font-size:9.5px;font-weight:600;color:#f0e8dc;line-height:1.1">Open<br>Hand</div>
+      <div style="margin-top:9px;font-size:9.5px;font-weight:700;color:#8d8272">2/7</div>
+    </div>
+    <div style="flex:1;height:78px;border-radius:10px;background:#f0e8dc;color:#15140f;padding:9px 11px;
+      box-sizing:border-box;position:relative;box-shadow:0 -6px 26px -10px rgba(0,0,0,.9)">
+      <div style="font-size:14px;font-weight:700">Lock Off</div>
+      <div style="font-size:9px;color:#5f584c;margin-top:3px">Static &middot; takes 1 less Bite.</div>
+      <div style="position:absolute;right:11px;top:9px;font-size:15px;font-weight:700">
+        <span style="color:#b3502f">3</span><span style="color:#a99d8b"> / </span><span style="color:#2f7d52">6</span></div>
+      <div style="position:absolute;left:11px;bottom:7px;right:11px;height:2px;background:#15140f;opacity:.12"></div>
+    </div>
+    <div style="width:54px;height:66px;border-radius:8px;background:#1b1917;border:1px solid #2c2823;
+      padding:7px 6px;box-sizing:border-box;opacity:.55">
+      <div style="font-size:9.5px;font-weight:600;color:#f0e8dc;line-height:1.1">Smear</div>
+      <div style="margin-top:9px;font-size:9.5px;font-weight:700;color:#8d8272">1/6</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

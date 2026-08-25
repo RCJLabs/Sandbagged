@@ -9,116 +9,134 @@
 <helmet>
   <style>
     body{margin:0;font-family:'Avenir Next','Segoe UI',system-ui,sans-serif}
-    a{color:#d8a24a}a:hover{color:#f0bd68}
-    .va .tag{position:absolute;background:rgba(12,14,16,.82);backdrop-filter:blur(3px);
-      border:1px solid rgba(216,162,74,.45);border-radius:3px;padding:5px 7px;color:#efe7d8;
-      box-shadow:0 6px 18px -8px rgba(0,0,0,.9)}
-    .va .tag b{display:block;font-size:12px;font-weight:600;letter-spacing:.2px}
-    .va .tag .s{font-size:8.5px;letter-spacing:1.5px;color:#d8a24a;margin-top:2px}
-    .va .tag .n{display:flex;gap:9px;margin-top:4px;font-size:11px;font-weight:600}
+    .pf{--ink:#1b2226;--dim:#6a7a83;--ox:#9c3a1c;--go:#2f7d52}
+    .pf .lbl{position:absolute;text-align:right}
+    .pf .lbl b{display:block;font-size:13.5px;font-weight:600;color:#1b2226;letter-spacing:.1px}
+    .pf .lbl .s{font-size:8px;letter-spacing:1.8px;margin-top:1px}
+    .pf .lbl .n{margin-top:3px;font-size:12px;font-weight:700;color:#1b2226}
+    .pf .lbl .n i{font-style:normal;color:#6a7a83;font-weight:500;font-size:9px;letter-spacing:1px}
+    .pf .card{background:#f4efe4;border-radius:5px;padding:9px 8px;box-sizing:border-box;position:relative;
+      box-shadow:0 10px 22px -12px rgba(12,20,24,.85)}
   </style>
 </helmet>
 
-<div class="va" style="width:390px;height:844px;box-sizing:border-box;position:relative;overflow:hidden;
-  background:#0e1113;color:#efe7d8">
+<div class="pf" style="width:390px;height:844px;box-sizing:border-box;position:relative;overflow:hidden;background:#cfdce1">
 
   <svg viewBox="0 0 390 844" style="position:absolute;inset:0;width:390px;height:844px" aria-hidden="true">
     <defs>
-      <linearGradient id="rock" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#3b3a36"/><stop offset="52%" stop-color="#2a2b2b"/><stop offset="100%" stop-color="#17191b"/>
+      <linearGradient id="k-sky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#e6eef1"/><stop offset="58%" stop-color="#c8d8de"/><stop offset="100%" stop-color="#a9bfc7"/>
       </linearGradient>
-      <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#5b6f7d"/><stop offset="100%" stop-color="#2e3a42"/>
+      <linearGradient id="k-wall" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#232a2e"/><stop offset="100%" stop-color="#3d464b"/>
       </linearGradient>
     </defs>
-    <rect width="390" height="844" fill="url(#sky)"/>
-    <path d="M0 96 L58 78 L120 104 L186 70 L250 96 L318 74 L390 100 L390 844 L0 844 Z" fill="url(#rock)"/>
-    <g stroke="#0d0f10" stroke-width="1.4" fill="none" opacity=".55">
-      <path d="M42 120 C 66 210, 40 300, 74 392 S 52 560, 88 690"/>
-      <path d="M198 108 C 214 190, 186 268, 214 352 S 190 520, 224 668"/>
-      <path d="M312 116 C 296 204, 330 288, 304 372 S 330 540, 300 700"/>
-      <path d="M96 168 L166 196 M232 240 L296 214 M120 452 L188 470 M244 560 L308 536"/>
+    <rect width="390" height="844" fill="url(#k-sky)"/>
+    <!-- the valley, far below: this is a side view, so exposure is the whole left half -->
+    <g opacity=".38" fill="#8ea4ad">
+      <path d="M0 706 L44 664 L92 700 L132 656 L182 704 L206 682 L206 844 L0 844 Z"/>
     </g>
-    <g fill="#0d0f10" opacity=".38">
-      <ellipse cx="150" cy="300" rx="46" ry="10"/><ellipse cx="286" cy="452" rx="38" ry="9"/>
-      <ellipse cx="86" cy="596" rx="42" ry="11"/>
+    <g opacity=".22" fill="#7b939d">
+      <path d="M0 762 L58 726 L120 768 L170 740 L206 772 L206 844 L0 844 Z"/>
+    </g>
+    <!-- the wall, seen edge-on -->
+    <path d="M390 0 L268 0 L252 88 L278 152 L246 232 L266 302 L232 374 L256 450 L224 522 L250 598 L216 670 L242 748 L208 844 L390 844 Z"
+      fill="url(#k-wall)"/>
+    <g stroke="#161b1e" stroke-width="1.3" fill="none" opacity=".5">
+      <path d="M320 40 C 306 150, 336 250, 312 356 S 340 560, 310 760"/>
+      <path d="M362 90 C 350 200, 372 300, 352 420 S 374 620, 348 800"/>
+    </g>
+    <!-- the three ledges the labels point at -->
+    <g fill="#4e585e">
+      <path d="M252 236 L214 244 L216 252 L254 250 Z"/>
+      <path d="M232 378 L188 388 L190 397 L234 393 Z"/>
+      <path d="M224 526 L196 533 L198 540 L226 537 Z"/>
+    </g>
+    <!-- leader lines from label to ledge -->
+    <g stroke="#1b2226" stroke-width="1" opacity=".4">
+      <path d="M150 246 L212 246" stroke-dasharray="2 3"/>
+      <path d="M124 390 L186 390" stroke-dasharray="2 3"/>
+      <path d="M136 534 L194 534" stroke-dasharray="2 3"/>
     </g>
   </svg>
 
-  <div style="position:absolute;top:16px;left:16px;right:16px;display:flex;justify-content:space-between;align-items:flex-start">
-    <div>
-      <div style="font-size:19px;font-weight:600;letter-spacing:.3px;text-shadow:0 2px 8px rgba(0,0,0,.8)">The Fridge</div>
-      <div style="font-size:10px;letter-spacing:2px;color:#9fb0ba;margin-top:2px">V3 · NORTH FACE · CRISP</div>
-    </div>
-    <div style="text-align:right">
-      <div style="font-size:9px;letter-spacing:1.6px;color:#9fb0ba">HOLDS</div>
-      <div style="font-size:17px;font-weight:600">3<span style="color:#7d8d97;font-size:12px"> / 7</span></div>
-    </div>
+  <div style="position:absolute;top:20px;left:18px">
+    <div style="font-size:20px;font-weight:600;letter-spacing:.2px;color:#1b2226">The Fridge</div>
+    <div style="font-size:9.5px;letter-spacing:2.2px;color:#6a7a83;margin-top:2px">V3 &middot; NORTH FACE</div>
+  </div>
+  <div style="position:absolute;top:22px;right:16px;text-align:right;color:#e7edef">
+    <div style="font-size:8.5px;letter-spacing:1.8px;opacity:.72">HOLD</div>
+    <div style="font-size:18px;font-weight:600;line-height:1.1">3<span style="opacity:.55;font-size:12px"> / 7</span></div>
   </div>
 
-  <div style="position:absolute;left:14px;top:150px;bottom:210px;width:9px;border-radius:5px;
-    background:rgba(0,0,0,.45);border:1px solid rgba(239,231,216,.14);overflow:hidden;display:flex;flex-direction:column-reverse">
-    <div style="height:64%;background:linear-gradient(180deg,#d8a24a,#b06a2c)"></div>
+  <!-- pump reads as an altimeter tape, which is what a side view wants -->
+  <div style="position:absolute;left:16px;top:120px;height:300px;width:52px">
+    <div style="position:absolute;left:0;top:0;bottom:0;width:5px;background:rgba(27,34,38,.16);border-radius:3px"></div>
+    <div style="position:absolute;left:0;bottom:0;width:5px;height:63.6%;border-radius:3px;
+      background:linear-gradient(0deg,#9c3a1c,#d2803c)"></div>
+    <div style="position:absolute;left:11px;bottom:calc(63.6% - 8px);font-size:14px;font-weight:700;color:#1b2226">7</div>
+    <div style="position:absolute;left:11px;bottom:calc(63.6% - 22px);font-size:8px;letter-spacing:1.6px;color:#6a7a83">PUMP/11</div>
+    <div style="position:absolute;left:11px;top:-2px;font-size:8px;letter-spacing:1.6px;color:#9c3a1c">PEEL</div>
   </div>
-  <div style="position:absolute;left:9px;bottom:186px;font-size:8.5px;letter-spacing:1.4px;color:#d8a24a">PUMP 7</div>
+  <div style="position:absolute;left:16px;top:440px;font-size:8.5px;letter-spacing:1.8px;color:#2f7d52">FLOW 2</div>
 
-  <div class="tag" style="left:56px;top:222px;width:150px">
-    <b>sloper</b><div class="s">GREASY</div>
-    <div class="n"><span style="color:#e0705c">2</span><span style="color:#8fd0a8">6</span>
-      <span style="margin-left:auto;font-size:9px;color:#8fd0a8;letter-spacing:1px">WORKS IT</span></div>
+  <div class="lbl" style="left:26px;top:224px;width:124px">
+    <b>sloper</b><div class="s" style="color:#7a5bbd">GREASY</div>
+    <div class="n">2 <i>BITE</i> &nbsp; 6 <i>GRIP</i></div>
   </div>
-  <div class="tag" style="right:22px;top:374px;width:150px;border-color:rgba(224,112,92,.6)">
-    <b>the blank</b><div class="s" style="color:#e0705c">COMMITTING</div>
-    <div class="n"><span style="color:#e0705c">4</span><span style="color:#8fd0a8">8</span>
-      <span style="margin-left:auto;font-size:9px;color:#c3b9a6;letter-spacing:1px">2 LEFT</span></div>
+  <div class="lbl" style="left:0;top:368px;width:124px">
+    <b>the blank</b><div class="s" style="color:#9c3a1c">COMMITTING</div>
+    <div class="n">4 <i>BITE</i> &nbsp; 8 <i>GRIP</i></div>
   </div>
-  <div class="tag" style="left:34px;top:518px;width:150px">
+  <div class="lbl" style="left:12px;top:516px;width:124px">
     <b>smear edge</b>
-    <div class="n"><span style="color:#e0705c">1</span><span style="color:#8fd0a8">3</span>
-      <span style="margin-left:auto;font-size:9px;color:#e0705c;letter-spacing:1px">+1 PUMP</span></div>
+    <div class="n">1 <i>BITE</i> &nbsp; 3 <i>GRIP</i></div>
   </div>
 
-  <svg viewBox="0 0 60 96" style="position:absolute;left:158px;top:352px;width:60px;height:96px" aria-hidden="true">
-    <g fill="#0b0d0e" opacity=".92">
-      <circle cx="30" cy="13" r="8"/>
-      <path d="M30 21 L24 52 L36 52 Z"/>
-      <path d="M26 24 L6 6 L11 2 L30 22 Z"/><path d="M34 24 L55 12 L58 17 L36 28 Z"/>
-      <path d="M26 52 L14 88 L20 90 L31 58 Z"/><path d="M34 52 L46 84 L40 87 L30 58 Z"/>
+  <!-- the climber, in profile on the arete -->
+  <svg viewBox="0 0 54 88" style="position:absolute;left:214px;top:404px;width:54px;height:88px" aria-hidden="true">
+    <g fill="#11161a" opacity=".95">
+      <circle cx="34" cy="12" r="7.5"/>
+      <path d="M34 19 L27 50 L40 50 Z"/>
+      <path d="M30 22 L14 4 L19 0 L36 20 Z"/>
+      <path d="M38 24 L50 34 L47 39 L34 30 Z"/>
+      <path d="M29 50 L20 82 L26 84 L35 56 Z"/><path d="M38 50 L44 74 L38 77 L32 56 Z"/>
     </g>
   </svg>
 
-  <div style="position:absolute;left:0;right:0;bottom:0;height:196px;
-    background:linear-gradient(180deg,transparent,rgba(9,11,12,.86) 32%,#090b0c 62%)"></div>
+  <!-- the preview reads as a callout on the hold being played -->
+  <div style="position:absolute;left:26px;top:274px;width:150px;background:rgba(47,125,82,.14);
+    border-left:3px solid #2f7d52;padding:6px 9px;border-radius:0 3px 3px 0">
+    <div style="font-size:11.5px;font-weight:700;color:#2f7d52;letter-spacing:.4px">WORKS IT</div>
+    <div style="font-size:9.5px;color:#4a5b64;margin-top:2px">2 grip left &middot; +1 pump</div>
+  </div>
 
-  <div style="position:absolute;left:0;right:0;bottom:78px;height:110px">
-    <div style="position:absolute;left:24px;bottom:0;width:104px;height:104px;transform:rotate(-9deg);
-      background:#efe7d8;color:#1a1c1e;border-radius:6px;padding:9px 8px;box-sizing:border-box;
-      box-shadow:0 12px 26px -12px rgba(0,0,0,.95)">
-      <div style="font-size:12px;font-weight:600;line-height:1.1">Open Hand</div>
-      <div style="font-size:8.5px;color:#5e6367;line-height:1.3;margin-top:4px">Friction · ignores Greasy.</div>
-      <div style="position:absolute;left:8px;bottom:7px;font-size:13px;font-weight:700">2</div>
-      <div style="position:absolute;right:8px;bottom:7px;font-size:13px;font-weight:700;color:#5e6367">7</div>
+  <div style="position:absolute;left:0;right:0;bottom:0;height:236px;
+    background:linear-gradient(180deg,rgba(207,220,225,0),rgba(214,225,229,.94) 26%,#dbe4e7 46%)"></div>
+
+  <div style="position:absolute;left:14px;right:14px;bottom:80px;display:flex;gap:9px;align-items:flex-end">
+    <div class="card" style="flex:1;height:126px;transform:rotate(-3deg)">
+      <div style="font-size:12.5px;font-weight:600;line-height:1.1;color:#1b2226">Open Hand</div>
+      <div style="font-size:8.5px;color:#6a7a83;line-height:1.35;margin-top:5px">Friction &middot; ignores Greasy.</div>
+      <div style="position:absolute;left:8px;bottom:7px;font-size:13px;font-weight:700;color:#9c3a1c">2</div>
+      <div style="position:absolute;right:8px;bottom:7px;font-size:13px;font-weight:700;color:#2f7d52">7</div>
     </div>
-    <div style="position:absolute;left:143px;bottom:8px;width:104px;height:104px;
-      background:#efe7d8;color:#1a1c1e;border-radius:6px;padding:9px 8px;box-sizing:border-box;
-      box-shadow:0 12px 26px -12px rgba(0,0,0,.95);outline:2px solid #d8a24a">
-      <div style="font-size:12px;font-weight:600;line-height:1.1">Lock Off</div>
-      <div style="font-size:8.5px;color:#5e6367;line-height:1.3;margin-top:4px">Static · takes 1 less Bite.</div>
-      <div style="position:absolute;left:8px;bottom:7px;font-size:13px;font-weight:700">3</div>
-      <div style="position:absolute;right:8px;bottom:7px;font-size:13px;font-weight:700;color:#5e6367">6</div>
+    <div class="card" style="flex:1;height:142px;outline:2px solid #9c3a1c;outline-offset:-1px">
+      <div style="font-size:12.5px;font-weight:600;line-height:1.1;color:#1b2226">Lock Off</div>
+      <div style="font-size:8.5px;color:#6a7a83;line-height:1.35;margin-top:5px">Static &middot; takes 1 less Bite.</div>
+      <div style="position:absolute;left:8px;bottom:7px;font-size:13px;font-weight:700;color:#9c3a1c">3</div>
+      <div style="position:absolute;right:8px;bottom:7px;font-size:13px;font-weight:700;color:#2f7d52">6</div>
     </div>
-    <div style="position:absolute;right:24px;bottom:0;width:104px;height:104px;transform:rotate(9deg);
-      background:#efe7d8;color:#1a1c1e;border-radius:6px;padding:9px 8px;box-sizing:border-box;
-      box-shadow:0 12px 26px -12px rgba(0,0,0,.95)">
-      <div style="font-size:12px;font-weight:600;line-height:1.1">Smear</div>
-      <div style="font-size:8.5px;color:#5e6367;line-height:1.3;margin-top:4px">Support 1.</div>
-      <div style="position:absolute;left:8px;bottom:7px;font-size:13px;font-weight:700">1</div>
-      <div style="position:absolute;right:8px;bottom:7px;font-size:13px;font-weight:700;color:#5e6367">6</div>
+    <div class="card" style="flex:1;height:126px;transform:rotate(3deg)">
+      <div style="font-size:12.5px;font-weight:600;line-height:1.1;color:#1b2226">Smear</div>
+      <div style="font-size:8.5px;color:#6a7a83;line-height:1.35;margin-top:5px">Support 1.</div>
+      <div style="position:absolute;left:8px;bottom:7px;font-size:13px;font-weight:700;color:#9c3a1c">1</div>
+      <div style="position:absolute;right:8px;bottom:7px;font-size:13px;font-weight:700;color:#2f7d52">6</div>
     </div>
   </div>
 
-  <button style="position:absolute;left:16px;right:16px;bottom:20px;height:50px;border:0;border-radius:25px;
-    background:#d8a24a;color:#141618;font-family:inherit;font-size:14px;font-weight:700;letter-spacing:2.4px">CLIMB</button>
+  <button style="position:absolute;left:16px;right:16px;bottom:20px;height:48px;border:0;border-radius:4px;
+    background:#1b2226;color:#f4efe4;font-family:inherit;font-size:13px;font-weight:700;letter-spacing:2.6px">COMMIT</button>
 </div>
 </x-dc>
 </body>
